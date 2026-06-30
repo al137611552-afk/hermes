@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块E：World State + Failure Memory（跨步/跨会话死路记忆）
+
+**背景**：块A–D 已 Windows 验证定版 3.46.0。块E 让"差距/失败"被记住——同一条死路（同工具+同入参以同种方式失败）不再被反复尝试。见 [[adr-0016]] `docs/adr/0016-world-state-failure-memory.md`。
+**做了什么**：
+- 新增 `src/agentcore/agent/world_state.py`：`WorldState`（单会话纯内存：Need 历史 / 按指纹聚合的失败计数 / 已证伪路径 / 未决阻塞）+ `FailureMemory`（跨会话 SQLite `data/failures.db`，key=(指纹,错误分类,Decision)，`known_deadend()` 查死路）+ `fingerprint(工具,入参)`（关键入参归一 + sha1 截 16 位）。
+- `loop.py`：`detect_repeated_failure()`（仿现有 nudge：探测+记录+注入）——每个非瞬时失败经 `_assess` 拿分类、记入两库，本会话累计 ≥ 阈值或跨会话已知死路 → 注入"此路已 N 次不通，换思路"。`detect_repeated_failure` 内整段 try/except 包死。构造器加 `failure_memory=None`(默认)/`deadend_threshold=2`。`run()` 每轮建 `WorldState`，`failure_memory` 非 None 时启用。
+- 配置：`config.py` AgentConfig + `config.yaml` 加 `failure_memory`(默认 true)/`deadend_threshold`(2)。`conversation.py` 加 `_get_failure_memory()`（懒建复用单实例，打开失败降级 None），主+子 Agent 两处构造都传入。
+**关键决策**：① **喂事实而非硬拦截**——死路判断有误报风险，硬禁会把误报变功能缺失；注入"N 次不通"让模型自己换思路（与块A nudge、块D 回灌一脉相承）。真避坑留块F（Golden 门）兜底后、块G 按语料证据收紧。② **瞬时 IO 不算死路**——那是块D 自动重试的活，避免与重试打架。③ **一次失败=一行**——classify 给一次失败多分类，只记主分类（防重复计数把单次失败误判成多次）。④ 构造器 `failure_memory=None` 默认 → 存量测试零行为变化（同块D 手法）。
+**自检**：新增 `tests/test_world_state.py` 15 测（指纹稳定/区分/忽略无关入参；WorldState 计数+证伪+阻塞；FailureMemory 记录/计数/阈值/主分类/重开持久/空分类兜底；detect 接线：第二次撞死路提示、瞬时不算死路、成功不记、每指纹一次、跨会话首撞即提示）。**全回归绿：Python 49 文件 + 前端 30，0 失败。**
+**验证状态**：纯后端逻辑 + SQLite 本地自检全过；**待 Windows 真机验**——让 Agent 反复以同种方式失败一条命令，观察出现 deadend 提示、模型据此换思路（不再原样重试）。
+**待做**：块F=Golden Dataset + 回归门（**必须早于 G**）。见 ROADMAP。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块D：Auto-Retry（第一条 Need→Decision 硬规则，工具调用级）
 
 **背景**：A/B/C 都是纯观测/等价重构（零行为风险）；块D 起**首次碰控制流**。落地第一条、也是最便宜的 `Need→Decision` 硬规则——瞬时 IO 失败自动退避重试。它本身是个论证：决策层**不必是大引擎**，几条确定性硬规则覆盖最高频情形即可。见 [[adr-0014]] 块D。

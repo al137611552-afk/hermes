@@ -20,6 +20,7 @@ from ..providers import BaseProvider, Message
 from ..tools import ToolError, ToolOutput, ToolRegistry
 from .contract import NUDGE_BROWSE, NUDGE_LOGIN, NUDGE_STUCK, Need
 from .gate import PermissionGate
+from .world_state import WorldState, fingerprint
 
 # 工具被用户拒绝时回灌给模型的提示
 _DENIED = "用户拒绝了本次操作。请不要重试该操作，可改用其它方式或询问用户。"
@@ -133,6 +134,52 @@ def detect_stuck_edit(calls, out_by_id: dict, edit_counts: dict, nudged: set,
     return None
 
 
+def _short_args(params) -> str:
+    """把工具入参压成一行简短描述，用于死路提示文案。"""
+    p = params or {}
+    for k in ("command", "path", "file_path", "pattern", "query", "url", "name"):
+        v = p.get(k)
+        if v:
+            s = " ".join(str(v).split())
+            return s[:80] + ("…" if len(s) > 80 else "")
+    return ""
+
+
+def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps, threshold=2):
+    """块E：同一条路（指纹）反复**非瞬时**失败 → 注入"此路已 N 次不通"事实，促模型换思路。
+
+    瞬时 IO 失败**不计**（那是 block D 自动重试的活，不是死路）。每条失败记入 WorldState
+    （本会话）+ FailureMemory（跨会话持久）；命中阈值（本会话累计 ≥threshold 或跨会话已知死路）
+    且本指纹本轮未提示过 → 返回注入文案（事实，非指令）。仿现有 detector：探测+记录+返回。
+    """
+    from .taxonomy import ErrorClass
+    transient = ErrorClass.TRANSIENT_IO.value
+    for c in calls:
+        text = out_by_id.get(c.id, "") or ""
+        _ev, classes = AgentLoop._assess(c.name, text, True, getattr(c, "input", None))
+        nontransient = [getattr(x, "value", x) for x in classes
+                        if getattr(x, "value", x) != transient]
+        if not nontransient:
+            continue  # 成功 / 纯瞬时 → 不是死路
+        fp = fingerprint(c.name, getattr(c, "input", None))
+        n = world.record_failure(fp, nontransient, detail=text[:200])
+        cross = None
+        if failure_memory is not None:
+            try:
+                failure_memory.record(fp, nontransient, detail=text[:200])
+                cross = failure_memory.known_deadend(fp, threshold)
+            except Exception:  # noqa: BLE001 — 记忆故障绝不影响主循环
+                cross = None
+        if (n >= threshold or cross is not None) and fp not in nudged_fps:
+            nudged_fps.add(fp)
+            total = cross[0] if cross else n
+            dom = cross[1] if cross else nontransient[0]
+            return (f"[系统观察] 这条路（{c.name}：{_short_args(getattr(c, 'input', None))}）"
+                    f"已累计 {total} 次以「{dom}」失败。重复同样的做法大概率仍失败——"
+                    f"请换一条思路（不同命令/参数/工具，或先排查根因），不要再原样重试。")
+    return None
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -147,6 +194,8 @@ class AgentLoop:
         auto_retry: bool = False,
         retry_max_attempts: int = 2,
         retry_backoff_base: float = 0.5,
+        failure_memory=None,
+        deadend_threshold: int = 2,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -158,6 +207,8 @@ class AgentLoop:
         self.auto_retry = auto_retry            # 块D：瞬时 IO 失败自动退避重试（工具调用级）
         self.retry_max_attempts = retry_max_attempts
         self.retry_backoff_base = retry_backoff_base
+        self.failure_memory = failure_memory    # 块E：跨会话死路记忆（FailureMemory 实例）；None=关
+        self.deadend_threshold = deadend_threshold  # 同一条路累计失败 ≥ 此值 → 提示换思路
         import time as _t
         self._sleep = _t.sleep                  # 退避用；测试可替换为 no-op
 
@@ -191,6 +242,8 @@ class AgentLoop:
         nudged: set[str] = set()          # 已提示过 trace_run 的文件（每文件只提一次）
         browse_state: dict = {}           # 情境自启：浏览计数 / 是否用过 search_code / 是否已提示
         login_state: dict = {}            # 登录墙：本轮是否已强制提示过"用 ask_user 登录、别换搜索引擎"
+        world = WorldState()              # 块E：本轮世界状态（Need 历史 / 死路计数）
+        deadend_fps: set[str] = set()     # 块E：已就某指纹提示过换思路（每路一次）
         _names = self.registry.names() if hasattr(self.registry, "names") else []
         browser_present = any(n.split("__", 1)[-1].startswith("browser_") for n in _names)
 
@@ -301,6 +354,18 @@ class AgentLoop:
                 if lw:
                     inject_blocks.append({"type": "text", "text": lw})
                     emit("login_hint", {"text": lw})
+            # 块E：同一条路反复非瞬时失败 → 提示换思路（死路记忆，跨会话累积）。纯观测+注入，
+            # 整段 try/except 包死：记忆/分类故障绝不影响工具结果回灌。
+            if self.failure_memory is not None:
+                try:
+                    out_by_id = {r["tool_use_id"]: r.get("content", "") for r in results}
+                    df = detect_repeated_failure(calls, out_by_id, world, self.failure_memory,
+                                                 deadend_fps, self.deadend_threshold)
+                    if df:
+                        inject_blocks.append({"type": "text", "text": df})
+                        emit("deadend_hint", {"text": df})
+                except Exception:  # noqa: BLE001
+                    pass
             messages.append(Message("user", results + extra_blocks + inject_blocks))
         else:
             self.hit_max_steps = True

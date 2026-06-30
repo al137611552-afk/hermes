@@ -466,6 +466,8 @@ class Conversation:
             auto_retry=res.config.agent.auto_retry,
             retry_max_attempts=res.config.agent.retry_max_attempts,
             retry_backoff_base=res.config.agent.retry_backoff_base,
+            failure_memory=self._get_failure_memory(res.config.agent.failure_memory),
+            deadend_threshold=res.config.agent.deadend_threshold,
         )
         n_in = len(model_messages)  # 压缩后喂入条数；loop 仅在其后追加新消息
         try:
@@ -1179,6 +1181,8 @@ class Conversation:
             auto_retry=cfg.agent.auto_retry,
             retry_max_attempts=cfg.agent.retry_max_attempts,
             retry_backoff_base=cfg.agent.retry_backoff_base,
+            failure_memory=self._get_failure_memory(cfg.agent.failure_memory),
+            deadend_threshold=cfg.agent.deadend_threshold,
         )
         # 子循环抛异常时自动重试一次（附上失败原因），仍失败才回灌主 Agent（FR-11.6b）。
         # 取消时不重试（用户主动停止）。
@@ -1493,6 +1497,24 @@ class Conversation:
     def _make_hook_runner(self):
         """按当前工作区 + config.agent.hooks 建可编程 hooks 运行器（无 hook 时返回 None，零开销）。"""
         return make_hook_runner(self.workspace, self.res.config.agent.hooks)
+
+    def _get_failure_memory(self, enabled: bool):
+        """块E：懒建并复用单个 FailureMemory（跨会话死路记忆，data/failures.db）。
+
+        enabled=False → None（功能关）。打开失败也降级 None，绝不阻断对话。
+        """
+        if not enabled:
+            return None
+        fm = getattr(self, "_failure_memory_cache", None)
+        if fm is None:
+            try:
+                from ..config import ROOT
+                from ..agent.world_state import FailureMemory
+                fm = FailureMemory(ROOT / "data" / "failures.db")
+            except Exception:  # noqa: BLE001
+                fm = None
+            self._failure_memory_cache = fm
+        return fm
 
     def _browse_nudge_enabled(self) -> bool:
         """情境自启：项目代码文件数 ≥ 阈值时，启用「浏览太多→提示 search_code」。"""

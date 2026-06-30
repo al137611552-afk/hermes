@@ -113,6 +113,9 @@ class AgentConfig(BaseModel):
                                        # 自动退避重试，不打扰模型。False=关（失败直接回灌模型）
     retry_max_attempts: int = 2        # auto_retry 的最大重试次数（不含首次执行）；总执行 = 1 + 本值
     retry_backoff_base: float = 0.5    # auto_retry 退避基数秒，第 n 次重试前等 base*2^(n-1)（指数退避）
+    failure_memory: bool = True        # 块E 死路记忆：同一条路（工具+关键入参）反复**非瞬时**失败时，
+                                       # 记入跨会话记忆并提示模型换思路（不再原样重试）。False=关
+    deadend_threshold: int = 2         # 同一条路累计失败 ≥ 此值 → 提示换思路（瞬时 IO 不计，归 auto_retry）
 
     def resolve_workspace(self) -> Path:
         return Path(self.workspace).expanduser().resolve() if self.workspace else ROOT
