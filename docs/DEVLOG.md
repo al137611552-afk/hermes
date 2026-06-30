@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块H3a：搜索结果模型裁判（语义相关性）
+
+**背景**：H1/H2 只判数值硬约束（预算）。真实反馈更难的一类——"搜 618 夏季女士睡衣却推厚秋冬款、配图一看就是冬季"——是**语义+多模态**相关性，正则判不了，资料查询/竞品调研同理。用户拍板"开，且两处都挂"。分两步：H3a=裁判引擎+挂搜索结果（文字层，本条）；H3b=挂带图答案前（多模态看图，下一步）。见 [[adr-0018]]。
+**做了什么**：
+- `agent/judge.py`：provider **注入式**模型裁判（`judge_fn(prompt, images)->str`，**多模态就绪**）。`build_judge_prompt`（goal+结果，要求只回紧凑 JSON）/`parse_verdict`（稳健解析，**解析失败→放行不拦**）/`judge_research`（goal 或内容缺失、judge_fn 故障→一律放行）。裁判是决策层的**质量闸**（有 IO），**不是**纯逻辑 Evaluator，单独住这里。
+- `loop.py detect_offtarget_research`：挂 web_search 结果，**在 H2 正则之后**跑（H2 已就该 query 提示过则跳过）。不对题→注入"多数不对题（理由），换词/换源重搜"。per-query 封顶同 H2。`_latest_user_text(messages)` 抽用户目标作裁判基准。
+- config `research_judge`(默认 true)；构造器默认 `research_judge=None`→存量零变化。conversation.py `_make_research_judge(provider,enabled)` 用当前 provider 建 judge_fn，主+子 Agent 两路传入。
+**关键决策**：① **裁判故障/解析失败一律放行不拦**——模型会判错/超时，绝不能因裁判出错就误触发重搜或卡死（比"喂事实非硬拦"更进一步：连"喂"都不喂）。② **H1/H2 正则先行、裁判兜底**——预算这种铁证零成本秒判，判不了的才花钱调模型；H2 拦过就不再调裁判（省一次调用）。③ **judge_fn 注入**——单测用假裁判全覆盖、不连真模型；也为 H3b 换便宜模型/接图留口。④ 引擎一次建好**多模态就绪**（收 images），H3b 只差接图+挂答案路径。
+**自检**：`tests/test_research_judge.py` 12 测（解析对题/不对题/垃圾输入兜底；judge_research 调用+解析/无目标放行/故障放行/多模态传图；钩子 不对题催/对题静默/per-query封顶/尊重H2已催；_latest_user_text）。`scripts/diag_blockH.py` 扩到 12 项（加 H3a 假裁判机制）。**全回归绿：Python 54 + 前端 30 + Golden 28，0 失败。**
+**验证状态**：纯逻辑全本地自检过（假裁判）。**改了 loop 控制流 + 真模型调用，待 Windows 真机验**——`diag_blockH.py` 验机制 + 活体：GUI 搜"618夏季女士睡衣"若返回厚款，观察裁判判"多数不对题"并重搜。
+**待做**：H3b 多模态看图（挂带图答案前，抓"配图冬季"）；H4 Golden 扩充 + Win 验后定版。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块H1+H2：Research Evaluator（搜索质量评估 + 不达标重搜）
 
 **背景**：真实反馈——让 Hermes "在小红书搜 618 推荐女士睡衣 500 元以内"，工具**成功返回**一堆超预算/不对题结果，但 Hermes **判不出好坏、不会自己重搜**。根因：A–G 覆盖的是**失败差距**（报错/空/死路），这是**质量差距**（返回了但不达标）——`SearchEvaluator` 只数命中、判空，返回 8 条就当成功；`score()` 又被刻意隔离在决策外。见 [[adr-0018]]。

@@ -145,6 +145,29 @@ def _short_args(params) -> str:
     return ""
 
 
+def _latest_user_text(messages) -> str:
+    """取最后一条 user 消息的纯文本，作为本轮"用户目标"（块H3a 裁判的相关性基准）。
+
+    content 可能是 str，或块列表（text/tool_result/image 混合）——只抽 text，跳过工具结果块。
+    """
+    for m in reversed(messages or []):
+        if getattr(m, "role", None) != "user":
+            continue
+        c = getattr(m, "content", None)
+        if isinstance(c, str):
+            return c.strip()
+        if isinstance(c, list):
+            parts = []
+            for b in c:
+                if isinstance(b, dict) and b.get("type") == "text" and not b.get("tool_use_id"):
+                    t = b.get("text", "")
+                    if t and not t.startswith("[用户追加]") and not t.startswith("[系统"):
+                        parts.append(t)
+            if parts:
+                return " ".join(parts).strip()
+    return ""
+
+
 def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps, threshold=2):
     """块E：同一条路（指纹）反复**非瞬时**失败 → 注入"此路已 N 次不通"事实，促模型换思路。
 
@@ -213,6 +236,39 @@ def detect_low_quality_research(calls, out_by_id, nudged_queries, max_nudges=1):
     return None
 
 
+def detect_offtarget_research(calls, out_by_id, goal, judge_fn, nudged_queries,
+                             max_nudges=1, images_by_id=None):
+    """块H3a：web_search 结果经**模型裁判**判语义相关性（"夏季"≠秋冬款等），不对题→提示重搜。
+
+    在 H2 的预算正则之后跑（H2 已就该 query 提示过则跳过，避免重复）。裁判故障/对题 → 不拦。
+    per-query 封顶同 H2。multimodal 预留 images_by_id（H3b 接图后用）。
+    """
+    from .judge import judge_research
+    for c in calls:
+        if getattr(c, "name", "") != "web_search":
+            continue
+        params = getattr(c, "input", None)
+        text = out_by_id.get(getattr(c, "id", None), "")
+        if not (text and text.strip()):
+            continue
+        q = ""
+        if isinstance(params, dict):
+            q = str(params.get("query") or params.get("q") or "")
+        key = q.strip().lower()
+        if nudged_queries.get(key, 0) >= max(1, max_nudges):
+            continue
+        imgs = (images_by_id or {}).get(getattr(c, "id", None))
+        v = judge_research(goal, text, judge_fn, images=imgs)
+        if v.on_target:
+            continue
+        nudged_queries[key] = nudged_queries.get(key, 0) + 1
+        reasons = "；".join(v.off[:3]) if v.off else "多数结果与目标的关键限定不符"
+        sug = v.suggestion or "换更精准的关键词，或改用别的数据源/检索方式重搜一次"
+        return ("[系统观察] 这次搜索结果**多数不对题**：" + reasons +
+                "。请不要采用这些结果——" + sug + "，尽量贴合用户目标（季节/品类/性别/时效等）。")
+    return None
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -231,6 +287,7 @@ class AgentLoop:
         deadend_threshold: int = 2,
         research_refine: bool = False,
         research_refine_max: int = 1,
+        research_judge=None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -246,6 +303,7 @@ class AgentLoop:
         self.deadend_threshold = deadend_threshold  # 同一条路累计失败 ≥ 此值 → 提示换思路
         self.research_refine = research_refine   # 块H2：联网搜索不达标→提示重搜；False=关
         self.research_refine_max = research_refine_max  # 同一 query 最多催重搜几次（防无限）
+        self.research_judge = research_judge     # 块H3a：模型裁判 judge_fn(prompt,images)->str；None=只用H1/H2正则
         import time as _t
         self._sleep = _t.sleep                  # 退避用；测试可替换为 no-op
 
@@ -282,6 +340,7 @@ class AgentLoop:
         world = WorldState()              # 块E：本轮世界状态（Need 历史 / 死路计数）
         deadend_fps: set[str] = set()     # 块E：已就某指纹提示过换思路（每路一次）
         research_nudged: dict = {}        # 块H2：已就某搜索 query 催过重搜的计数（每 query 封顶）
+        research_goal = _latest_user_text(messages)  # 块H3a：用户目标（裁判判相关性的基准）
         _names = self.registry.names() if hasattr(self.registry, "names") else []
         browser_present = any(n.split("__", 1)[-1].startswith("browser_") for n in _names)
 
@@ -410,6 +469,11 @@ class AgentLoop:
                     out_by_id = {r["tool_use_id"]: r.get("content", "") for r in results}
                     rq = detect_low_quality_research(calls, out_by_id, research_nudged,
                                                      self.research_refine_max)
+                    # H3a：H2 正则未拦时，再过模型裁判判语义相关性（"夏季"≠秋冬款等）
+                    if rq is None and self.research_judge is not None and research_goal:
+                        rq = detect_offtarget_research(
+                            calls, out_by_id, research_goal, self.research_judge,
+                            research_nudged, self.research_refine_max)
                     if rq:
                         inject_blocks.append({"type": "text", "text": rq})
                         emit("research_hint", {"text": rq})

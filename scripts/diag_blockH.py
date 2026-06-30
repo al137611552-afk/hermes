@@ -86,14 +86,38 @@ def main():
         [_Call(1, "web_search", {"query": "好看的女士睡衣推荐"})], {"1": _MISS}, {}, 1)
     check("H2 没给预算约束 → 不催重搜（不误扰正常搜索）", msg_np is None)
 
+    # —— H3a 模型裁判（用假裁判验机制；真模型在 GUI 活体验）——
+    from agentcore.agent.loop import detect_offtarget_research
+    from agentcore.agent.judge import judge_research
+    _OFF = '{"on_target": false, "off": ["真丝厚睡衣：秋冬款，不符夏季"], "suggestion": "加\'冰丝 短袖\'换平台重搜"}'
+    # 夏季睡衣却返回厚款（文字层）——裁判判不对题 → 催重搜
+    off_calls = [_Call(1, "web_search", {"query": "618夏季女士睡衣"})]
+    off_out = {"1": "1. 真丝厚睡衣套装\n   http://a\n   ¥299 秋冬加厚"}
+    m_off = detect_offtarget_research(off_calls, off_out, "搜618夏季女士睡衣并附图",
+                                      lambda p, i: _OFF, {}, 1)
+    check("★H3a 夏季睡衣返回厚秋冬款 → 裁判判不对题、催重搜", bool(m_off) and "不对题" in m_off,
+          (m_off[:28] if m_off else "无"))
+    # 对题不催
+    m_on = detect_offtarget_research(
+        [_Call(2, "web_search", {"query": "夏季睡衣"})], {"2": "1. 冰丝短袖睡衣"},
+        "夏季睡衣", lambda p, i: '{"on_target": true}', {}, 1)
+    check("H3a 结果对题 → 不催重搜", m_on is None)
+    # 裁判故障 → 放行不拦（不因模型出错误触发重搜）
+    def _boom(p, i):
+        raise RuntimeError("模型超时")
+    v_fail = judge_research("夏季睡衣", "厚款", _boom)
+    check("H3a 裁判故障 → 放行不拦（不误触发）", v_fail.on_target is True)
+
     ok = all(_results)
     print()
     if ok:
         print(f"===== RESULT: ALL PASS ({len(_results)}/{len(_results)}) =====")
-        print("\n[活体观察清单] 机制已验。真模型行为请在 GUI 里跑一次真实搜索观察：")
-        print("  1) 给 Hermes：在小红书搜618推荐的女士睡衣，500元以内")
-        print("  2) 看它搜完后是否注入了「返回了但不达标…换词/换源重搜」并据此**再搜一次**")
-        print("  3) 若 config research_refine=false 则不会催重搜（只在摘要条显示质量）")
+        print("\n[活体观察清单] 机制已验。真模型行为请在 GUI 里跑真实搜索观察：")
+        print("  1) 预算（H1/H2 正则）：搜『618女士睡衣 500元以内』→ 看是否因超预算自动重搜")
+        print("  2) 语义（H3a 模型裁判）：搜『618夏季女士睡衣』→ 若返回厚秋冬款，看裁判是否判")
+        print("     『多数不对题』并据此换词/换源重搜（每次搜索后多一次模型调用）")
+        print("  3) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
+        print("  注：看图判季节（配图是冬季）属 H3b 多模态，下一步交付")
         return 0
     failed = len(_results) - sum(_results)
     print(f"===== RESULT: {failed} FAILED （共 {len(_results)} 项）=====")

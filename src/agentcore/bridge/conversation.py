@@ -470,6 +470,7 @@ class Conversation:
             deadend_threshold=res.config.agent.deadend_threshold,
             research_refine=res.config.agent.research_refine,
             research_refine_max=res.config.agent.research_refine_max,
+            research_judge=self._make_research_judge(provider, res.config.agent.research_judge),
         )
         n_in = len(model_messages)  # 压缩后喂入条数；loop 仅在其后追加新消息
         try:
@@ -1187,6 +1188,7 @@ class Conversation:
             deadend_threshold=cfg.agent.deadend_threshold,
             research_refine=cfg.agent.research_refine,
             research_refine_max=cfg.agent.research_refine_max,
+            research_judge=self._make_research_judge(provider, cfg.agent.research_judge),
         )
         # 子循环抛异常时自动重试一次（附上失败原因），仍失败才回灌主 Agent（FR-11.6b）。
         # 取消时不重试（用户主动停止）。
@@ -1519,6 +1521,24 @@ class Conversation:
                 fm = None
             self._failure_memory_cache = fm
         return fm
+
+    def _make_research_judge(self, provider, enabled: bool):
+        """块H3a：构造模型裁判 judge_fn(prompt, images)->str，用当前 provider 跑一次只读判断。
+
+        enabled=False → None（只用 H1/H2 正则）。判断纯文本（H3a）；images 预留给 H3b 接图。
+        裁判调用本身由 judge_research 包 try/except，故障一律放行不拦。
+        """
+        if not enabled or provider is None:
+            return None
+        from ..providers.base import Message
+
+        def judge_fn(prompt, images=None):
+            out = []
+            for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
+                if getattr(ev, "type", None) == "text":
+                    out.append(ev.text)
+            return "".join(out)
+        return judge_fn
 
     def _browse_nudge_enabled(self) -> bool:
         """情境自启：项目代码文件数 ≥ 阈值时，启用「浏览太多→提示 search_code」。"""
