@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块F：Golden Dataset + 回归门（Learning 的安全网）
+
+**背景**：块G（Learning）要自动/半自动改 `Need→Decision` 映射，**没有语料门就不准上**——否则一次坏改动会悄悄劣化决策内核且无人察觉。块F 先把当前决策内核的行为**冻结成回归基线**。见 [[adr-0014]] 块F / ROADMAP。
+**做了什么**：
+- `tests/golden/cases.py`：23 条决策点语料（`输入→期望输出`），覆盖块A verdict→Need / 块B evaluate 事实（issues 有无 + 关键 metric）/ 块C classify 主分类（含 None=不匹配）/ 块D decide_retry（重试与否+退避）/ 块E detect_repeated_failure（第几次起提示换思路、瞬时永不算死路）。
+- `tests/golden/runner.py`：按 `kind` 分派、重放**真实**决策函数比对期望，返回 `{passed,total,failures}`，可独立跑（退出码非零=回归）。
+- `tests/test_golden.py`：并入"全回归"（已在 `tests/test_*.py` 循环内）；除"全语料过"外加**门活性自检**——注入一条错误期望，runner 必须报红（防门形同虚设）+ 未知 kind 即失败 + 语料数下限守卫。
+**关键决策**：① **语料即代码（cases.py）**——决策内核是纯函数，冻结基线放代码里比 JSON 解析更直观、可注释。② **门必须自证活性**——只断言"全过"会让"门坏了恒过"也悄悄溜过；加一条"劣化必红"的元测试钉死。③ **追加不改既有期望**——新增能力追加语料；改既有期望=有意行为变更，需同步说明（这正是 G 改策略时该走的流程）。④ 纯测试工具、无运行时/GUI 行为 → 本地自检即等价证明，**不需 Windows 验**（同块A）。
+**自检**：Golden 23/23 语料过；`test_golden.py` 3 测（全过 + 活性 + 未知 kind）。**全回归绿：Python 50 文件 + 前端 30，0 失败。**
+**验证状态**：✅ 本地完成（纯测试工具，无需 Windows 真机）。
+**待做**：块G=Learning Engine（按 `Need×taxonomy` 统计各 Decision 成功率 → 候选策略 → 人审+Golden 验后生效）。门已就位。见 ROADMAP。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块E：World State + Failure Memory（跨步/跨会话死路记忆）
 
 **背景**：块A–D 已 Windows 验证定版 3.46.0。块E 让"差距/失败"被记住——同一条死路（同工具+同入参以同种方式失败）不再被反复尝试。见 [[adr-0016]] `docs/adr/0016-world-state-failure-memory.md`。

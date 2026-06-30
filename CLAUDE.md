@@ -10,7 +10,10 @@ Windows 桌面多模态编程 Agent：pywebview 外壳 + Web 前端 + Python 内
 - 安装（含依赖）：`pip install -e .`
 - 启动应用：`python -m agentcore.app`（Windows 上 `python` 不行就用 `py -m agentcore.app`；
   不要依赖 `hermes-dev` 入口脚本，它常没进 PATH）
-- 跑全部测试：`for t in tests/test_*.py; do python "$t"; done`（每个是独立 runner，不依赖 pytest）
+- 跑全部测试：`for t in tests/test_*.py; do python "$t"; done`（每个是独立 runner，不依赖 pytest）。
+  其中 `test_golden.py` = **决策内核回归门**（块F，ADR 0014/0016）：`tests/golden/` 冻结了
+  Need→Decision/Evaluation 各映射的行为基线，**任何改决策逻辑（block A–E 函数、Learning 块G）必须先过它**；
+  改既有期望=有意行为变更，需在 cases.py 注明。门自带活性自检（劣化必红）。
 - 跑前端纯逻辑测试：`node --test tests/web/*.test.js`（node:test，零依赖；**前端纯逻辑统一放
   `web/pure.js`**——可脱离 DOM、Node 可测，别埋进 app.js 的 DOM 渲染函数里。「全回归」= Python + 前端两条都绿）
 - 打包分发：见下「打包」。
