@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块D：Auto-Retry（第一条 Need→Decision 硬规则，工具调用级）
+
+**背景**：A/B/C 都是纯观测/等价重构（零行为风险）；块D 起**首次碰控制流**。落地第一条、也是最便宜的 `Need→Decision` 硬规则——瞬时 IO 失败自动退避重试。它本身是个论证：决策层**不必是大引擎**，几条确定性硬规则覆盖最高频情形即可。见 [[adr-0014]] 块D。
+**做了什么**：
+- 新增 `src/agentcore/agent/policy.py`：`decide_retry(error_classes, attempts_done, max_attempts, backoff_base) -> RetryDecision|None`。**只对 `TRANSIENT_IO` 触发**（网络抖动/超时/端口占用），指数退避 `base*2^(n-1)`，撞上限即停（不伪造 Need）。Decision = 标签 `RETRY_WITH_BACKOFF` + delay。
+- `loop.py`：抽出 `_assess()`（事实评估+分类，`_emit_result` 与重试共用，口径一致）；新增 `_exec_tool_with_retry()` 包在 `_exec_tool` 外——**串行 + 并行两路工具执行都走它**。**关键：重试判据是分类（TRANSIENT_IO），不是 ok 标志**——因为 curl 超时这类常 ok=True/exit 非零返回，gate 在 ok 上会漏掉。无 Evaluator 的硬错误（ok=False）走 `classify_text` 兜底。`tool_retry` 事件上报（纯观测）。`_sleep` 可注入便于测试。
+- 配置：`config.py` AgentConfig + `config.yaml` 加 `auto_retry`(默认 true)/`retry_max_attempts`(2)/`retry_backoff_base`(0.5)。conversation.py 主循环 + 子 Agent 两处 AgentLoop 都传入。
+**关键决策**：① 工具调用级（每个单位调用独立重试），用户确认。② 默认开。③ **AgentLoop 构造器默认 `auto_retry=False`**——production 由 config 显式传 True，存量测试不传则 off，故**对现有测试零行为变化**（绿不靠改测试）。④ 配置走 config.yaml 而非设置面板：面板是手写分节（providers/browser/theme），所有 agent 功能开关（auto_review/auto_test/crazy_*）都在 config.yaml，auto_retry 同处才一致；为它单加面板开关反而是一次性特例。
+**自检**：新增 `tests/test_autoretry.py` 12 测（decide_retry 规则全分支 + loop 接线：瞬时重试至成功/撞上限返回最后失败/逻辑失败不重试/关掉只跑一次/成功不重试/硬 ToolError 瞬时兜底）。**全回归绿：Python 48 文件 + 前端 30，0 失败。**
+**验证状态**：policy + loop 接线纯逻辑**本地自检全过**；但这是**首个改运行时行为的块**——真实工具的瞬时失败重试**建议 Windows 真机跑一次确认**（如断网/超时场景观察 tool_retry 事件与最终恢复）。
+**待做**：块E=World State + Failure Memory（记住已证伪路径、跨步避坑）。见 ROADMAP。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块C：Error Taxonomy（错误分类）
 
 **背景**：块B 出了结构化事实，但"失败"还只是自由文本，无法聚合/当 key。块C 把失败归到稳定分类，作块D 重试判据、块E/G 聚合 key。见 [[adr-0015]] `docs/adr/0015-error-taxonomy.md`。

@@ -463,6 +463,9 @@ class Conversation:
             hook_runner=self._make_hook_runner(),
             stuck_threshold=res.config.agent.stuck_edit_threshold,
             browse_nudge=self._browse_nudge_enabled(),
+            auto_retry=res.config.agent.auto_retry,
+            retry_max_attempts=res.config.agent.retry_max_attempts,
+            retry_backoff_base=res.config.agent.retry_backoff_base,
         )
         n_in = len(model_messages)  # 压缩后喂入条数；loop 仅在其后追加新消息
         try:
@@ -1173,6 +1176,9 @@ class Conversation:
             hook_runner=self._make_hook_runner(),  # 子 Agent 同样受 hooks 约束
             stuck_threshold=cfg.agent.stuck_edit_threshold,
             browse_nudge=self._browse_nudge_enabled(),
+            auto_retry=cfg.agent.auto_retry,
+            retry_max_attempts=cfg.agent.retry_max_attempts,
+            retry_backoff_base=cfg.agent.retry_backoff_base,
         )
         # 子循环抛异常时自动重试一次（附上失败原因），仍失败才回灌主 Agent（FR-11.6b）。
         # 取消时不重试（用户主动停止）。

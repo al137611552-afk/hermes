@@ -125,6 +125,11 @@ agent:
   crazy_max_seconds: 3600      # 墙钟时间预算（秒，=1 小时），0=不限；超时回合间停
   crazy_max_tokens: 3000000    # 累计 token 预算（300 万，资源止损），0=不限；超预算回合间停
   crazy_stall_rounds: 3        # 连续多少轮没动用任何工具（疑似空转）就停
+  # 块D 自动重试（工具调用级）：单个工具因**瞬时 IO**（超时/网络抖动/端口占用）失败时，
+  # 自动退避重试、不打扰模型；非瞬时失败（逻辑/语法/鉴权）绝不重试。撞上限后把失败回灌模型。
+  auto_retry: true             # 总开关；false=关（失败直接回灌模型）
+  retry_max_attempts: 2        # 最大重试次数（不含首次）；总执行 = 1 + 本值
+  retry_backoff_base: 0.5      # 退避基数秒，第 n 次重试前等 base*2^(n-1)（指数退避）
   # subagent_model: ark-deepseek  # 委派子任务默认用的模型档案；省略 = 当前对话模型
   # roles:                  # 自定义子 Agent 角色（FR-10.5）：与内置 general/researcher/
   #   docwriter:            #   reviewer/tester 合并，同名覆盖。示例：

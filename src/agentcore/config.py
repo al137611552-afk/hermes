@@ -109,6 +109,10 @@ class AgentConfig(BaseModel):
     crazy_verify_ask_at: int = 3       # 验收门连续修不过这么多次后，停下来问用户（换思路/跳过/接手）；gate_ask=False 时只按预算兜
     crazy_replan: bool = True          # 块4 阶段后重规划：每个阶段通过验收（[[PHASE_DONE]]）后，下一轮先按这阶段
                                        # 学到的（难点/新约束/更省事的做法）调整剩余阶段，再继续。False=死守初始拆分、不重规划
+    auto_retry: bool = True            # 块D 自动重试：单个工具调用因**瞬时 IO**（超时/网络抖动/端口占用）失败时，
+                                       # 自动退避重试，不打扰模型。False=关（失败直接回灌模型）
+    retry_max_attempts: int = 2        # auto_retry 的最大重试次数（不含首次执行）；总执行 = 1 + 本值
+    retry_backoff_base: float = 0.5    # auto_retry 退避基数秒，第 n 次重试前等 base*2^(n-1)（指数退避）
 
     def resolve_workspace(self) -> Path:
         return Path(self.workspace).expanduser().resolve() if self.workspace else ROOT

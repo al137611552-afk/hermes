@@ -144,6 +144,9 @@ class AgentLoop:
         hook_runner=None,
         stuck_threshold: int = 0,
         browse_nudge: bool = False,
+        auto_retry: bool = False,
+        retry_max_attempts: int = 2,
+        retry_backoff_base: float = 0.5,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -152,6 +155,11 @@ class AgentLoop:
         self.hook_runner = hook_runner  # 可编程 hooks（PreToolUse/PostToolUse）；None=无
         self.stuck_threshold = stuck_threshold  # 情境自启：反复改同一文件失败→提示 trace_run；0=关
         self.browse_nudge = browse_nudge        # 情境自启：大库里浏览太多→提示 search_code（按工作区规模启用）
+        self.auto_retry = auto_retry            # 块D：瞬时 IO 失败自动退避重试（工具调用级）
+        self.retry_max_attempts = retry_max_attempts
+        self.retry_backoff_base = retry_backoff_base
+        import time as _t
+        self._sleep = _t.sleep                  # 退避用；测试可替换为 no-op
 
     def run(
         self,
@@ -363,13 +371,14 @@ class AgentLoop:
             for c in calls:
                 if c.id in parallel_ids:
                     emit("tool_use", {"id": c.id, "name": c.name, "input": c.input})
-                    futures[c.id] = executor.submit(self._exec_tool, c.name, c.input)
+                    futures[c.id] = executor.submit(
+                        self._exec_tool_with_retry, c.name, c.input, emit=emit, call=c)
         try:
             for c in calls:  # 串行组照旧（与并行组并发进行）
                 if c.id in futures:
                     continue
                 emit("tool_use", {"id": c.id, "name": c.name, "input": c.input})
-                outputs[c.id] = self._exec_tool(c.name, c.input)
+                outputs[c.id] = self._exec_tool_with_retry(c.name, c.input, emit=emit, call=c)
                 self._emit_result(emit, c, outputs[c.id])
             for c in calls:  # 收并行组结果（按原序等待/上报）
                 if c.id in futures:
@@ -389,22 +398,35 @@ class AgentLoop:
         return results, extra_blocks
 
     @staticmethod
+    def _assess(name: str, output: str, ok: bool, params=None) -> "tuple[dict | None, list]":
+        """对一条工具结果做事实评估 + 错误分类（块B+C），返回 (eval_event|None, error_classes)。
+
+        被 `_emit_result`（观测）与 `_exec_tool_with_retry`（决策）共用，确保两处口径一致。
+        无适配 Evaluator 时：成功→不评估；失败→直接对原文跑分类（兜底覆盖硬错误）。
+        """
+        try:
+            from .evaluators import evaluate, score
+            from .taxonomy import ErrorClass, classify, classify_text
+            _ev = evaluate(name, output, params)
+            if _ev is not None:
+                klasses = classify(_ev, output)
+                return ({**_ev.as_event(), "score": score(_ev),
+                         "error_classes": [c.value for c in klasses]}, klasses)
+            if not ok:
+                return (None, classify_text(output or ""))   # 硬错误无 Evaluator → 裸分类
+        except Exception:
+            pass
+        return (None, [])
+
+    @staticmethod
     def _emit_result(emit, call, out: tuple[str, bool, list[dict]]) -> None:
         output, ok, blocks = out
         ev = {"id": call.id, "name": call.name, "ok": ok, "output": output}
-        # 块B 事实层：能评估的工具结果附一份结构化 Evaluation（metrics/signals/issues）
-        # + 一个仅展示用的 score。纯观测——不参与任何控制流（ADR 0014 块B）。
-        try:
-            from .evaluators import evaluate, score
-            from .taxonomy import classify
-            _ev = evaluate(call.name, output, getattr(call, "input", None))
-            if _ev is not None:
-                # 块C：失败时附错误分类（Failure-Memory/Learning 的聚合 key）
-                klasses = [c.value for c in classify(_ev, output)]
-                ev["eval"] = {**_ev.as_event(), "score": score(_ev),
-                              "error_classes": klasses}
-        except Exception:
-            pass   # 评估是锦上添花，绝不能因它影响工具结果回传
+        # 块B/C 事实层：能评估的工具结果附结构化 Evaluation + score + error_classes。
+        # 纯观测——不参与任何控制流（ADR 0014）。
+        eval_event, _ = AgentLoop._assess(call.name, output, ok, getattr(call, "input", None))
+        if eval_event is not None:
+            ev["eval"] = eval_event
         img = next((b for b in blocks if b.get("type") == "image"), None)
         if img:  # 给前端一张缩略图
             src = img["source"]
@@ -413,6 +435,35 @@ class AgentLoop:
         if d:  # 写/编辑的本次 diff：内联展示在对话流（仅前端，不回灌模型）
             ev["diff"] = {"path": d["path"], "text": d["diff"]}
         emit("tool_result", ev)
+
+    def _exec_tool_with_retry(self, name: str, params: dict, *, emit=None, call=None
+                              ) -> tuple[str, bool, list[dict]]:
+        """块D：在 `_exec_tool` 外包一层瞬时 IO 自动重试。
+
+        失败分类（块B+C）命中 `TRANSIENT_IO` 且未撞上限 → 退避后重试，不打扰模型；
+        其它失败 / 成功 → 原样返回。auto_retry 关时退化为直接 `_exec_tool`。
+        重试事件经 `tool_retry` 上报（纯观测）。这是第一条 `Need→Decision` 硬规则的执行点。
+        """
+        out = self._exec_tool(name, params)
+        if not self.auto_retry:
+            return out
+        from .policy import decide_retry
+        attempts = 1
+        while True:
+            text, ok, _blocks = out
+            _eval, classes = self._assess(name, text, ok, params)
+            dec = decide_retry(classes, attempts,
+                               max_attempts=self.retry_max_attempts,
+                               backoff_base=self.retry_backoff_base)
+            if dec is None:
+                return out
+            if emit is not None and call is not None:
+                emit("tool_retry", {"id": getattr(call, "id", None), "name": name,
+                                    "attempt": dec.attempt, "delay": dec.delay,
+                                    "reason": dec.reason})
+            self._sleep(dec.delay)
+            out = self._exec_tool(name, params)
+            attempts += 1
 
     def _exec_tool(self, name: str, params: dict) -> tuple[str, bool, list[dict]]:
         """执行单个工具，返回 (结果文本, 是否成功, 额外内容块)。危险工具先过权限 gate。
