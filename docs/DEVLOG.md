@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块H1+H2：Research Evaluator（搜索质量评估 + 不达标重搜）
+
+**背景**：真实反馈——让 Hermes "在小红书搜 618 推荐女士睡衣 500 元以内"，工具**成功返回**一堆超预算/不对题结果，但 Hermes **判不出好坏、不会自己重搜**。根因：A–G 覆盖的是**失败差距**（报错/空/死路），这是**质量差距**（返回了但不达标）——`SearchEvaluator` 只数命中、判空，返回 8 条就当成功；`score()` 又被刻意隔离在决策外。见 [[adr-0018]]。
+**做了什么**：
+- **H1 事实层** `evaluators/research.py`：新增 `ResearchEvaluator` 接管 `web_search`（`base.py` 注册早于 Search，代码检索仍归 Search）。抽**预算约束满足度**——从 query 解析上限（"500元以内/不超过300/≤200"等）+ 从每条结果解析标价 → `within_budget`（在预算内条数）。**blocker issue 只在可证伪时触发**：有上限/有命中/有标价却**无一在内** → 判"不达标"。品类关键词等模糊项只当 signal。
+- **H2 决策层** `loop.py detect_low_quality_research`：web_search 出 blocker issue → 注入"返回了但不达标，换词/换源重搜"事实促模型重搜（仿块E 死路提示：探测+注入+emit `research_hint`，try 包死）。per-query 计数封顶（`research_refine_max`）防无限重搜，换关键词=新 query=另起计数。config `research_refine`(默认 true)/`research_refine_max`(1)；构造器默认 `research_refine=False` → 存量行为零变化（同 auto_retry/failure_memory 纪律）。conversation.py 主+子 Agent 两路传入。
+**关键决策**：① **硬约束先行、模糊留给模型**——预算是数值铁证（500 vs 899/1280/699 无歧义），正则即可、零成本、可 Golden、不误报；"是不是好推荐"是阅读理解，正则做只会误报、**误报会触发无谓重搜反伤体验**，故留给 H3 模型裁判（待点头，有成本）。② **喂事实非硬拦截**——只回灌"这次不达标"，重搜与否模型定（沿用块E 纪律）。③ **per-query 封顶**——防"换汤不换药"被无限催。④ `research_hint` 同 `deadend_hint`：纯 model-facing 注入 + 遥测事件，无前端渲染（行为靠注入，不靠 UI）。
+**自检**：`tests/test_research_evaluator.py` 8 测（预算解析多语序/分块/调度归属/**小红书超预算验收**/达标不误报/无标价只给signal/无预算只数命中/空结果）+ `tests/test_research_refine.py` 7 测（不达标催重搜/达标不催/无预算不催/per-query封顶/换词另起/非web_search忽略/构造器默认关）。Golden 加 2 条 `evaluate(web_search)` 语料（共 28 条）。**全回归绿：Python 53 文件 + 前端 30 + Golden 28，0 失败。**
+**验证状态**：纯逻辑全本地自检过；H1 无运行时控制流改动（经现有纯观测通道，前端摘要条即时显示"不达标"）。**H2 改了 loop 控制流，待 Windows 真机验**——`scripts/diag_blockH.py`（9 项确定性机制）+ 活体：GUI 里真实搜一次，观察模型据提示**真的换词/换源重搜**。
+**待做**：H3 模型裁判（语义相关性，有成本，待点头）；H4 Golden 扩充 + Win 验后定版。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块G：Learning Engine（路线图收官）
 
 **背景**：A–F 已把执行内核铺成稳定契约（事实/差距/做法分离、9 类 taxonomy、跨会话 Failure Memory、Golden 回归门）。块G 回答收官问题：**积累的失败证据怎么变成对 `Need→Decision` 的改进，又不失控？** 见 [[adr-0017]] `docs/adr/0017-learning-engine.md`、ROADMAP 块G。

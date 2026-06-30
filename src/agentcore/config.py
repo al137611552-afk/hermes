@@ -116,6 +116,8 @@ class AgentConfig(BaseModel):
     failure_memory: bool = True        # 块E 死路记忆：同一条路（工具+关键入参）反复**非瞬时**失败时，
                                        # 记入跨会话记忆并提示模型换思路（不再原样重试）。False=关
     deadend_threshold: int = 2         # 同一条路累计失败 ≥ 此值 → 提示换思路（瞬时 IO 不计，归 auto_retry）
+    research_refine: bool = True       # 块H2：联网搜索返回了但不达标（如无一在预算内）时提示换词/换源重搜。False=关
+    research_refine_max: int = 1       # 同一搜索 query 最多催重搜几次（防无限重搜）
 
     def resolve_workspace(self) -> Path:
         return Path(self.workspace).expanduser().resolve() if self.workspace else ROOT

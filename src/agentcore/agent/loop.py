@@ -180,6 +180,39 @@ def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps,
     return None
 
 
+def detect_low_quality_research(calls, out_by_id, nudged_queries, max_nudges=1):
+    """块H2：联网搜索**返回了但不达标**（如结果无一在预算内）→ 注入"换词/换源重搜"事实，促模型重搜。
+
+    判据 = ResearchEvaluator 产出的 blocker `issues`（当前=预算约束未满足，可证伪的硬事实）。
+    per-query 计数封顶（max_nudges）防同一搜索被无限催重搜；模型若换了关键词=新 query=另起计数。
+    **喂事实而非硬拦截**（同块E 死路提示）：只把"这次不达标"作为事实回灌，重搜与否由模型定。
+    """
+    from .evaluators import evaluate
+    for c in calls:
+        if getattr(c, "name", "") != "web_search":
+            continue
+        params = getattr(c, "input", None)
+        text = out_by_id.get(getattr(c, "id", None), "")
+        try:
+            ev = evaluate("web_search", text, params if isinstance(params, dict) else None)
+        except Exception:  # noqa: BLE001 — 评估故障绝不影响主循环
+            continue
+        if ev is None or not ev.issues:
+            continue
+        q = ""
+        if isinstance(params, dict):
+            q = str(params.get("query") or params.get("q") or "")
+        key = q.strip().lower()
+        n = nudged_queries.get(key, 0)
+        if n >= max(1, max_nudges):
+            continue
+        nudged_queries[key] = n + 1
+        return ("[系统观察] 这次搜索返回了结果，但**质量不达标**：" + ev.issues[0] +
+                "。请不要止步于此——换更精准的关键词，或改用别的数据源/检索方式（如浏览器直通、"
+                "换平台）重搜一次，尽量满足用户给的约束（预算/品类等）。")
+    return None
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -196,6 +229,8 @@ class AgentLoop:
         retry_backoff_base: float = 0.5,
         failure_memory=None,
         deadend_threshold: int = 2,
+        research_refine: bool = False,
+        research_refine_max: int = 1,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -209,6 +244,8 @@ class AgentLoop:
         self.retry_backoff_base = retry_backoff_base
         self.failure_memory = failure_memory    # 块E：跨会话死路记忆（FailureMemory 实例）；None=关
         self.deadend_threshold = deadend_threshold  # 同一条路累计失败 ≥ 此值 → 提示换思路
+        self.research_refine = research_refine   # 块H2：联网搜索不达标→提示重搜；False=关
+        self.research_refine_max = research_refine_max  # 同一 query 最多催重搜几次（防无限）
         import time as _t
         self._sleep = _t.sleep                  # 退避用；测试可替换为 no-op
 
@@ -244,6 +281,7 @@ class AgentLoop:
         login_state: dict = {}            # 登录墙：本轮是否已强制提示过"用 ask_user 登录、别换搜索引擎"
         world = WorldState()              # 块E：本轮世界状态（Need 历史 / 死路计数）
         deadend_fps: set[str] = set()     # 块E：已就某指纹提示过换思路（每路一次）
+        research_nudged: dict = {}        # 块H2：已就某搜索 query 催过重搜的计数（每 query 封顶）
         _names = self.registry.names() if hasattr(self.registry, "names") else []
         browser_present = any(n.split("__", 1)[-1].startswith("browser_") for n in _names)
 
@@ -364,6 +402,17 @@ class AgentLoop:
                     if df:
                         inject_blocks.append({"type": "text", "text": df})
                         emit("deadend_hint", {"text": df})
+                except Exception:  # noqa: BLE001
+                    pass
+            # 块H2：联网搜索返回了但不达标（如无一在预算内）→ 提示换词/换源重搜。同上纯观测+注入、try 包死。
+            if self.research_refine:
+                try:
+                    out_by_id = {r["tool_use_id"]: r.get("content", "") for r in results}
+                    rq = detect_low_quality_research(calls, out_by_id, research_nudged,
+                                                     self.research_refine_max)
+                    if rq:
+                        inject_blocks.append({"type": "text", "text": rq})
+                        emit("research_hint", {"text": rq})
                 except Exception:  # noqa: BLE001
                     pass
             messages.append(Message("user", results + extra_blocks + inject_blocks))

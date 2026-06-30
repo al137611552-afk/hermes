@@ -134,6 +134,9 @@ agent:
   # 并提示模型换思路（不再原样重试）。瞬时 IO 不计——那是 auto_retry 的活。
   failure_memory: true         # 总开关；false=关（不记死路、不提示换思路）
   deadend_threshold: 2         # 同一条路累计失败 ≥ 此值 → 提示换思路
+  # 块H2 搜索质量重搜：联网搜索返回了但不达标（如指定预算却无一在预算内）时，提示模型换关键词/换数据源重搜。
+  research_refine: true        # 总开关；false=关（只在前端摘要条显示质量、不催重搜）
+  research_refine_max: 1       # 同一搜索 query 最多催重搜几次（防无限重搜）
   # subagent_model: ark-deepseek  # 委派子任务默认用的模型档案；省略 = 当前对话模型
   # roles:                  # 自定义子 Agent 角色（FR-10.5）：与内置 general/researcher/
   #   docwriter:            #   reviewer/tester 合并，同名覆盖。示例：

@@ -468,6 +468,8 @@ class Conversation:
             retry_backoff_base=res.config.agent.retry_backoff_base,
             failure_memory=self._get_failure_memory(res.config.agent.failure_memory),
             deadend_threshold=res.config.agent.deadend_threshold,
+            research_refine=res.config.agent.research_refine,
+            research_refine_max=res.config.agent.research_refine_max,
         )
         n_in = len(model_messages)  # 压缩后喂入条数；loop 仅在其后追加新消息
         try:
@@ -1183,6 +1185,8 @@ class Conversation:
             retry_backoff_base=cfg.agent.retry_backoff_base,
             failure_memory=self._get_failure_memory(cfg.agent.failure_memory),
             deadend_threshold=cfg.agent.deadend_threshold,
+            research_refine=cfg.agent.research_refine,
+            research_refine_max=cfg.agent.research_refine_max,
         )
         # 子循环抛异常时自动重试一次（附上失败原因），仍失败才回灌主 Agent（FR-11.6b）。
         # 取消时不重试（用户主动停止）。
