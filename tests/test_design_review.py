@@ -127,9 +127,9 @@ def test_run_review_converges_and_gates():
     # reviewer 第一轮把 d1 提成 NeedUser；之后不再有新增 → 收敛
     state = {"calls": 0}
 
-    def fake_review_fn(prompt):
+    def fake_review_fn(name, prompt):                       # seam 现在带 reviewer 名
         state["calls"] += 1
-        if "Execution" in prompt and state["calls"] <= 2:   # 仅 execution 首轮提一次
+        if name == "execution" and state["calls"] <= 2:     # 仅 execution 首轮提一次
             return '[{"id":"d1","status":"NeedUser","add_blocking":["太大，拆小"]}]'
         return "[]"                                          # 之后无意见 → 零新增 blocking
 
@@ -142,8 +142,19 @@ def test_run_review_converges_and_gates():
     assert "Consensus" in res["consensus"]
 
 
+def test_run_review_routes_by_reviewer_name_heterogeneous():
+    # 异构 seam：引擎按 name 喊 reviewer，接线层可据 name 路由到不同"模型"。
+    seen = []
+
+    def routing_review_fn(name, prompt):
+        seen.append(name)                                   # 记录两个角色都被分别调用
+        return "[]"
+    run_review([_d("a", ACCEPTED)], routing_review_fn, max_rounds=2)
+    assert "execution" in seen and "architecture" in seen   # 两脑子分别按名被调，可各接各模型
+
+
 def test_run_review_survives_reviewer_exception():
-    def boom(prompt):
+    def boom(name, prompt):
         raise RuntimeError("评审员炸了")
     res = run_review([_d("a", ACCEPTED)], boom, max_rounds=2)
     assert res["stop_reason"] == "max_rounds"               # 故障被吞，不中断

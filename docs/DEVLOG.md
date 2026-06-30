@@ -16,9 +16,14 @@
 - **自检**：`tests/test_design_review.py` 14/14（含端到端注入假 review_fn、评审员故障被吞不中断、wording_only 真分支）；
   Golden 新增 2 kind `consensus_gate`/`review_stop` 共 8 例（42→**50**，含"NeedUser/有阻塞/没签字→locked、干净+签字→open"与四种停止）。
   config 加 `design_review`（默认 **False**，opt-in）/`design_review_max_rounds=3`。全回归绿：Python 全绿 + Golden 50/50 + 前端 30/30。
+- **v3 异构 seam（同日，针对"单模型 review 受限吗"的第二轮评审）**：把 seam 从 `review_fn(prompt)` 改成 **`review_fn(name, prompt)`**——
+  引擎**完全不认识"模型"概念**，只按 reviewer 名字喊；某角色用哪个模型档案是**接线层据 name 路由的一个 mapping**（复用 delegate 已有 `Role.model` 字段，零新基础设施）。
+  确立两原则：**① Reviewer 由输出契约定义、非由"是不是 LLM"定义**（同模型/异构/规则/静态分析器只要吐 `{id,status,add_blocking,resolve_blocking}` 就是合法 reviewer，可插拔 seam 已就绪、非现在建框架）；
+  **② 复杂度门控第二模型**（默认同模型双角色离线零成本，仅大设计才路由异构）。职责分离里"Reviewer 禁重写 proposal"**引擎已物理强制**（`apply_review` 碰不到 `current_choice`）。
+  test +1（`test_run_review_routes_by_reviewer_name_heterogeneous`，14→**15**）；ADR 升 v3。全回归仍绿。
 - **验证状态**：纯逻辑、无 GUI、未接活循环 → Linux 已完整自检通过；**不定版**（功能未完成）。
 - **遗留（下一刀，需 Windows 验）**：① conversation.py/api 接线——plan_mode 下从 proposal 抽 Decision、跑 `run_review`、产出共识、gate 控"开始编码"；
-  ② 前端 UI——四态共识展示 + 灰/亮开工按钮 + 用户签字/逐条拍板 NeedUser；③ reviewer 是否升级为可读代码的 delegate Role（让 Execution 能 grep "会改几个文件"）。
+  ② 前端 UI——四态共识展示 + 灰/亮开工按钮 + 用户签字/逐条拍板 NeedUser；③ **接线层按 reviewer name 路由模型**——Execution 用主模型、Architecture 高复杂度时路由异构档（`Role.model`）。
 
 ---
 

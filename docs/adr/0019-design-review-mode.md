@@ -1,9 +1,10 @@
 # ADR 0019 — Architecture Review Mode（规划模式下的多角色方案评审，草案）
 
-状态：**草案 v2（pre-implementation，Consensus 已达成）**（2026-06-30）。本 ADR 先于实现立项——把设计基线定下来再动工，
-正是用"先评审再动工"的方式来设计这个"评审再动工"功能本身。**v2 = 跑了一轮真实评审后的收敛版**：
-GPT 出 proposal、我做 Execution+Architecture review、达成 Consensus（见下「评审收敛记录」），锁进五条设计约束。
-MVP 切片（见下）待用户确认后实现，全回归（Python + 前端）+ Golden 扩充 + Windows 真机验后转"已实现/已验证"并定版。
+状态：**草案 v3（第 1 刀引擎已实现，Consensus 持续演进）**（2026-06-30）。本 ADR 先于实现立项——把设计基线定下来再动工，
+正是用"先评审再动工"的方式来设计这个"评审再动工"功能本身。**v2 = 第一轮评审收敛**（GPT proposal → Execution+Architecture
+review → Consensus，锁五条约束）；**v3 = 第二轮评审收敛**（针对"单模型 review 是否受限"，锁"Reviewer 是契约非模型 +
+异构靠 `Role.model` 接线 mapping + 复杂度门控第二模型"，见「单模型 vs 异构模型」）。纯逻辑引擎已落地（见 MVP「进度」）。
+接线 + 前端 + 异构路由待 Windows 真机验后转"已验证"并定版。
 关联：[0014 评估/策略架构](0014-evaluation-policy-architecture.md)（**禁 score** 纪律的源头，本 ADR 的硬约束）、
 [0005 工具与 Agent 循环](0005-tools-and-agent-loop.md)（delegate ROLES / judge 注入 / PlanMode 是本功能的复用积木）、
 [0018 Research Evaluator](0018-research-evaluator.md)（"轮数预算 / 收敛停止"纪律直接搬用）。
@@ -79,6 +80,33 @@ Review 极易陷入"A 批 → 改 → B 批 → 改 → A 再批…"的无限循
 
 注意第 1、2、3 条都只数 Decision/blocking 的**条数变化**，没有任何"共识度"百分比。
 
+## 单模型 vs 异构模型：Reviewer 是契约，不是模型（v3 补充）
+
+评审第二轮提出一个真问题：**单模型 review 受限于该模型自身的能力/偏见，对方案提升有限吗？**
+
+**会受限——但解法不是"堆模型"，是"降低错误相关性"。** 第二个模型有价值**不因为更聪明，而因为错误相关性（error
+correlation）更低**：同模型多角色共享权重→共享盲区，容易从"Event Sourcing"收敛成"那做个 Lite 版吧"，方向没被真正推翻；
+异构模型的偏见不同（一个倾向抽象/扩展点，一个倾向"真的需要吗"），冲突才是真冲突。这正是 Code Review 有效的原因——
+不是 reviewer 更强，是两人犯同一个错的概率更低。
+
+**但 Hermes 不把架构绑死在"两个 LLM 对话"上。锁两条原则：**
+
+1. **Reviewer 由"输出契约"定义，不由"是不是 LLM"定义**。引擎的 seam 是 `review_fn(name, prompt) -> str`——
+   **引擎完全不认识"模型"概念**，只按 reviewer 名字喊。任何东西（同模型 / 异构模型 / 规则 / 静态分析器 / 成本检查器）
+   只要吃 Decision、吐 `{id,status,add_blocking,resolve_blocking}` JSON，就是合法 reviewer。可插拔流水线是**自然延伸**，
+   不是要现在建的引擎（YAGNI）：seam 已在，将来挂静态分析器零引擎改动。
+2. **异构 = 接线层一个 mapping，不是新基础设施**。delegate 的 `Role` **已有 `model: str | None` 字段**
+   （"该角色用的模型档案"）。接线层据 reviewer `name` 把某角色路由到不同模型档案即可——Planner 用主模型、
+   Architecture reviewer 路由到另一档。这是**已有能力**，不是要新写的"External Reviewer 子系统"。
+
+**复杂度门控第二模型**（投产比最高，同"不是每个任务都进 Review"）：90% 任务用**同模型双角色**（离线、零额外成本、零延迟）；
+只有真正的大设计（新架构 / ADR / 核心 Loop / Memory / Evaluation）才把其中一个 reviewer 路由到**异构模型**。
+默认同模型保证开箱即用；异构是高复杂度场景的可选增强，靠 config 指定。
+
+**职责分离（采纳，且部分已结构性强制）**：Planner 只创造（禁自评）、Reviewer 只攻击（**禁重写 proposal**）、
+Consensus 只总结（禁发明）。其中"Reviewer 禁重写"**引擎已物理强制**：`apply_review` 只允许 reviewer 改 `status`、
+增删 `blocking`，**碰不到 `current_choice`**——reviewer 结构上无法重写方案，只能找问题。
+
 ## 复用，别重建
 
 本功能 = 拼装已有积木，不新增基础设施：
@@ -91,16 +119,21 @@ Review 极易陷入"A 批 → 改 → B 批 → 改 → A 再批…"的无限循
 
 ## MVP 切片（单模型即可）
 
-1. 两个对冲 reviewer 角色 **Execution ⟷ Architecture** 的 system prompt（delegate 新增两个 Role）。
+1. 两个对冲 reviewer 角色 **Execution ⟷ Architecture** 的 directive（引擎已含 `REVIEWERS`）。
 2. 评审单位 = **Decision 对象**（上述字段）；reviewer 针对 Decision 发言。
-3. 流程：`Proposal（抽出 Decision 列表） → 两角色 Review（针对 Decision 提 blocking / 改 status） → 一轮 Revise`。
-4. Consensus 合成器：把 Decision 按 `status` 四态分组 → 产出 `Accepted / Rejected / Deferred / NeedUser` 文档。
-5. 开工 gate：`未决阻塞（status==NeedUser 或带 open blocking 的 Decision）== 0` **且** 用户签字（手动），二者皆满足才解锁"开始编码"。
-6. 停止条件按上节三条（轮数 / 零新增 blocking / 连两轮只改措辞）任一触发。
-7. 沉淀：本 ADR 转正 + 一条 DEVLOG。
+3. 注入式 seam `review_fn(name, prompt) -> str`：引擎按 name 喊 reviewer，**默认同模型双角色**（离线零成本）；
+   接线层可据 name 把某角色路由到异构模型档案（利用 `Role.model`），复杂度高时启用。
+4. 流程：`Proposal（抽出 Decision 列表） → 两角色 Review（针对 Decision 提 blocking / 改 status） → 一轮 Revise`。
+5. Consensus 合成器：把 Decision 按 `status` 四态分组 → 产出 `Accepted / Rejected / Deferred / NeedUser` 文档。
+6. 开工 gate：`未决阻塞（status==NeedUser 或带 open blocking 的 Decision）== 0` **且** 用户签字（手动），二者皆满足才解锁"开始编码"。
+7. 停止条件按上节三条（轮数 / 零新增 blocking / 连两轮只改措辞）任一触发。
+8. 沉淀：本 ADR 转正 + 一条 DEVLOG。
 
-**不进 MVP（后续增强）**：多 provider 真并行、多轮往返、Risk/Security 等更多角色、复杂度自动触发器、
-完整工程闭环（见「北极星」）。
+**进度**：第 1 刀（纯逻辑引擎 `agent/design_review.py` + 15 单测 + Golden `consensus_gate`/`review_stop`）已完成、全回归绿。
+第 2 刀（conversation/api/前端接线 + 复杂度门控异构路由）待 Windows 验。
+
+**不进 MVP（后续增强）**：异构模型的复杂度**自动**触发器（MVP 先手动/config）、多轮往返、Risk/UX/Security 等更多 reviewer、
+可插拔非模型 reviewer（静态分析/成本检查，seam 已就绪）、完整工程闭环（见「北极星」）。
 
 ## 北极星（不进 MVP，记录方向）
 
@@ -117,21 +150,34 @@ Review 极易陷入"A 批 → 改 → B 批 → 改 → A 再批…"的无限循
   确保"禁共识百分比、只认可数阻塞"的纪律不被回归破坏。
 - 无新密钥、无新网络依赖、无新引擎；单模型离线可跑。
 
-## 评审收敛记录（v2 Consensus）
+## 评审收敛记录（Consensus，按轮）
 
-本 ADR 自身跑了一轮评审：proposal（GPT）→ Execution+Architecture review（Claude）→ 达成以下 Consensus。
+本 ADR 自身在反复跑这个评审流程——proposal → Execution+Architecture review → Consensus，逐轮演进。
 
-**Accepted（采纳）**：
+**第一轮 Accepted（采纳）**：
 - 评审单位 = Decision 对象，不评文档文本。
 - Consensus 四态 `Accepted/Rejected/Deferred/NeedUser`，且**就是 Decision.status**（与"Decision 对象"合一）。
 - 停止条件全部可证伪、可数（轮数 / 零新增 blocking / 连两轮只改措辞），不用百分比。
 
-**Rejected（否决，附理由）**：
+**第一轮 Rejected（否决，附理由）**：
 - "再加第三个 Execution Reviewer"——否决。理由：违反"MVP 要小"。**改为用 Execution 取代虚的 Simplicity**，
   保留两极张力（Execution 压 ⟷ Architecture 拉），且 Execution 比 Simplicity 可证伪。
 
+**第二轮 Accepted（采纳，针对"单模型 review 是否受限"）**：
+- 第二模型的价值 = **降低错误相关性**（非"更聪明"）；单模型多角色有真天花板（共享盲区），承认。
+- **Reviewer 由输出契约定义、非由"是不是 LLM"定义**：seam `review_fn(name, prompt)`，引擎不认识"模型"。
+- **异构 = 接线层据 name 路由的一个 mapping**，复用已有 `Role.model` 字段，非新子系统。
+- **复杂度门控第二模型**：默认同模型双角色（离线零成本），仅大设计才路由异构。
+- **职责分离**：Planner 只创造 / Reviewer 只攻击（禁重写，`apply_review` 已物理强制）/ Consensus 只总结。
+
+**第二轮 Rejected（否决，附理由）**：
+- "把 Reviewer 拆成 Complexity/Risk/Maintainability/UserValue 四个"——否决进 MVP。违反"MVP 要小"；
+  seam 已可插拔，更多 reviewer 留作后续增强。
+- "现在就建通用 Review Pipeline 框架"——否决。YAGNI；`review_fn` 注入点已是 seam，不需要框架。
+
 **Deferred（后置，附触发条件）**：
 - "Architecture Decision Studio" 全闭环与品牌名——后置到 MVP 跑通一份共识文档之后（见「北极星」）。
+- 异构模型的**自动**复杂度触发——MVP 先手动/config，后置。
 
 **NeedUser（已由用户拍板）**：
 - 是否现在动工 MVP —— 用户已绿灯（2026-06-30）。
@@ -142,3 +188,6 @@ Review 极易陷入"A 批 → 改 → B 批 → 改 → A 再批…"的无限循
 - **真·多模型 chat arena**：否决为 MVP 形态——价值低、成本高（多 key/多延迟）、不收敛；作为后续可选增强。
 - **每个任务强制 Review**：否决——琐碎改动强加评审反伤体验（同 0018 "不是每次搜索都判质量"）。
 - **第三个 Execution Reviewer（在两角色外再加）**：否决——违反 MVP 小切片；改为 Execution 取代 Simplicity 极。
+- **四个领域 Reviewer / 通用 Pipeline 框架（现在就建）**：否决——YAGNI；`review_fn(name,prompt)` seam 已可插拔，
+  非模型 reviewer（静态分析/成本）将来挂同一 seam，零引擎改动。
+- **把架构绑死"两个 LLM 对话"**：否决——抽象的是 *Review 能力*（输出契约），不是模型数量；异构靠 `Role.model` 接线即可。

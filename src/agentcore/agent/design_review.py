@@ -9,12 +9,16 @@
   - **开工 gate 卡可数事实 `未决阻塞==0`，不卡"共识度 80%"**——后者是 expected_gain 同款模糊分，禁用。
   - **停止条件全部可证伪、可数**——轮数 / 零新增 blocking / 连两轮只改措辞，防无限互评（同搜索 loop-until-dry）。
 
-本模块**纯逻辑、无 IO、无网络**：模型调用经注入式 `review_fn(prompt)->str`（同 judge 范式），便于单测/Golden。
+本模块**纯逻辑、无 IO、无网络**：reviewer 经注入式 seam `review_fn(name, prompt)->str`（同 judge 范式），便于单测/Golden。
+
+**Reviewer 由"输出契约"定义，不由"是不是 LLM"定义**（ADR 0019）：任何东西——同模型、异构模型、规则、
+静态分析器——只要吃 Decision、吐 `{id,status,add_blocking,resolve_blocking}` JSON，就是一个合法 reviewer。
+引擎**完全不认识"模型"概念**：只按 `name` 喊 reviewer；某角色到底用哪个模型档案，是接线层按 name 路由的事
+（异构 = 接线层一个 mapping；利用 delegate `Role.model` 字段，零引擎改动）。
 """
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 
 # ── 四态共识 = Decision.status（ADR 0019 ③①合一）─────────────────────────────
@@ -281,8 +285,10 @@ def build_review_prompt(role_directive: str, decisions) -> str:
 
 
 def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -> dict:
-    """跑完整一轮多角色评审直到停止条件命中。`review_fn(prompt)->str` 注入式（同 judge 范式）。
+    """跑完整一轮多角色评审直到停止条件命中。
 
+    `review_fn(name, prompt)->str` 注入式 seam（同 judge 范式）：引擎按 reviewer **名字**调用，
+    **不认识"模型"**——接线层据 name 把不同角色路由到不同模型档案（异构 = 那一个 mapping）。
     返回 {decisions, rounds, stop_reason, consensus, gate}。纯编排：不碰网络（review_fn 自理）。
     """
     cur = list(decisions)
@@ -292,9 +298,9 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -
         stop, stop_reason = should_stop(rounds, max_rounds)
         if stop:
             break
-        for _name, directive in reviewers:
+        for name, directive in reviewers:
             try:
-                out = review_fn(build_review_prompt(directive, cur))
+                out = review_fn(name, build_review_prompt(directive, cur))
             except Exception:
                 continue                # 评审员故障 → 跳过这一脑子，不中断评审
             cur = apply_review(cur, out)
