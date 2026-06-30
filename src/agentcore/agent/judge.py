@@ -27,6 +27,12 @@ class Verdict:
     off: list = field(default_factory=list)   # 不对题的条目+理由，如 ["真丝厚睡衣：秋冬款，不符夏季"]
     suggestion: str = ""            # 裁判给的重搜/改进建议
     raw: str = ""                   # 模型原始输出（排障用）
+    use: list = field(default_factory=list)   # 块H3c：可萃取采用的相关条目（污染结果里的有效少数）
+
+    @property
+    def salvageable(self) -> bool:
+        """块H3c：整体不对题，但**有**可萃取的相关条目（部分污染）→ 该挑出来用，别整批丢。"""
+        return (not self.on_target) and bool(self.use)
 
 
 def build_judge_prompt(goal: str, results_text: str, has_images: bool = False) -> str:
@@ -35,13 +41,17 @@ def build_judge_prompt(goal: str, results_text: str, has_images: bool = False) -
     return (
         "你是严格的检索结果相关性裁判。下面是用户的目标，以及一次搜索/调研返回的结果。\n"
         "判断这些结果**整体上是否对题**——是否满足用户目标里的关键限定（如季节、品类、性别、"
-        "预算、时效、权威性、是否真正对标）。挑出明显不对题的条目并给一句话理由。\n\n"
+        "预算、时效、权威性、是否真正对标）。挑出明显不对题的条目并给一句话理由。\n"
+        "**关键**：即使整体不对题，也要把其中**确实相关、可用**的条目挑进 use（哪怕只有一两条）。"
+        "**绝不要因为掺了垃圾就把相关的也一起丢弃**；也**绝不要**让人凭训练记忆硬编来替代这些有效内容。\n\n"
         f"【用户目标】{goal}\n\n"
         f"【搜索结果】\n{results_text}\n\n"
         f"{img_line}"
         "只输出一个紧凑 JSON，不要任何多余文字：\n"
-        '{"on_target": true/false, "off": ["条目：不对题的理由", ...], "suggestion": "如何换词/换源/筛选重搜"}\n'
-        "判据：多数结果不满足关键限定 → on_target=false。结果基本对题 → on_target=true、off 留空。"
+        '{"on_target": true/false, "use": ["可采用的相关条目（原文标题/要点）", ...], '
+        '"off": ["条目：不对题的理由", ...], "suggestion": "如何换词/换源/筛选重搜"}\n'
+        "判据：多数结果不满足关键限定 → on_target=false（但仍把相关少数放进 use）。"
+        "结果基本对题 → on_target=true、off 留空。use 为空只在**真的一条都不相关**时。"
     )
 
 
@@ -57,11 +67,17 @@ def parse_verdict(raw: str) -> Verdict:
         return Verdict(True, [], "", text)
     on = d.get("on_target")
     on = True if on is None else bool(on)
-    off = d.get("off") or []
-    if not isinstance(off, list):
-        off = [str(off)]
-    off = [str(x) for x in off if str(x).strip()]
-    return Verdict(on, off, str(d.get("suggestion") or ""), text)
+
+    def _strlist(v):
+        if not v:
+            return []
+        if not isinstance(v, list):
+            v = [str(v)]
+        return [str(x) for x in v if str(x).strip()]
+
+    off = _strlist(d.get("off"))
+    use = _strlist(d.get("use"))
+    return Verdict(on, off, str(d.get("suggestion") or ""), text, use)
 
 
 def judge_research(goal: str, results_text: str, judge_fn, images=None) -> Verdict:

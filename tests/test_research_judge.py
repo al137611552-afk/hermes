@@ -13,7 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agentcore.agent.judge import (  # noqa: E402
     Verdict, build_judge_prompt, parse_verdict, judge_research,
 )
-from agentcore.agent.loop import detect_offtarget_research, _latest_user_text  # noqa: E402
+from agentcore.agent.loop import (  # noqa: E402
+    detect_offtarget_research, detect_ungrounded_answer, _latest_user_text,
+)
 from agentcore.providers.base import Message  # noqa: E402
 
 
@@ -75,9 +77,72 @@ def test_judge_multimodal_passes_images():
     assert "配图" in build_judge_prompt("g", "r", has_images=True)
 
 
+# ---- H3c：三态裁判（salvage / use 萃取）----
+def test_parse_use_salvage():
+    v = parse_verdict('{"on_target": false, "use": ["冰丝短袖睡衣 ¥199"], "off": ["真丝厚款：秋冬"]}')
+    assert v.on_target is False and v.use == ["冰丝短袖睡衣 ¥199"]
+    assert v.salvageable is True              # 整体不对题但有可用少数 → 该萃取
+
+
+def test_parse_no_use_not_salvageable():
+    v = parse_verdict('{"on_target": false, "use": [], "off": ["全是冬季款"]}')
+    assert v.salvageable is False             # 一条都不相关 → 不可萃取（才重搜）
+
+
+def test_ontarget_not_salvageable():
+    assert parse_verdict('{"on_target": true}').salvageable is False  # 对题=直接用，不走萃取路
+
+
 # ---- detect_offtarget_research（loop 钩子）----
 _OFF = '{"on_target": false, "off": ["厚款真丝睡衣：秋冬，不符夏季"], "suggestion": "加\'冰丝/短袖\'换平台重搜"}'
+_SALVAGE = '{"on_target": false, "use": ["冰丝短袖睡衣 ¥199"], "off": ["真丝厚款：秋冬不符夏季"]}'
 _ON = '{"on_target": true, "off": []}'
+
+
+def test_hook_salvage_extracts_not_discard():
+    # 部分污染 → 提示"挑出有效的用"，**不**说"请不要采用这些结果"、**不**强推重搜
+    calls = [_Call(1, "web_search", {"query": "618夏季女士睡衣"})]
+    out = {"1": "1. 真丝厚款\n2. 冰丝短袖睡衣 ¥199"}
+    msg = detect_offtarget_research(calls, out, "618夏季女士睡衣", lambda p, i: _SALVAGE, {}, 1)
+    assert msg is not None and "部分有效" in msg and "冰丝短袖" in msg
+    assert "请不要采用这些结果" not in msg     # 杀掉旧的整批丢弃措辞
+    assert "整批丢" in msg and "凭训练记忆" in msg
+
+
+def test_hook_basically_junk_research_not_from_memory():
+    # 一条都不相关（use 空）→ 才重搜，且明确禁止凭记忆顶替
+    calls = [_Call(1, "web_search", {"query": "618夏季女士睡衣"})]
+    msg = detect_offtarget_research(calls, {"1": "1. 厚款"}, "618夏季女士睡衣",
+                                    lambda p, i: _OFF, {}, 1)
+    assert msg is not None and "基本不对题" in msg and "别凭训练记忆" in msg
+
+
+# ---- H3c：接地/时效闸（detect_ungrounded_answer，纯正则）----
+def test_grounded_with_citation_passes():
+    # 有引用来源 → 接地，不打扰
+    assert detect_ungrounded_answer("2026最新手机价格", "据搜索，X 售价 ¥3999 http://jd.com/x", True) is None
+
+
+def test_grounded_with_disclaimer_passes():
+    # 已声明可能过时 → 诚实，不打扰
+    assert detect_ungrounded_answer(
+        "今年618优惠", "以下基于训练知识、可能已过时，建议以实时为准：……", True) is None
+
+
+def test_ungrounded_freshness_nudges():
+    # 时效敏感 + 做过搜索 + 既无引用又无声明 → 催据搜到内容作答/声明过时
+    msg = detect_ungrounded_answer("帮我查2026最新显卡价格", "大概在三千到五千元。", True)
+    assert msg is not None and "实时数据" in msg and "标注来源" in msg
+
+
+def test_not_freshness_sensitive_passes():
+    # 稳定知识（无时效信号）→ 凭常识答没问题，不误杀
+    assert detect_ungrounded_answer("光合作用的原理是什么", "植物把光能转化为化学能。", True) is None
+
+
+def test_no_research_no_guard():
+    # 本轮没搜索（无可用搜索内容）→ 不触发
+    assert detect_ungrounded_answer("2026最新价格", "大概三千。", False) is None
 
 
 def test_hook_offtarget_nudges():

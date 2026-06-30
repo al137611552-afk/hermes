@@ -129,6 +129,21 @@ def main():
                                      lambda p, i: (_ for _ in ()).throw(RuntimeError("视觉超时")))
     check("H3b 裁判故障 → 放行不拦（不误触发）", m_boom is None)
 
+    # —— H3c 萃取（三态）+ 接地/时效闸 ——
+    from agentcore.agent.loop import detect_ungrounded_answer
+    _SALV = '{"on_target": false, "use": ["冰丝短袖睡衣 ¥199"], "off": ["真丝厚款：秋冬不符夏季"]}'
+    m_salv = detect_offtarget_research(off_calls, {"1": "1.厚款\n2.冰丝短袖 ¥199"},
+                                       "618夏季女士睡衣", lambda p, i: _SALV, {}, 1)
+    check("★H3c 部分污染 → 萃取有效项采用、不整批丢（杀掉'请不要采用这些结果'）",
+          bool(m_salv) and "部分有效" in m_salv and "请不要采用这些结果" not in m_salv,
+          (m_salv[:24] if m_salv else "无"))
+    check("★H3c 接地/时效闸：搜了却凭记忆答时效问题 → 催据来源作答/声明过时",
+          bool(detect_ungrounded_answer("查2026最新显卡价格", "大概三千到五千元。", True)))
+    check("H3c 答案带来源 → 接地不打扰",
+          detect_ungrounded_answer("2026最新价格", "据 http://jd.com/x 售价¥4999", True) is None)
+    check("H3c 非时效问题 → 凭常识答不误杀",
+          detect_ungrounded_answer("光合作用原理", "植物把光能转化为化学能。", True) is None)
+
     ok = all(_results)
     print()
     if ok:
@@ -140,7 +155,9 @@ def main():
         print("  3) 看图（H3b 多模态）：搜『618夏季女士睡衣并附图』走**浏览器穿透**截图配图 →")
         print("     若配图是冬季厚款，看裁判是否**连图判**『配图与目标不符』并据图重选/重搜")
         print("     （带图答案收尾时多一次视觉模型调用；每轮最多重判一次）")
-        print("  4) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
+        print("  4) 萃取+接地（H3c）：搜『2026最新显卡价格』，结果有相关有无关时——看是否**挑出相关的用**"
+              "（不整批丢），以及最终答案是否**带搜到的来源**而非凭记忆（凭记忆答时效问题会被催据来源/声明过时）")
+        print("  5) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
         return 0
     failed = len(_results) - sum(_results)
     print(f"===== RESULT: {failed} FAILED （共 {len(_results)} 项）=====")

@@ -139,6 +139,66 @@ def test_loop_no_judge_inert():
     assert prov.round == 2
 
 
+# ---- H3c 接地/时效闸端到端：搜了但凭记忆答时效问题 → 再放一轮（无需 research_judge）----
+class _WebSearch(Tool):
+    name = "web_search"
+    description = "fake"
+    input_schema = {"type": "object", "properties": {"query": {"type": "string"}}}
+    dangerous = False
+
+    def run(self, params):
+        return ToolOutput(text="[搜索结果·bing] 1. 某显卡 ¥4999 http://jd.com/x", blocks=[])
+
+
+class _SearchProvider:
+    """R1：web_search；R2：凭记忆答（无引用无声明）；R3：据搜到内容重答（带来源）。"""
+    def __init__(self):
+        self.round = 0
+
+    def stream_chat(self, messages, system=None, tools=None):
+        self.round += 1
+        if self.round == 1:
+            yield StreamEvent("tool_use", meta={"call": ToolCall("c1", "web_search", {"query": "2026最新显卡价格"})})
+            yield StreamEvent("done", meta={"stop_reason": "tool_use"})
+        elif self.round == 2:
+            yield StreamEvent("text", "大概在三千到五千元。")  # 凭记忆、无来源、无声明
+            yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+        else:
+            yield StreamEvent("text", "据搜索 http://jd.com/x，某显卡 ¥4999。")
+            yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+
+
+def test_loop_ungrounded_freshness_triggers_extra_round():
+    # 时效问题 + 做过搜索 + 凭记忆答 → H3c 闸触发再放一轮（注意：research_judge 给了但本轮无图，走 H3c 不走 H3b）
+    prov = _SearchProvider()
+    reg = ToolRegistry([_WebSearch(Path("."))])
+    loop = AgentLoop(prov, reg, PermissionGate(lambda req: None), max_steps=8,
+                     research_refine=True, research_judge=lambda p, i: '{"on_target": true}')
+    events = []
+    loop.run([Message("user", "帮我查2026最新显卡价格")], None, lambda e, d: events.append((e, d)))
+    assert prov.round == 3
+    assert any(e == "research_hint" and "实时数据" in d["text"] for e, d in events)
+
+
+def test_loop_grounded_answer_no_extra_round():
+    # 答案已带来源 → 接地，不触发
+    class _Grounded(_SearchProvider):
+        def stream_chat(self, messages, system=None, tools=None):
+            self.round += 1
+            if self.round == 1:
+                yield StreamEvent("tool_use", meta={"call": ToolCall("c1", "web_search", {"query": "2026最新显卡价格"})})
+                yield StreamEvent("done", meta={"stop_reason": "tool_use"})
+            else:
+                yield StreamEvent("text", "据搜索 http://jd.com/x，某显卡 ¥4999。")
+                yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+    prov = _Grounded()
+    reg = ToolRegistry([_WebSearch(Path("."))])
+    loop = AgentLoop(prov, reg, PermissionGate(lambda req: None), max_steps=8,
+                     research_refine=True, research_judge=None)
+    loop.run([Message("user", "帮我查2026最新显卡价格")], None, lambda e, d: None)
+    assert prov.round == 2
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()
