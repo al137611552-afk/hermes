@@ -6,7 +6,18 @@
 
 ## [Unreleased]
 
-后续候补：**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
+后续候补：**评估内核续**（块 E World State + Failure Memory / 块 F Golden Dataset / 块 G Learning，见 docs/ROADMAP.md）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
+
+## [3.46.0] - 2026-06-30
+
+**评估/策略内核 块 A–D**（ADR 0014）：把"判断"抽成稳定契约 `Tool→Evaluation(事实)→Policy→Need(差距)→Decision(做法)`，落地第一条确定性 `Need→Decision` 硬规则（瞬时 IO 自动重试）。**已 Windows 真机验证通过**（含真实 PowerShell 子进程端到端重试）。
+
+### Added
+- **块 A 契约骨架**（行为等价重构）：`agent/contract.py` 定义 `Need` 枚举（9 个差距：CONTINUE / NEED_INFORMATION / NEED_EXECUTION / NEED_VALIDATION / PROGRESS_STALLED / APPROACH_INVALIDATED / NEED_USER_INPUT / GOAL_BLOCKED / GOAL_SATISFIED）+ `Evaluation` dataclass（metrics/signals/issues/confidence，**不存 score**）。crazy verdict 经 `verdict_to_need()` 映射到 Need 并随轮上报 `crazy_need` 事件；`loop.py` 三个 nudge（login_wall/browse/stuck_edit）重构为"探测事实→归 Need→`_nudge_injection` 选注入"，**注入文案与分支逻辑逐字不变**。
+- **块 B Evaluator 标准化**（事实层）：`agent/evaluators/`（base 调度器 + Coding/Search/Shell 三个 Evaluator，优先级 Coding>Search>Shell），把散落的退出码/字符串归一成结构化 `Evaluation`。`score()` 仅 UI 投影、决策不读。`loop.py _emit_result` 附 `eval`（纯观测）；前端 `formatEval` + `.tr-eval` 摘要条（绿 ok / 橙 warn）。
+- **块 C Error Taxonomy**（可聚合分类）：`agent/taxonomy.py` 定义 `ErrorClass` 9 类（TRANSIENT_IO/AUTH/NOT_FOUND/SYNTAX/LOGIC/RESOURCE/AMBIGUOUS/EXTERNAL_BLOCKED/UNKNOWN，与 Need 正交），规则先行 + 优先级 + 失败门控 + UNKNOWN 兜底。前端摘要条缀分类标签（如 `[transient_io]`）。ADR 0015。
+- **块 D Auto-Retry**（第一条 Need→Decision 硬规则）：`agent/policy.py decide_retry()` **仅对 `TRANSIENT_IO`** 触发指数退避重试（工具调用级，判据是分类不是 ok 标志）。`_exec_tool_with_retry` 包住串行+并行两路；撞上限返回最后失败交上层（不伪造 Need）；`tool_retry` 事件可观测。config 三项 `auto_retry`（默认开）/`retry_max_attempts: 2`/`retry_backoff_base: 0.5`。
+- 配套文档：ADR 0014（架构契约）+ ADR 0015（错误分类）+ `docs/ROADMAP.md`（A–G 分块路线图）。
 
 ## [3.45.0] - 2026-06-27
 

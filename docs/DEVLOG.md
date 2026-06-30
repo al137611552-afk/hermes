@@ -13,7 +13,7 @@
 - 配置：`config.py` AgentConfig + `config.yaml` 加 `auto_retry`(默认 true)/`retry_max_attempts`(2)/`retry_backoff_base`(0.5)。conversation.py 主循环 + 子 Agent 两处 AgentLoop 都传入。
 **关键决策**：① 工具调用级（每个单位调用独立重试），用户确认。② 默认开。③ **AgentLoop 构造器默认 `auto_retry=False`**——production 由 config 显式传 True，存量测试不传则 off，故**对现有测试零行为变化**（绿不靠改测试）。④ 配置走 config.yaml 而非设置面板：面板是手写分节（providers/browser/theme），所有 agent 功能开关（auto_review/auto_test/crazy_*）都在 config.yaml，auto_retry 同处才一致；为它单加面板开关反而是一次性特例。
 **自检**：新增 `tests/test_autoretry.py` 12 测（decide_retry 规则全分支 + loop 接线：瞬时重试至成功/撞上限返回最后失败/逻辑失败不重试/关掉只跑一次/成功不重试/硬 ToolError 瞬时兜底）。**全回归绿：Python 48 文件 + 前端 30，0 失败。**
-**验证状态**：policy + loop 接线纯逻辑**本地自检全过**；但这是**首个改运行时行为的块**——真实工具的瞬时失败重试**建议 Windows 真机跑一次确认**（如断网/超时场景观察 tool_retry 事件与最终恢复）。
+**验证状态**：**✅ 已 Windows 真机验证通过（块 A–D 整体，定版 3.46.0）**。块 D 经真实 PowerShell 子进程端到端验证：`_exec_tool_with_retry` 真机执行 3 次（瞬时失败 2 次→恢复 1 次）、`tool_retry` 事件 2 次、最终成功。**踩坑记录**：① 早期"断网跑 curl"测法不可靠——curl 离线会**挂起到超时**而非快速失败，工具不返回，重试自然不触发（测试方法问题，非 bug）；② `powershell -File flaky.ps1` + `Write-Error` 经 RunShellTool 的 `-Command` 包裹后**退出码被吞成 0** → 评估判成功 → 正确地不重试（测试脚本缺陷）。最终用**计数文件 + 内联 `exit 1` + `[Console]::Error.WriteLine`** 的确定性脚本（`diag2.py` 真机端到端跑通）定位：磁盘代码/config 全对，app 早先没重试只是**进程未重启持旧内存态**。
 **待做**：块E=World State + Failure Memory（记住已证伪路径、跨步避坑）。见 ROADMAP。
 
 ---
