@@ -107,6 +107,18 @@ Tool ─► Evaluation(事实) ─► Policy ─► Need(差距) ─► Planner 
 **交付物**：`agent/learning/`（aggregate/propose/StrategyStore）+ `tests/test_learning.py` 14 测 + ADR 0017；`FailureMemory.rows()` 导出；Golden 门加 `learn` 类 3 条语料。
 **验收**：✅ 历史轨迹（`external_blocked` 跨 3 条路反复）→ 跑出一条可解释候选 → 人审 + Golden 后 active（`test_end_to_end_one_explainable_strategy`）；approve 未过 Golden 被拒、retire/rollback 留审计均有测试。全回归绿（Python 51 + 前端 30，Golden 26 含 3 条块G）。**纯离线分析工具、无运行时/GUI 行为，本地自检即等价证明，无需 Windows 验。**
 
+## 块 H — Research Evaluator（搜索/调研结果质量评估）
+
+**目标**：把"结果返回了但不达标"这类**质量差距**也纳入 `Evaluation→Need→Decision` 闭环，让 Hermes 能**自判搜索好坏并重搜**。源起真实反馈：小红书搜"618 推荐女士睡衣 500 元以内"返回一堆超预算/不对题结果，Hermes 判不出、不会重搜。见 ADR 0018。
+
+- H1 ✅ 事实层 `evaluators/research.py`（已实现 2026-06-30）：接管 `web_search`（注册早于 Search），抽**预算约束满足度**（query 解析上限 + 结果解析标价 → `within_budget`）。**blocker issue 只在可证伪时触发**（有上限/有命中/有标价却无一在内）；模糊项只当 signal。8 测含小红书验收。
+- H2 ⏳ 决策层：质量 issue → Need(`PROGRESS_STALLED`) → 硬规则 `REFINE_AND_RESEARCH` 注入"不达标，换词/换源重搜"（per-query 上限封顶防无限重搜，喂事实非硬拦截）。
+- H3 ⏳ 语义裁判（有成本，待点头）：正则判不了的相关性（"好不好""真不真优惠"）交**模型裁判**打分。
+- H4 ⏳ Golden 语料（小红书 case 已并入，共 28 条）+ Windows 真机验。
+
+**交付物**：`evaluators/research.py` + `tests/test_research_evaluator.py` 8 测 + ADR 0018 + Golden 2 条；H2 起接 loop/config。
+**验收**：H1 ✅ 小红书超预算结果 `within_budget=0`+blocker issue、有在预算内不误报、无标价只给 signal。H2/H3/H4 待续。
+
 ---
 
 ## 依赖关系

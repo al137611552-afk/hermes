@@ -95,4 +95,20 @@ CASES = [
               {"fp": "p2", "class": "transient_io"},
               {"fp": "p3", "class": "transient_io"}],
      "expect": {"classes": []}},              # 瞬时 IO 永不成策略
+
+    # ---- 块H1：搜索/调研结果质量——预算约束满足（小红书 618 睡衣 500 元验收）----
+    {"id": "research-budget-miss", "kind": "evaluate", "tool": "web_search",
+     "params": {"query": "在小红书搜索618推荐的女士睡衣，500元以内"},
+     "output": ("[搜索结果·bing] 小红书 618 女士睡衣\n"
+                "1. 真丝睡衣套装\n   http://a\n   ¥899 618大促\n"
+                "2. 设计师款睡裙\n   http://b\n   1280元\n"
+                "3. 进口长袖睡衣\n   http://c\n   ￥699"),
+     "expect": {"has_issues": True, "metric": ["within_budget", 0.0]}},
+    {"id": "research-budget-ok", "kind": "evaluate", "tool": "web_search",
+     "params": {"query": "女士睡衣 500元以内"},
+     "output": ("[搜索结果·bing] 女士睡衣\n"
+                "1. 纯棉睡衣\n   http://a\n   ¥199\n"
+                "2. 真丝款\n   http://b\n   899元\n"
+                "3. 冰丝睡裙\n   http://c\n   ¥359"),
+     "expect": {"has_issues": False, "metric": ["within_budget", 2.0]}},
 ]

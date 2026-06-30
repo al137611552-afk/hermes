@@ -25,11 +25,13 @@ class Evaluator(Protocol):
 
 
 # 注册顺序 = 优先级。Coding 在前：shell 跑出来的测试输出应归 Coding 而非 Shell。
+# Research 早于 Search：联网搜索（web_search）走质量评估（判约束满足），代码检索仍归 Search。
 def _registry() -> "list[Evaluator]":
     from .coding import CodingEvaluator
+    from .research import ResearchEvaluator
     from .search import SearchEvaluator
     from .shell import ShellEvaluator
-    return [CodingEvaluator(), SearchEvaluator(), ShellEvaluator()]
+    return [CodingEvaluator(), ResearchEvaluator(), SearchEvaluator(), ShellEvaluator()]
 
 
 _EVALUATORS: "list[Evaluator] | None" = None
