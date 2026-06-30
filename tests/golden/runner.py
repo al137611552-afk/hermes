@@ -78,9 +78,24 @@ def _check_deadend(c):
     return first_at == c["expect"]["first_nudge_at"], got
 
 
+def _check_learn(c):
+    # 块G：历史失败行 → 候选策略生成的确定性边界（系统性才升级）。
+    from agentcore.agent.learning import aggregate, propose
+    from agentcore.agent.world_state import FailureMemory
+    fm = FailureMemory(Path(tempfile.mkdtemp()) / "golden_learn.db")
+    for r in c["rows"]:
+        fm.record(r["fp"], [r["class"]], detail=r.get("detail", ""))
+    cands = propose(aggregate(fm), min_count=c.get("min_count", 3),
+                    min_paths=c.get("min_paths", 2))
+    fm.close()
+    classes = sorted(x.error_class for x in cands)
+    got = {"classes": classes}
+    return classes == c["expect"]["classes"], got
+
+
 _DISPATCH = {
     "need": _check_need, "evaluate": _check_evaluate, "classify": _check_classify,
-    "retry": _check_retry, "deadend": _check_deadend,
+    "retry": _check_retry, "deadend": _check_deadend, "learn": _check_learn,
 }
 
 

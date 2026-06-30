@@ -170,6 +170,14 @@ class FailureMemory:
             return None
         return (total, rows[0]["error_class"])
 
+    def rows(self) -> list[dict]:
+        """导出全部失败记录（供块G 离线聚合）。每行 = 一个 (指纹,分类,Decision) 计数。"""
+        with self._lock:
+            rs = self._conn.execute(
+                "SELECT fingerprint, error_class, decision, detail, count, first_at, last_at"
+                " FROM failures").fetchall()
+        return [dict(r) for r in rs]
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()

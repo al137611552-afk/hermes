@@ -78,4 +78,21 @@ CASES = [
      "output": "[exit code] 1\n[stderr]\ncurl: (7) Connection refused",
      "threshold": 2, "repeat": 3,
      "expect": {"first_nudge_at": None}},   # 瞬时失败永不算死路
+
+    # ---- 块G：历史失败 → 候选策略生成的边界（系统性才升级，可解释带证据）----
+    {"id": "learn-systemic-proposes", "kind": "learn",
+     "rows": [{"fp": "p1", "class": "not_found", "detail": "no a"},
+              {"fp": "p2", "class": "not_found", "detail": "no b"},
+              {"fp": "p3", "class": "not_found", "detail": "no c"}],
+     "expect": {"classes": ["not_found"]}},   # 跨3路3次 → 升级为候选
+    {"id": "learn-single-path-no-propose", "kind": "learn",
+     "rows": [{"fp": "p1", "class": "not_found"},
+              {"fp": "p1", "class": "not_found"},
+              {"fp": "p1", "class": "not_found"}],
+     "expect": {"classes": []}},              # 单条路偶发 → 不升级（块D/E 已管）
+    {"id": "learn-transient-never-proposes", "kind": "learn",
+     "rows": [{"fp": "p1", "class": "transient_io"},
+              {"fp": "p2", "class": "transient_io"},
+              {"fp": "p3", "class": "transient_io"}],
+     "expect": {"classes": []}},              # 瞬时 IO 永不成策略
 ]

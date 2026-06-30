@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块G：Learning Engine（路线图收官）
+
+**背景**：A–F 已把执行内核铺成稳定契约（事实/差距/做法分离、9 类 taxonomy、跨会话 Failure Memory、Golden 回归门）。块G 回答收官问题：**积累的失败证据怎么变成对 `Need→Decision` 的改进，又不失控？** 见 [[adr-0017]] `docs/adr/0017-learning-engine.md`、ROADMAP 块G。
+**做了什么**：
+- 新增 `src/agentcore/agent/learning/`（`aggregate`/`propose`/`StrategyStore`）：① `aggregate(FailureMemory)` 把失败行按错误分类归并成 `Aggregate`（总次数/涉及几条路/失败时 Decision/样例 detail）；② `propose()` 只对**系统性**失败（同分类跨 ≥min_paths 条不同的路累计 ≥min_count 次）升级为候选，带人话建议（`_SUGGESTION` 分类骨架）+ 理由 + **语料证据**，`transient_io` 双保险永不成策略；③ `StrategyStore`（JSON 治理）生命周期 `proposed →(人审 approve+Golden 通过)→ active → retire/rollback`，`approve()` 强制 `golden_passed=True`、状态变迁留 `history` 审计。
+- `FailureMemory.rows()` 导出全部失败行供聚合（只读，不动写入路径）。
+- Golden 门加 `learn` 类 3 条语料（系统性升级 / 单路不升级 / 瞬时永不升级），runner 加 `_check_learn`——候选生成边界纳入回归门。
+**关键决策**：① **不自动改运行时**（ADR 0014 不变量③）——决策层仍是确定性硬规则 + 模型，G 只产**带证据的建议**，采纳与生效由人 + Golden 把关。最坏情况只是多了几条没人采纳的建议，风险面最小。② **"没过语料门不准上"写进代码**——`approve(golden_passed=False)` 直接抛错，不靠自觉。③ **只系统性失败才升级**——单路偶发块D 重试/块E 死路提示已管，避免把噪声当策略。④ `active()` 留作将来运行时只读消费接口，**本块暂不接线 loop** → 零控制流改动、零回归风险（同块A/F），接线留后续增量。
+**自检**：`tests/test_learning.py` 14 测（聚合分组/证据/空库；propose 系统性才出/单路不出/瞬时永不出/门槛可调；store 持久/幂等刷新证据/approve 强制 Golden/retire/rollback/按状态过滤；端到端"历史轨迹→一条可解释、Golden 后生效的策略"）。Golden 26/26（+3 块G）含活性自检。**全回归绿：Python 51 文件 + 前端 30，0 失败。** 过程中编码守卫（`test_encoding_guard`）抓到 JSON store 的 `read_text/write_text` 漏显式 `encoding=`，已改 keyword 形式——守卫起作用。
+**验证状态**：✅ 纯离线分析工具、无运行时/GUI 行为，本地自检即等价证明，**无需 Windows 验**（同块A/F）。
+**待做**：A–G 全部实现完毕。块 E 死路提示待 Windows 真机观察；E+F+G 三块统一在 E 验过后定下一版本。Learning 运行时接线（让 active 策略真正影响选路）属后续增量，须再过 Golden。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块F：Golden Dataset + 回归门（Learning 的安全网）
 
 **背景**：块G（Learning）要自动/半自动改 `Need→Decision` 映射，**没有语料门就不准上**——否则一次坏改动会悄悄劣化决策内核且无人察觉。块F 先把当前决策内核的行为**冻结成回归基线**。见 [[adr-0014]] 块F / ROADMAP。
