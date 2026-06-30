@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-06-30 — Architecture Review Mode MVP 第 2 刀（后端）：会话状态机 + 异构路由 seam
+
+- **做了什么**：在引擎之上补两块**可 headless 验**的后端，为 api/前端接线铺路：
+  ① `DesignReviewSession` 状态机——`from_proposal`(抽 Decision)/`review`(跑多角色评审)/`resolve`(用户逐条拍板 NeedUser:设四态、定稿 choice、清 blocking)/`sign`/`gate`/`consensus`/`can_start`；
+  ② `make_review_fn(provider_for)` IO 适配器——把"按 reviewer 名取 provider"包成引擎 seam `review_fn(name,prompt)`，**异构路由的唯一落点**（provider_for 内 `build_provider(config, profile)` 据 name 选不同模型档案）；同 `_make_research_judge` 范式，IO 在注入 provider 内。
+- **关键决策**：① **签字防偷改**——`resolve` 改动后作废已有签字（不能签完又改决策）；`review` 更新决策集也作废签字。
+  ② `resolve` 只认四态共识状态，非法/未知 id 返回 False 不动。③ provider_for(name)→None ⇒ 该角色跳过吐空评审，不阻断（没配异构模型也能只用主模型）。
+  ④ 摸清接线链（Explore）：`build_provider(config, profile_name)` 一行从档案名拿 provider；异构 = 接线层 `provider_for = lambda name: build_provider(cfg, REVIEWER_MODEL_MAP.get(name) or active_model)`。
+- **自检**：`tests/test_design_review.py` 15→**21**（+6：make_review_fn 调用/异构路由/None 跳过；session 解析/评审→拍板→签字开门/非法状态拒绝且作废签字）。
+  全回归绿：Golden 3/3(50)、conversation 83/83、delegate 28/28、config_keys 14/14、前端 30/30。
+- **验证状态**：纯逻辑 + 注入假 provider → Linux 已完整自检；**不定版**。
+- **遗留（第 3 刀，需 Windows GUI 验）**：① conversation.py 在 plan_mode 下：让模型按 Decision JSON 契约出 proposal、建 `DesignReviewSession`、用 `make_review_fn`(主模型起步)跑 `review`、存会话态；
+  ② api.py 暴露 `start_design_review/get_consensus/resolve_decision/sign_off/can_start_coding` 给前端；③ 前端 UI：四态共识 + 灰/亮「开始编码」+ 逐条拍板；④ 异构 config（`REVIEWER_MODEL_MAP`）+ 复杂度门控。
+
+---
+
 ## 2026-06-30 — Architecture Review Mode MVP 第 1 刀：评审引擎（纯逻辑，ADR 0019 v2）
 
 - **做了什么**：用户绿灯后开工。先把 ADR 0019 跑了一轮真实评审收敛成 v2（GPT proposal → Claude 做 Execution+Architecture review → Consensus），

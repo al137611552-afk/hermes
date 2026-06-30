@@ -12,9 +12,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from agentcore.agent.design_review import (  # noqa: E402
-    ACCEPTED, DEFERRED, NEEDUSER, OPEN, REJECTED, Decision, apply_review,
-    build_review_prompt, can_start_coding, count_blocking, gate_status,
-    parse_decisions, render_consensus, round_snapshot, run_review, should_stop,
+    ACCEPTED, DEFERRED, NEEDUSER, OPEN, REJECTED, Decision, DesignReviewSession,
+    apply_review, build_review_prompt, can_start_coding, count_blocking, gate_status,
+    make_review_fn, parse_decisions, render_consensus, round_snapshot, run_review,
+    should_stop,
 )
 
 
@@ -164,6 +165,75 @@ def test_run_review_survives_reviewer_exception():
 def test_build_review_prompt_carries_decisions_and_json_spec():
     p = build_review_prompt("你是评审员", [_d("d1", OPEN, ["未决X"])])
     assert "id=d1" in p and "未决X" in p and "仅输出 JSON" in p
+
+
+# ── IO 适配器 make_review_fn（假 provider，不碰网络）─────────────────────────
+class _FakeEv:
+    def __init__(self, text):
+        self.type, self.text = "text", text
+
+
+class _FakeProvider:
+    def __init__(self, reply):
+        self.reply, self.seen = reply, []
+
+    def stream_chat(self, messages, system=None, tools=None):
+        self.seen.append(messages[0].content)
+        yield _FakeEv(self.reply)
+
+
+def test_make_review_fn_calls_provider_and_returns_text():
+    p = _FakeProvider('[{"id":"d1","status":"Accepted"}]')
+    rf = make_review_fn(lambda name: p)
+    assert rf("execution", "评一下") == '[{"id":"d1","status":"Accepted"}]'
+    assert p.seen and "评一下" in str(p.seen[0])
+
+
+def test_make_review_fn_routes_by_name_heterogeneous():
+    # 异构：execution → provider A，architecture → provider B（接线层据 name 选不同模型档案）
+    a = _FakeProvider('[{"id":"x","status":"Accepted"}]')
+    b = _FakeProvider('[{"id":"x","status":"NeedUser"}]')
+    rf = make_review_fn(lambda name: a if name == "execution" else b)
+    assert "Accepted" in rf("execution", "p") and "NeedUser" in rf("architecture", "p")
+
+
+def test_make_review_fn_none_provider_skips():
+    rf = make_review_fn(lambda name: None)        # 没配该角色模型 → 跳过不阻断
+    assert rf("architecture", "p") == "[]"
+
+
+# ── DesignReviewSession 状态机 ──────────────────────────────────────────────
+def test_session_from_proposal_parses_decisions():
+    s = DesignReviewSession.from_proposal('[{"id":"d1","title":"存储","current_choice":"SQLite"}]')
+    assert len(s.decisions) == 1 and s.decisions[0].id == "d1"
+    assert s.can_start() is False                 # Open → 阻塞
+
+
+def test_session_review_then_resolve_then_sign_opens_gate():
+    s = DesignReviewSession([_d("d1", OPEN), _d("d2", ACCEPTED)], max_rounds=3)
+
+    def rf(name, prompt):
+        return '[{"id":"d1","status":"NeedUser","add_blocking":["要拍板"]}]' if name == "execution" \
+            else "[]"
+    s.review(rf)
+    assert s.gate()["blocking_count"] >= 1 and s.can_start() is False   # d1 待拍板
+    # 用户拍板 d1 → 清空 blocking、定稿；签字 → 开
+    assert s.resolve("d1", ACCEPTED, current_choice="方案X") is True
+    assert s.decisions[0].current_choice == "方案X" and s.decisions[0].blocking == []
+    assert s.can_start() is False                 # 还没签字
+    s.sign()
+    assert s.can_start() is True
+
+
+def test_session_resolve_rejects_bad_status_and_resets_signature():
+    s = DesignReviewSession([_d("d1", ACCEPTED)])
+    s.sign()
+    assert s.can_start() is True
+    assert s.resolve("d1", "魔幻态") is False       # 非四态 → 拒绝、不改
+    assert s.resolve("nope", ACCEPTED) is False     # 未知 id → False
+    assert s.can_start() is True                    # 上面都没改 → 签字仍有效
+    assert s.resolve("d1", DEFERRED) is True        # 合法改动
+    assert s.signed is False and s.can_start() is False  # 改后作废签字（防签完偷改）
 
 
 def _run_all():

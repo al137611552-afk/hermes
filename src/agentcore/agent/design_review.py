@@ -312,3 +312,88 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -
         "consensus": render_consensus(cur),
         "gate": gate_status(cur, user_signed=False),
     }
+
+
+# ── IO 适配器：把 provider 包成引擎 seam（唯一碰 provider 的地方，IO 在 provider 内）──
+def make_review_fn(provider_for):
+    """把"按 reviewer 名取 provider"的 `provider_for(name)->provider` 包成 seam `review_fn(name, prompt)->str`。
+
+    **异构路由的唯一落点**：provider_for 内部据 name 选不同模型档案（如 `build_provider(config, profile)`），
+    Execution 用主模型、Architecture 路由到异构档即可。`provider_for(name)` 返回 None → 该角色跳过（吐空评审）。
+    本函数同 `_make_research_judge` 范式：自身无 IO，IO 在注入的 provider.stream_chat 内。
+    """
+    from ..providers.base import Message      # 延迟导入，保持模块 import 期纯净
+
+    def review_fn(name, prompt):
+        provider = provider_for(name)
+        if provider is None:
+            return "[]"                        # 没配该角色的模型 → 无意见，不阻断评审
+        out = []
+        for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
+            if getattr(ev, "type", None) == "text":
+                out.append(ev.text)
+        return "".join(out)
+    return review_fn
+
+
+# ── 评审会话状态机：api/前端驱动它（评审 → 逐条拍板 → 签字 → gate）──────────────
+class DesignReviewSession:
+    """一次方案评审的可驱动状态：持有 Decision 集，支持跑评审、用户逐条拍板 NeedUser、签字、查 gate。
+
+    纯逻辑（review_fn 注入）。供 conversation/api 在规划模式下驱动；前端按其 gate()/consensus() 渲染。
+    """
+
+    def __init__(self, decisions, max_rounds: int = 3) -> None:
+        self.decisions = list(decisions)
+        self.max_rounds = max_rounds
+        self.signed = False
+        self.last_result = None
+
+    @classmethod
+    def from_proposal(cls, proposal_text: str, max_rounds: int = 3) -> "DesignReviewSession":
+        """从模型 proposal 输出抽 Decision 列表建会话。"""
+        return cls(parse_decisions(proposal_text), max_rounds)
+
+    def review(self, review_fn) -> dict:
+        """跑一整轮多角色评审（直到停止条件），更新决策集。返回 run_review 结果。"""
+        res = run_review(self.decisions, review_fn, self.max_rounds)
+        self.decisions = res["decisions"]
+        self.signed = False                    # 决策集变了 → 旧签字作废
+        self.last_result = res
+        return res
+
+    def resolve(self, decision_id: str, status: str, current_choice=None) -> bool:
+        """用户拍板一个决策：设其共识态（须四态之一）、可定稿 choice、清空该条 blocking。
+
+        改动后**作废已有签字**（不能签完又偷改）。命中并合法返回 True，否则 False。
+        """
+        if status not in _CONSENSUS_STATES:
+            return False
+        hit = False
+        out = []
+        for d in self.decisions:
+            if d.id == decision_id:
+                hit = True
+                out.append(Decision(
+                    d.id, d.title,
+                    d.current_choice if current_choice is None else str(current_choice),
+                    d.alternatives, d.rationale, status, []))
+            else:
+                out.append(d)
+        if hit:
+            self.decisions = out
+            self.signed = False
+        return hit
+
+    def sign(self) -> None:
+        """用户签字确认开工——仅在零未决时才有意义（gate 仍会复核 count_blocking）。"""
+        self.signed = True
+
+    def gate(self) -> dict:
+        return gate_status(self.decisions, self.signed)
+
+    def consensus(self) -> str:
+        return render_consensus(self.decisions)
+
+    def can_start(self) -> bool:
+        return can_start_coding(self.decisions, self.signed)
