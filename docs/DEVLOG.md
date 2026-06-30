@@ -41,7 +41,7 @@
 - 配置：`config.py` AgentConfig + `config.yaml` 加 `failure_memory`(默认 true)/`deadend_threshold`(2)。`conversation.py` 加 `_get_failure_memory()`（懒建复用单实例，打开失败降级 None），主+子 Agent 两处构造都传入。
 **关键决策**：① **喂事实而非硬拦截**——死路判断有误报风险，硬禁会把误报变功能缺失；注入"N 次不通"让模型自己换思路（与块A nudge、块D 回灌一脉相承）。真避坑留块F（Golden 门）兜底后、块G 按语料证据收紧。② **瞬时 IO 不算死路**——那是块D 自动重试的活，避免与重试打架。③ **一次失败=一行**——classify 给一次失败多分类，只记主分类（防重复计数把单次失败误判成多次）。④ 构造器 `failure_memory=None` 默认 → 存量测试零行为变化（同块D 手法）。
 **自检**：新增 `tests/test_world_state.py` 15 测（指纹稳定/区分/忽略无关入参；WorldState 计数+证伪+阻塞；FailureMemory 记录/计数/阈值/主分类/重开持久/空分类兜底；detect 接线：第二次撞死路提示、瞬时不算死路、成功不记、每指纹一次、跨会话首撞即提示）。**全回归绿：Python 49 文件 + 前端 30，0 失败。**
-**验证状态**：纯后端逻辑 + SQLite 本地自检全过；**待 Windows 真机验**——让 Agent 反复以同种方式失败一条命令，观察出现 deadend 提示、模型据此换思路（不再原样重试）。
+**验证状态**：✅ **已 Windows 真机验证通过**（2026-06-30，随 E/F/G 定版 3.47.0）——`scripts/diag_blockE.py` 11/11 全过：SQLite 死路记忆**跨会话重开仍在**、真实 `detect_repeated_failure` 第2次起提示换思路、瞬时 IO 不误判。
 **待做**：块F=Golden Dataset + 回归门（**必须早于 G**）。见 ROADMAP。
 
 ---

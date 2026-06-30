@@ -72,7 +72,7 @@ Tool ─► Evaluation(事实) ─► Policy ─► Need(差距) ─► Planner 
 **交付物**：`agent/policy.py` + `tests/test_autoretry.py` 12 测；config 三项。
 **验收**：✅ transient 自动重试至成功 / 撞上限返回最后失败 / 非 transient 不误重试 均有测试。全回归绿（Python 48 + 前端 30）。**✅ Windows 真机已验**（真实 PowerShell 子进程端到端：执行 3 次、重试 2 次、恢复；定版 3.46.0）。
 
-## 块 E — World State + Failure Memory（跨步/跨会话记忆）✅ 已实现（2026-06-30，待 Windows 验）
+## 块 E — World State + Failure Memory（跨步/跨会话记忆）✅ 已完成并 Windows 验（2026-06-30，定版 3.47.0）
 
 **目标**：让"差距"和"失败"被记住，不再每步从零判断。
 
@@ -82,7 +82,7 @@ Tool ─► Evaluation(事实) ─► Policy ─► Need(差距) ─► Planner 
 - 接线 ✅ config `failure_memory`(默认 true)/`deadend_threshold`(2)；conversation.py 主+子 Agent 两路传入懒建复用的 FailureMemory；构造器默认 `failure_memory=None` → 存量测试零行为变化。ADR 0016。
 
 **交付物**：`agent/world_state.py` + `tests/test_world_state.py` 15 测 + config 两项 + ADR 0016。
-**验收**：✅ "同一死路连撞第二次→提示换思路"、"瞬时失败不算死路"、"跨会话已知死路首撞即提示" 均有测试。全回归绿（Python 49 + 前端 30）。**待 Windows 真机验**（观察反复失败后出现 deadend 提示、模型换思路）。
+**验收**：✅ "同一死路连撞第二次→提示换思路"、"瞬时失败不算死路"、"跨会话已知死路首撞即提示" 均有测试。全回归绿（Python 49 + 前端 30）。**✅ Windows 真机已验**（`scripts/diag_blockE.py` 11/11：SQLite 死路记忆跨会话落盘 + 真实 detect_repeated_failure 端到端 + 瞬时不误判；定版 3.47.0）。
 
 ## 块 F — Golden Dataset + 回归门（Learning 的安全网）✅ 已完成（2026-06-30）
 

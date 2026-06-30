@@ -6,7 +6,17 @@
 
 ## [Unreleased]
 
-后续候补：**评估内核续**（块 E World State + Failure Memory / 块 F Golden Dataset / 块 G Learning，见 docs/ROADMAP.md）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
+后续候补：**搜索质量评估 / Research Evaluator**（下一块：判搜索/调研结果的相关性+约束满足、质量低→Need→重搜/改写/换源，补"结果返回但不达标"的质量差距分支，见 docs/ROADMAP.md）；**Learning 运行时接线**（让 active 策略真正影响选路，须再过 Golden）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
+
+## [3.47.0] - 2026-06-30
+
+**评估/策略内核 块 E–G**（ADR 0016/0017）：在块 A–D 的稳定契约之上补齐**记忆 + 安全网 + 学习**——失败被跨会话记住、决策内核有 Golden 回归门、历史失败可半自动凝成带证据的候选策略。**块 E 已 Windows 真机验证通过**（SQLite 死路记忆跨会话落盘 + 真实 `detect_repeated_failure` 端到端 + 瞬时 IO 不误判，自测 11/11）；**块 G 中文建议 JSON round-trip 亦经 Windows 验**（GBK 崩坑回归，自测 16/16）。
+
+### Added
+- **块 E World State + Failure Memory**（跨步/跨会话死路记忆，ADR 0016）：`agent/world_state.py`——`WorldState`（单会话纯内存：Need 历史 / 按**指纹**聚合的失败计数 / 已证伪路径 / 未决阻塞）+ `FailureMemory`（跨会话 SQLite `data/failures.db`，key=`(指纹,错误分类,Decision)`，**一次失败=一行增量**只记主分类，`known_deadend()` 查已知死路）+ `fingerprint(工具,关键入参)`（归一化 + sha1 截 16 位）。`loop.py detect_repeated_failure`：每个**非瞬时**失败记入两库，本会话累计 ≥ 阈值**或**跨会话已知死路 → 注入"此路已 N 次不通，换思路"事实（每指纹每轮一次，瞬时 IO 不计 → 归块 D 重试）。**喂事实而非硬拦截**。config `failure_memory`（默认 true）/`deadend_threshold: 2`；构造器默认 `failure_memory=None` → 存量行为零变化。
+- **块 F Golden Dataset + 回归门**（Learning 安全网）：`tests/golden/`（cases + runner）冻结决策内核行为基线（块 A verdict→Need / B evaluate 事实 / C classify 主分类 / D retry 决策 / E deadend 第几次提示 / G 候选生成边界，共 26 条），`tests/test_golden.py` 并入"全回归"并自带**门活性自检**（注入错误期望必报红，防门形同虚设）。**任何改决策逻辑须先过此门**。
+- **块 G Learning Engine**（半自动改进 Need→Decision，ADR 0017）：`agent/learning/`——`aggregate(FailureMemory)` 把失败行按错误分类归并成 `Aggregate`（总次数/涉及几条路/失败时 Decision/样例）；`propose()` 只对**系统性**失败（同分类跨 ≥2 路累计 ≥3 次）升级为带**语料证据**的候选（`transient_io` 永不成策略）；`StrategyStore`（JSON 治理）生命周期 `proposed →(人审 approve + Golden 通过)→ active → retire/rollback`，**`approve()` 强制 `golden_passed=True`**（"没过语料门不准上"写进代码）、状态变迁留审计。**不自动改运行时**——决策层仍是确定性硬规则 + 模型，G 只产建议；`active()` 留作将来运行时只读消费接口，本版暂不接线 loop（零控制流改动、零回归）。`FailureMemory.rows()` 导出供聚合。
+- 配套：ADR 0016 + 0017；Windows 自测脚本 `scripts/diag_blockE.py`（11 项）/`diag_blockG.py`（16 项）。
 
 ## [3.46.0] - 2026-06-30
 
