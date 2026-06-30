@@ -6,7 +6,7 @@
 
 ## [Unreleased]
 
-后续候补：**研究墙·墙钟时间上限**；**目标满足驱动的换源**（把换源触发从"零新域名"补成"目标数据点连续缺席"，价格/数字类先做）；**Learning 运行时接线**（让 active 策略真正影响选路，须再过 Golden）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
+后续候补：**Architecture Review Mode**（规划模式多角色方案评审 `Proposal→对冲 Review→修正→Consensus→gate 开工`，ADR 0019 草案；角色>模型、复用 delegate ROLES/judge/PlanMode，**开工 gate 卡"未决阻塞==0"而非共识百分比**，守 0014 禁 score；MVP=单模型+两对冲角色+一轮修正+共识文档+手动开工 gate）；**研究墙·墙钟时间上限**；**目标满足驱动的换源**（把换源触发从"零新域名"补成"目标数据点连续缺席"，价格/数字类先做）；**Learning 运行时接线**（让 active 策略真正影响选路，须再过 Golden）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
 
 ## [3.49.0] - 2026-06-30
 
