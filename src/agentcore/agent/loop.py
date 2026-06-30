@@ -18,6 +18,7 @@ from typing import Callable
 
 from ..providers import BaseProvider, Message
 from ..tools import ToolError, ToolOutput, ToolRegistry
+from .contract import NUDGE_BROWSE, NUDGE_LOGIN, NUDGE_STUCK, Need
 from .gate import PermissionGate
 
 # 工具被用户拒绝时回灌给模型的提示
@@ -38,6 +39,33 @@ def looks_failing(text: str) -> bool:
 _BROWSE_TOOLS = frozenset({"read_file", "list_dir", "grep_search", "glob_search", "code_outline"})
 _BROWSE_NUDGE_AT = 6   # 大库里累计浏览这么多次还没用 search_code，就提示一次
 
+# ── Need → 注入文案（块 A：单一"差距→注入"选择点，见 docs/adr/0014）──────────
+#
+# loop.py 的三个情境探测器负责从工具调用里**探测事实**并归到一个 Need；具体
+# 「提示什么」统一由这里按 Need 选择。这样判断（探测）与做法（注入文案）分开，
+# 后续要改某个 Need 的应对、或让 Policy 接管，只动这一处。文案与重构前逐字一致，
+# 故行为等价。
+def _nudge_injection(need: Need, **ctx) -> str:
+    """按 Need 选注入文案（纯函数）。ctx 提供 PROGRESS_STALLED 所需的 path/count。"""
+    if need is NUDGE_LOGIN:
+        return ("[系统] 刚打开的页面是**登录墙**（需要登录才能看内容）。**必须**用 ask_user 工具暂停、"
+                "提示用户在弹出的浏览器里登录后回复『继续』，等回复了再 browser_navigate 重开目标页继续。"
+                "**严禁** browser_navigate 到 google / baidu / bing 等搜索引擎绕开登录——那不是用户要的、会被判为绕路。")
+    if need is NUDGE_BROWSE:
+        return (
+            "[系统观察] 你已经逐个浏览了不少文件来找代码——这个项目较大，"
+            "用 **search_code** 给一句意图描述（如「处理 X 的地方」「鉴权逻辑」）能一次拉到最相关的几段、"
+            "比逐个 list/read/grep 省很多步。先 search_code 定位、再 read_file 看细节。"
+        )
+    if need is NUDGE_STUCK:
+        return (
+            f"[系统观察] 你已经第 {ctx['count']} 次修改 `{ctx['path']}`、而它仍在失败——"
+            "反复改同一处通常是**没定位准、在盲改**。先停下别再猜：用 **trace_run** 跑一段调用相关函数的"
+            "驱动代码，直接看每一步的中间值，定位到底是哪一步 / 哪个值算错了，再针对性修。"
+        )
+    raise ValueError(f"无对应注入文案的 Need: {need}")
+
+
 # 登录墙检测：浏览器结果里这些**强信号**才判为"被登录墙挡住"（避免误伤"页头有个登录按钮但正文可读"的页）
 _LOGIN_WALL_RE = __import__("re").compile(
     r"请先?登[录入]|登[录入]后(?:查看|继续|可见)|需要登[录入]|扫码登[录入]|未登[录入]|"
@@ -55,9 +83,7 @@ def detect_login_wall(calls, out_by_id: dict, state: dict) -> "str | None":
         if name.split("__", 1)[-1].startswith("browser_"):
             if _LOGIN_WALL_RE.search(str(out_by_id.get(getattr(c, "id", None), ""))):
                 state["nudged"] = True
-                return ("[系统] 刚打开的页面是**登录墙**（需要登录才能看内容）。**必须**用 ask_user 工具暂停、"
-                        "提示用户在弹出的浏览器里登录后回复『继续』，等回复了再 browser_navigate 重开目标页继续。"
-                        "**严禁** browser_navigate 到 google / baidu / bing 等搜索引擎绕开登录——那不是用户要的、会被判为绕路。")
+                return _nudge_injection(NUDGE_LOGIN)
     return None
 
 
@@ -80,11 +106,7 @@ def detect_browse_nudge(calls, state: dict, enabled: bool, search_available: boo
             state["browse"] = state.get("browse", 0) + 1
     if not state.get("used_search") and state.get("browse", 0) >= _BROWSE_NUDGE_AT:
         state["nudged"] = True
-        return (
-            "[系统观察] 你已经逐个浏览了不少文件来找代码——这个项目较大，"
-            "用 **search_code** 给一句意图描述（如「处理 X 的地方」「鉴权逻辑」）能一次拉到最相关的几段、"
-            "比逐个 list/read/grep 省很多步。先 search_code 定位、再 read_file 看细节。"
-        )
+        return _nudge_injection(NUDGE_BROWSE)
     return None
 
 
@@ -107,11 +129,7 @@ def detect_stuck_edit(calls, out_by_id: dict, edit_counts: dict, nudged: set,
         edit_counts[path] = edit_counts.get(path, 0) + 1
         if edit_counts[path] >= threshold and step_failing and path not in nudged:
             nudged.add(path)
-            return (
-                f"[系统观察] 你已经第 {edit_counts[path]} 次修改 `{path}`、而它仍在失败——"
-                "反复改同一处通常是**没定位准、在盲改**。先停下别再猜：用 **trace_run** 跑一段调用相关函数的"
-                "驱动代码，直接看每一步的中间值，定位到底是哪一步 / 哪个值算错了，再针对性修。"
-            )
+            return _nudge_injection(NUDGE_STUCK, path=path, count=edit_counts[path])
     return None
 
 

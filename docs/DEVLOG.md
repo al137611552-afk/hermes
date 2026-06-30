@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块A：契约骨架（行为等价重构）
+
+**背景**：crazy 4 块跑通后，要继续叠 Auto-Retry / Failure-Memory / Learning，必须先把散落的"判断"抽成稳定契约（见 [[adr-0014]] `docs/adr/0014-evaluation-policy-architecture.md` + `docs/ROADMAP.md`）。块A=地基：定义契约、把现有判断映射上去，**不引入任何新能力、不改任何行为**。
+**做了什么**：
+- 新增 `src/agentcore/agent/contract.py`——`Need` 枚举（9 个差距，**绝不含动作**：无 REPLAN/RETRY/SWITCH）+ `Evaluation` dataclass（metrics/signals/issues/confidence，**不存 score**，Score 只是投影不回喂）+ `verdict_to_need()` 纯映射 + 三个 nudge 各自的 Need 常量。
+- `loop.py` 重构：三个情境探测器（login_wall/browse/stuck_edit）从"探测里直接拼字符串"改成"探测事实→归到 Need→`_nudge_injection(need)` 按 Need 选文案"。**文案逐字不变**、三个 `detect_*` 公开签名与返回（`str|None`）不变。
+- `conversation.py` run_autonomous：解析 verdict 后加 `emit("crazy_need", {need})` 上报稳定 Need（仅观测/Learning 聚合 key）；**分支仍按 verdict 走**（done→验收门、phase_done→重规划），保证逐字节等价——Need 在旁记账不夺权。
+**关键决策**：Need 故意抽掉 scope（done 与 phase_done 都→GOAL_SATISFIED），scope 差异留在 verdict 里驱动分支；契约只新增"映射 + 观测"，不改控制流——这是"行为等价重构"的边界。
+**自检**：新增 `tests/test_contract.py`（9 测：Need 无动作成员/恰好 9 个/str 可序列化/verdict 映射/未知→CONTINUE/Evaluation 默认空/as_event 拷贝隔离/无 score/nudge 全是差距）。**全回归绿：Python 45 文件全过（含 test_conversation 83、test_stuck 13）+ 前端 node:test 23 全过。**
+**验证状态**：纯后端逻辑、无 GUI/真实模型依赖，**本地自检即等价证明**（无需 Windows 真机）。`crazy_need` 是新增观测事件，前端未处理=安全忽略，不影响现有 UI。
+**待做**：块B=Evaluator 标准化（Coding/Search/Shell 出结构化事实）；块C=Error Taxonomy。见 ROADMAP。
+
+---
+
 ## 2026-06-28 — crazy 阶段化重做 · 块1：开局产出阶段计划、一阶段一阶段推进
 
 **背景**：用户批评 crazy 只按步数续命、没结构（见 [[hermes-dev-crazy-phase-design]] 方案，gating 已定自适应）。开始落地，先做地基块1。

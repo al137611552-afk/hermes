@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from ..agent import AgentLoop, PermissionGate
+from ..agent.contract import verdict_to_need
 from .. import checkpoints as ckpt
 from ..changes import ChangeLedger
 from ..config import AppConfig
@@ -944,6 +945,10 @@ class Conversation:
                     if stale >= max(1, cfg.crazy_stall_rounds):
                         reason = "stalled"; break
                 verdict, nxt = _parse_crazy_verdict(self._last_assistant_text())
+                # 块A 契约观测：把 verdict 映射成稳定 Need 并随轮次上报（仅记账，不夺
+                # 分支决策权——下面仍按 verdict 走，保证行为逐字节等价。Need 是后续
+                # Learning 聚合的 key，见 docs/adr/0014）。
+                self.emit("crazy_need", {"round": rnd, "need": verdict_to_need(verdict).value})
                 hit = getattr(self, "_last_turn_hit_max", False)
                 had_inject = getattr(self, "_last_turn_had_inject", False)
                 # 块3 自适应过门：撞设计岔路/目标模糊 → 停下真问用户（gate_ask 关则按合理默认自走）
