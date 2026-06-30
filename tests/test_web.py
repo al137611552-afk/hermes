@@ -86,6 +86,22 @@ def test_rerank_coverage_lifts_multi_term_match():
     assert out[0]["url"] == "https://jiankang.com/apple"   # 覆盖"苹果"+"水果" → 居首
 
 
+def test_rerank_cjk_phrase_bigram_beats_dictionary_junk():
+    # 真实 bug：整句短语「怎么挑选甜苹果」整体匹配不到任何页 → 全 0 分 → 退化成引擎原序（吐百科）。
+    # 切 2-gram 后"苹果/挑选/颜色/手感"可匹配；"怎么"是停用词不给百科页加分。
+    cands = [
+        {"title": "怎么（汉语词语）_百度百科", "url": "https://baike.baidu.com/item/怎么",
+         "snippet": "“怎么”一词最早见于南唐文献，疑问代词……"},
+        {"title": "如何（汉语词语）_百度百科", "url": "https://baike.baidu.com/item/如何",
+         "snippet": "作为疑问代词具有双重含义……"},
+        {"title": "怎么挑选甜苹果？看果脐条纹颜色手感", "url": "https://guonong.com/apple",
+         "snippet": "挑甜苹果看果脐深、条纹明显、颜色红、手感沉……"},
+    ]
+    out = rerank_results("怎么挑选甜苹果 看果脐 条纹 颜色 手感", cands, top_n=3)
+    assert out[0]["url"] == "https://guonong.com/apple"      # 内容页居首，不再是百科
+    assert "baike.baidu.com" not in out[0]["url"]
+
+
 def test_rerank_per_domain_cap_and_dedup():
     cands = [
         {"title": "A1", "url": "https://x.com/1", "snippet": "苹果 水果 甜"},

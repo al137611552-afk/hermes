@@ -137,9 +137,38 @@ def _domain_of(url: str) -> str:
     return m.group(1).lower() if m else ""
 
 
-def _query_terms(query: str) -> list[str]:
-    """按空白/常见分隔切词（中英混排够用：中文用户多用空格分词，如「苹果 水果」）。"""
-    return [t for t in re.split(r"[\s,，、;；/|]+", (query or "").lower()) if t]
+# 中文疑问/泛化词：substring 匹配会让"怎么/如何"类百科页虚高，重排时丢弃（2-gram 粒度）
+_CJK_STOP = frozenset({
+    "怎么", "怎样", "如何", "什么", "么样", "哪些", "哪个", "为什", "这个", "那个",
+    "可以", "知道", "告诉", "一下", "一个", "有没", "没有", "是否", "应该", "需要",
+})
+_CJK_RE = re.compile(r"[一-鿿]+")
+
+
+def _query_terms(query: str) -> "set[str]":
+    """查询 → 可匹配词集（确定性，无分词依赖）。
+
+    关键：中文用户常把**整句**用空格分成**短语**（如「怎么挑选甜苹果 颜色 手感」），
+    整短语 substring 匹配不到任何页 → 全 0 分 → 重排退化成引擎原序（吐百科垃圾）。
+    故对每个 CJK 连续段切 **2-gram**（「甜苹果」→甜苹/苹果），让"苹果/颜色/手感"这些
+    内容词真正可匹配；丢弃疑问/泛化停用词避免「怎么」百科页虚高。ASCII/数字词整体保留。
+    """
+    terms: set[str] = set()
+    for tok in re.split(r"[\s,，、;；/|]+", (query or "").lower()):
+        if not tok:
+            continue
+        if re.search(r"[a-z0-9]", tok) and not _CJK_RE.search(tok):
+            if len(tok) >= 2:
+                terms.add(tok)            # 英文/数字词整体（python、rtx5090）
+            continue
+        for run in _CJK_RE.findall(tok):  # 每个 CJK 段切 2-gram
+            for i in range(len(run) - 1):
+                bg = run[i:i + 2]
+                if bg not in _CJK_STOP:
+                    terms.add(bg)
+            if len(run) == 1:             # 单字 CJK 段也保留（罕见）
+                terms.add(run)
+    return terms
 
 
 def rerank_results(query: str, results: list[dict], top_n: int, per_domain_cap: int = 2) -> list[dict]:
