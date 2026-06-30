@@ -6,6 +6,11 @@
 - "classify" : 失败文本 → 主错误分类（块C classify_text，None=不匹配）
 - "retry"    : (分类, 已试次数) → 是否重试 + 退避（块D decide_retry）
 - "deadend"  : 同一条路连撞 N 次 → 第几次起提示换思路（块E detect_repeated_failure）
+- "research_judge": web_search 结果经模型裁判 → 三态（块H3a/H3c detect_offtarget_research：
+                    不对题重搜 offtarget / 部分污染萃取 salvage / 对题静默 none，假裁判注入）
+- "grounding" : 答案接地/时效闸（块H3c detect_ungrounded_answer：时效敏感+搜过+无引用无声明→催）
+- "switch"    : 换源策略阶梯（块H switch_strategy_nudge：NO_PROGRESS 逐级 site→browser→ask_user）
+- "novelty"   : 搜索结果 → 域名集（块H extract_domains：确定性去重/归一，Novelty 信号源）
 
 这是 G（Learning）改 Need→Decision 映射前必须先过的门：任一改动让某条偏离期望即回归。
 新增能力时**追加**语料、不改既有期望（除非确是有意的行为变更，需同步说明）。
@@ -111,4 +116,51 @@ CASES = [
                 "2. 真丝款\n   http://b\n   899元\n"
                 "3. 冰丝睡裙\n   http://c\n   ¥359"),
      "expect": {"has_issues": False, "metric": ["within_budget", 2.0]}},
+
+    # ---- 块H3a/H3c：模型裁判三态决策（假裁判注入固定 verdict，锁分类）----------
+    {"id": "judge-offtarget-research", "kind": "research_judge",
+     "query": "618夏季女士睡衣", "goal": "搜618夏季女士睡衣",
+     "output": "1. 真丝厚睡衣套装\n   http://a\n   ¥299 秋冬加厚",
+     "verdict": '{"on_target": false, "off": ["真丝厚款：秋冬不符夏季"]}',
+     "expect": "offtarget"},                  # 一条都不相关 → 换词/换源重搜
+    {"id": "judge-salvage-partial", "kind": "research_judge",
+     "query": "618夏季女士睡衣", "goal": "搜618夏季女士睡衣",
+     "output": "1. 真丝厚款\n2. 冰丝短袖 ¥199",
+     "verdict": '{"on_target": false, "use": ["冰丝短袖睡衣 ¥199"], "off": ["真丝厚款：秋冬不符"]}',
+     "expect": "salvage"},                    # 部分污染 → 萃取有效项、不整批丢
+    {"id": "judge-ontarget-silent", "kind": "research_judge",
+     "query": "夏季睡衣", "goal": "夏季睡衣",
+     "output": "1. 冰丝短袖睡衣 ¥199",
+     "verdict": '{"on_target": true}',
+     "expect": "none"},                       # 对题 → 静默不打扰
+
+    # ---- 块H3c：接地/时效闸（保守触发：时效敏感 + 做过搜索 + 无引用无声明）------
+    {"id": "ground-fresh-ungrounded-fires", "kind": "grounding",
+     "goal": "查2026最新显卡价格", "answer": "大概三千到五千元。", "did_research": True,
+     "expect": True},                         # 凭记忆答时效问题 → 催据来源/声明
+    {"id": "ground-cited-passes", "kind": "grounding",
+     "goal": "查2026最新显卡价格", "answer": "据 http://jd.com/x，某卡 ¥4999。",
+     "did_research": True, "expect": False},  # 已引用来源 → 接地放行
+    {"id": "ground-disclaimed-passes", "kind": "grounding",
+     "goal": "查2026最新显卡价格", "answer": "以下基于训练知识、可能已过时，建议以实时为准：约三千。",
+     "did_research": True, "expect": False},  # 已声明过时 → 诚实放行
+    {"id": "ground-nonfresh-no-kill", "kind": "grounding",
+     "goal": "光合作用原理", "answer": "植物把光能转化为化学能。", "did_research": True,
+     "expect": False},                        # 非时效问题 → 凭常识答不误杀
+    {"id": "ground-no-research-no-guard", "kind": "grounding",
+     "goal": "查2026最新显卡价格", "answer": "大概三千到五千元。", "did_research": False,
+     "expect": False},                        # 没搜过 → 不触发（闸只管"搜了却凭记忆"）
+
+    # ---- 块H 换源策略阶梯：NO_PROGRESS 逐级升 site→browser→ask_user，越界停 ----
+    {"id": "switch-step0-site", "kind": "switch", "step": 0, "expect": "site_filter"},
+    {"id": "switch-step1-browser", "kind": "switch", "step": 1, "expect": "browser"},
+    {"id": "switch-step2-ask-user", "kind": "switch", "step": 2, "expect": "ask_user"},
+    {"id": "switch-step3-exhausted", "kind": "switch", "step": 3, "expect": "none"},
+
+    # ---- 块H Novelty：域名抽取去重/归一（确定性事实，无模型无分数）-------------
+    {"id": "novelty-dedup-strip-www", "kind": "novelty",
+     "text": "见 http://www.JD.com/x 和 https://JD.com/y 还有 http://b.tmall.com/z",
+     "expect": ["b.tmall.com", "jd.com"]},
+    {"id": "novelty-no-links-empty", "kind": "novelty",
+     "text": "纯文本无任何链接，只有文字描述。", "expect": []},
 ]

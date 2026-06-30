@@ -93,9 +93,53 @@ def _check_learn(c):
     return classes == c["expect"]["classes"], got
 
 
+def _check_research_judge(c):
+    # 块H3a/H3c：web_search 结果经模型裁判 → 三态决策（不对题重搜 / 部分污染萃取 / 对题静默）。
+    # 用"假裁判"（注入固定 verdict JSON）锁住决策分类，不连真模型。
+    from agentcore.agent.loop import detect_offtarget_research
+
+    class _Call:
+        def __init__(self, params):
+            self.id, self.name, self.input = "1", "web_search", params
+    msg = detect_offtarget_research(
+        [_Call({"query": c["query"]})], {"1": c["output"]},
+        c["goal"], lambda p, i: c["verdict"], {}, 1)
+    got = ("none" if msg is None else
+           "salvage" if "部分有效" in msg else
+           "offtarget" if "基本不对题" in msg else "other")
+    return got == c["expect"], got
+
+
+def _check_grounding(c):
+    # 块H3c：接地/时效闸（纯正则）——做过搜索+时效敏感+既无引用又无声明 → 触发。
+    from agentcore.agent.loop import detect_ungrounded_answer
+    got = detect_ungrounded_answer(c["goal"], c["answer"], c["did_research"]) is not None
+    return got == c["expect"], got
+
+
+def _check_switch(c):
+    # 块H 换源策略阶梯：NO_PROGRESS 时逐级 site→browser→ask_user，越界 None。
+    from agentcore.agent.loop import switch_strategy_nudge
+    msg = switch_strategy_nudge(c["step"])
+    got = ("none" if msg is None else
+           "site_filter" if "site:" in msg else
+           "browser" if "浏览器直通" in msg else
+           "ask_user" if "ask_user" in msg else "other")
+    return got == c["expect"], got
+
+
+def _check_novelty(c):
+    # 块H Novelty：搜索结果文本 → 去重/归一后的域名集（确定性事实，无模型无分数）。
+    from agentcore.agent.loop import extract_domains
+    got = sorted(extract_domains(c["text"]))
+    return got == c["expect"], {"domains": got}
+
+
 _DISPATCH = {
     "need": _check_need, "evaluate": _check_evaluate, "classify": _check_classify,
     "retry": _check_retry, "deadend": _check_deadend, "learn": _check_learn,
+    "research_judge": _check_research_judge, "grounding": _check_grounding,
+    "switch": _check_switch, "novelty": _check_novelty,
 }
 
 

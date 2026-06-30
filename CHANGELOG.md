@@ -6,7 +6,21 @@
 
 ## [Unreleased]
 
-后续候补：**搜索质量评估 / Research Evaluator**（下一块：判搜索/调研结果的相关性+约束满足、质量低→Need→重搜/改写/换源，补"结果返回但不达标"的质量差距分支，见 docs/ROADMAP.md）；**Learning 运行时接线**（让 active 策略真正影响选路，须再过 Golden）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
+后续候补：**研究检索·上游治本**（option B：web_search 拓宽抓取 20–30 条 + 模型重排/过滤再读，替代直吞 Bing 前 10 噪声；研究墙·墙钟时间上限）；**目标满足驱动的换源**（把换源触发从"零新域名"补成"目标数据点连续缺席"，价格/数字类先做）；**Learning 运行时接线**（让 active 策略真正影响选路，须再过 Golden）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
+
+## [3.48.0] - 2026-06-30
+
+**评估/策略内核 块 H — Research Evaluator（搜索/调研结果质量评估 + 自判重搜）**（ADR 0018）：把"结果返回了但不达标/不对题"这类**质量差距**纳入决策闭环——Hermes 能自判搜索好坏、按需重搜/换源/萃取/停搜诚实兜底。源起真实反馈（小红书"618 睡衣 500 元以内"搜出超预算结果判不出、不会重搜；"2026 最新显卡价格"无限重搜 1500s 交白卷）。**已 Windows 真机验证通过**（diag_blockH 22/22；显卡价格场景实测：重搜达预算后强制停搜、模型诚实综合作答不编造价格）。
+
+### Added
+- **块 H1 事实层**（`evaluators/research.py`）：接管 `web_search`（注册早于 Search），抽**预算约束满足度**（query 解析上限 + 结果解析标价 → `within_budget`）。blocker issue 只在可证伪时触发（有上限/有命中/有标价却无一在内），模糊项只当 signal。
+- **块 H2 决策层**（`loop.py detect_low_quality_research`）：web_search 出 blocker issue → 注入"返回了但不达标，换词/换源重搜"事实促重搜。per-query 计数封顶防同词无限重搜。**喂事实而非硬拦截**。
+- **块 H3a 模型裁判·文字层**（`agent/judge.py` + `detect_offtarget_research`）：provider 注入式裁判（`judge_fn(prompt,images)`，多模态就绪），判语义相关性（"夏季"≠厚秋冬款）。裁判故障/解析失败一律放行不拦。
+- **块 H3b 模型裁判·多模态看图**（`detect_offtarget_answer` + 终局钩子）：对带图最终答案连配图一起判（抓"配图一看就是冬季"），不符→据图重选/重搜（`answer_refined` 每轮封顶一次）。`conversation.py` 把 image 块合进多模态 user 消息真正喂像素。
+- **块 H3c 萃取（三态）+ 接地/时效闸**：裁判升三态（Verdict 加 `use`/`salvageable`）——部分污染→挑出有效项采用并标注来源、**别整批丢、别凭训练记忆硬编**（杀掉旧"请不要采用这些结果"诱因措辞）；基本是垃圾才重搜。`detect_ungrounded_answer`（纯正则零成本）：时效敏感+搜过+无引用无声明→催据来源作答或明确声明可能过时。保守触发不误杀稳定知识。
+- **全局重搜预算 + 止血出口**（`research_max_rounds`，默认 3）：整轮催重搜累计达上限→翻面发一次性"停搜、用现有最相关内容综合作答+声明局限"出口，根治"换关键词绕过 per-query cap→无限重搜交白卷"。
+- **Novelty/Progress + 换源策略阶梯**：`extract_domains` 抽搜索结果域名（确定性去重/归一，非模糊分）作 Novelty；Progress 两态——有新域名(NEW_INFORMATION)→换词重搜、零新域名(NO_PROGRESS)→`switch_strategy_nudge` 按阶梯换检索方式 `site:`官方/github→浏览器直通→ask_user。守 ADR 0014「Evaluation 禁 score」。
+- 配套：ADR 0018；config `research_refine`/`research_judge`/`research_refine_max`/`research_max_rounds`（构造器默认全关 → 存量行为零变化）；Golden 门扩到 42 条（+14：research_judge 三态 / grounding 闸 / 换源阶梯 / Novelty）；Windows 自测 `scripts/diag_blockH.py`（22 项）。
 
 ## [3.47.0] - 2026-06-30
 
