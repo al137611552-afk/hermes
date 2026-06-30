@@ -232,6 +232,32 @@
     return { folded: true, preview, full: s, total: lines.length, hidden: Math.max(0, lines.length - ml) };
   }
 
+  // 工具结果的结构化评估（块B 事实层，见 docs/adr/0014）→ 一行人读摘要。
+  // eval = {metrics, signals, issues, confidence, score}。有 issues=有问题(warn)，
+  // 否则按是否有 signals 给 ok/中性。返回 null 表示无可展示事实（不渲染）。
+  function formatEval(ev) {
+    if (!ev || typeof ev !== "object") return null;
+    const metrics = ev.metrics || {};
+    const signals = ev.signals || [];
+    const issues = ev.issues || [];
+    const parts = [];
+    // 测试类：N/total 通过最有信息量
+    if (metrics.total != null && metrics.passed != null) {
+      parts.push(`${metrics.passed}/${metrics.total} 通过`);
+    } else if (metrics.hits != null) {
+      parts.push(`命中 ${metrics.hits} 条`);
+    } else if (metrics.exit_code != null) {
+      parts.push(`退出码 ${metrics.exit_code}`);
+    }
+    // 信号补充（最多两条，避免刷屏）
+    signals.slice(0, 2).forEach((s) => { if (!parts.includes(s)) parts.push(s); });
+    if (!parts.length && !issues.length) return null;
+    const level = issues.length ? "warn" : "ok";
+    const text = (issues.length ? "⚠ " : "") + parts.join(" · ") +
+                 (issues.length ? `（${issues.join("；")}）` : "");
+    return { level, text, score: typeof ev.score === "number" ? ev.score : null };
+  }
+
   return {
     summarize, escapeHtml, sessionRowClasses, isBusyState, composerState,
     computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
@@ -239,5 +265,6 @@
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput,
     accumulateUsage, estimateCostUsd, MODEL_PRICING,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
+    formatEval,
   };
 });

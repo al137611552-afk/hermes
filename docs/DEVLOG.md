@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块B：Evaluator 标准化（事实层）
+
+**背景**：块A 搭好契约后，块B 让每个 Skill 把工具原始输出解析成结构化 `Evaluation`（事实），不再散落字符串/退出码。见 [[adr-0014]] + ROADMAP 块B。
+**做了什么**：
+- 新增 `src/agentcore/agent/evaluators/`：`base.py`（Evaluator 协议 + `evaluate()` 调度器 + `score()` 投影）+ 三个 Evaluator——
+  - `CodingEvaluator`：解析测试/构建输出（pytest 摘要 `N passed/failed/errors`、hermes runner `N/M passed`、verify 的 🧪、裸 Traceback/AssertionError）→ metrics{passed,failed,errors,total} + 「测试未全过=blocker」issue。
+  - `SearchEvaluator`：grep/glob/search_code/web_search → metrics{hits} + 空结果信号；**空结果只当事实、不判 blocker**（严重度归 Policy）。
+  - `ShellEvaluator`：`[exit code] N` / stderr / 超时 / 缺程序 / 后台启动 → metrics{exit_code} + 「退出码非零=失败」issue。
+  - 调度优先级：Coding > Search > Shell——「shell 跑 pytest」按内容归 Coding（出 total），而非只出 exit_code。
+- 接线（纯观测，**不参与控制流**）：`loop.py _emit_result` 给能评估的工具结果附 `ev["eval"] = {metrics,signals,issues,confidence,score}`；try/except 包死，评估失败绝不影响工具结果回传。
+- 前端：`web/pure.js` 加 `formatEval(eval)` 纯函数→一行人读摘要（ok/warn 级）；`app.js renderToolResult` 据此在结果下渲染 `.tr-eval` 摘要条；`style.css` 加 ok(绿)/warn(橙) 样式。
+**关键决策**：Score 只是事实投影、**仅 UI 展示用**，`Evaluation` 里不存 score、决策不读它（ADR 决策第 1 条，有测试守 `test_evaluation_has_no_score_field`）。issues 是「默认策略」可被上层 Policy 覆盖，Evaluator 只给合理默认。
+**自检**：新增 `tests/test_evaluators.py` 24 测（三类 Evaluator 各种真实格式 + 调度路由 + Coding 优先 + score 投影 + loop 接线附 eval）；`tests/web/pure.test.js` +5（formatEval）。**全回归绿：Python 46 文件 + 前端 node:test 28，0 失败。**
+**验证状态**：后端事实层 + pure.js formatEval 纯逻辑**本地自检全过**；**前端 `.tr-eval` 摘要条的视觉呈现待 Windows 真机看一眼**（DOM 渲染，Linux headless 看不了）。
+**待做**：块C=Error Taxonomy（把 signals/issues 归到稳定错误分类，作 Failure-Memory/Learning 的 key）。见 ROADMAP。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块A：契约骨架（行为等价重构）
 
 **背景**：crazy 4 块跑通后，要继续叠 Auto-Retry / Failure-Memory / Learning，必须先把散落的"判断"抽成稳定契约（见 [[adr-0014]] `docs/adr/0014-evaluation-policy-architecture.md` + `docs/ROADMAP.md`）。块A=地基：定义契约、把现有判断映射上去，**不引入任何新能力、不改任何行为**。

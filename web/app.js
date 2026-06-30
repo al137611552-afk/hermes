@@ -744,6 +744,18 @@ function renderToolResult(v, data) {
     box.appendChild(btn);
   }
   if (!data.ok) result.classList.add("fail");
+  if (data.eval) {
+    // 块B 事实层：结构化评估摘要（测试通过数 / 命中数 / 退出码 + 问题）。
+    // 纯展示——不参与任何决策（ADR 0014）。
+    const ef = formatEval(data.eval);
+    if (ef) {
+      const chip = document.createElement("div");
+      chip.className = "tr-eval " + ef.level;
+      chip.textContent = ef.text;
+      if (ef.score != null) chip.title = `评估分 ${ef.score}（仅展示，不参与决策）`;
+      box.appendChild(chip);
+    }
+  }
   if (data.image) {
     // 截屏等返回图片的工具：在结果下方展示缩略图
     const img = document.createElement("img");

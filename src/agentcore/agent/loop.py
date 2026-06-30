@@ -392,6 +392,15 @@ class AgentLoop:
     def _emit_result(emit, call, out: tuple[str, bool, list[dict]]) -> None:
         output, ok, blocks = out
         ev = {"id": call.id, "name": call.name, "ok": ok, "output": output}
+        # 块B 事实层：能评估的工具结果附一份结构化 Evaluation（metrics/signals/issues）
+        # + 一个仅展示用的 score。纯观测——不参与任何控制流（ADR 0014 块B）。
+        try:
+            from .evaluators import evaluate, score
+            _ev = evaluate(call.name, output, getattr(call, "input", None))
+            if _ev is not None:
+                ev["eval"] = {**_ev.as_event(), "score": score(_ev)}
+        except Exception:
+            pass   # 评估是锦上添花，绝不能因它影响工具结果回传
         img = next((b for b in blocks if b.get("type") == "image"), None)
         if img:  # 给前端一张缩略图
             src = img["source"]

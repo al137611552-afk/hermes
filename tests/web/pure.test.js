@@ -9,7 +9,40 @@ const {
   resolveTheme, normFontSize, isHelpKey, foldToolOutput,
   accumulateUsage, estimateCostUsd,
   findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
+  formatEval,
 } = require("../../web/pure.js");
+
+test("formatEval：测试通过 → ok 级、N/total 摘要", () => {
+  const r = formatEval({ metrics: { passed: 3, total: 3 }, signals: ["测试全过"], issues: [], score: 1 });
+  assert.equal(r.level, "ok");
+  assert.ok(r.text.includes("3/3 通过"));
+  assert.equal(r.score, 1);
+});
+
+test("formatEval：有 issues → warn 级、带 ⚠ 与问题说明", () => {
+  const r = formatEval({ metrics: { passed: 2, total: 3 }, signals: ["测试失败 1 项"],
+                         issues: ["测试未全过=blocker"], score: 0.2 });
+  assert.equal(r.level, "warn");
+  assert.ok(r.text.startsWith("⚠"));
+  assert.ok(r.text.includes("测试未全过=blocker"));
+});
+
+test("formatEval：检索命中数 / shell 退出码", () => {
+  assert.ok(formatEval({ metrics: { hits: 5 }, signals: [], issues: [] }).text.includes("命中 5 条"));
+  assert.ok(formatEval({ metrics: { exit_code: 0 }, signals: ["退出码 0"], issues: [] }).text.includes("退出码 0"));
+});
+
+test("formatEval：无事实 → null（不渲染）；非对象 → null", () => {
+  assert.equal(formatEval({ metrics: {}, signals: [], issues: [] }), null);
+  assert.equal(formatEval(null), null);
+  assert.equal(formatEval(undefined), null);
+});
+
+test("formatEval：signals 最多取两条，避免刷屏", () => {
+  const r = formatEval({ metrics: {}, signals: ["a", "b", "c", "d"], issues: [] });
+  assert.ok(r.text.includes("a") && r.text.includes("b"));
+  assert.ok(!r.text.includes("c") && !r.text.includes("d"));
+});
 
 test("summarize：短值原样 JSON，超 80 字截断加省略号", () => {
   assert.equal(summarize({ a: 1 }), '{"a":1}');
