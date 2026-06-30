@@ -245,6 +245,88 @@ def test_global_budget_default_three():
     assert inspect.signature(_AL.__init__).parameters["research_max_rounds"].default == 3
 
 
+# ============ Novelty / Progress + 换源策略阶梯（确定性事实，无模型、无分数）============
+def test_extract_domains_dedup_and_strip_www():
+    from agentcore.agent.loop import extract_domains
+    t = "见 http://www.jd.com/x 和 https://JD.com/y 还有 http://b.tmall.com/z 末尾点 http://a.cn."
+    assert extract_domains(t) == {"jd.com", "b.tmall.com", "a.cn"}
+    assert extract_domains("") == set() and extract_domains("无链接纯文本") == set()
+
+
+def test_switch_strategy_ladder_then_none():
+    from agentcore.agent.loop import switch_strategy_nudge
+    s0, s1, s2 = (switch_strategy_nudge(i) for i in range(3))
+    assert s0 and "site:" in s0 and "没带来任何新来源" in s0          # 第0级：站内/官方定向
+    assert s1 and "浏览器直通" in s1                                  # 第1级：浏览器
+    assert s2 and "ask_user" in s2                                    # 第2级：问用户
+    assert switch_strategy_nudge(3) is None and switch_strategy_nudge(-1) is None
+
+
+class _VaryQueryProvider:
+    """每轮都搜、且每轮换 query（绕 per-query cap），永远不对题。"""
+    def __init__(self):
+        self.round = 0
+
+    def stream_chat(self, messages, system=None, tools=None):
+        self.round += 1
+        yield StreamEvent("tool_use", meta={
+            "call": ToolCall(f"c{self.round}", "web_search", {"query": f"显卡价格 q{self.round}"})})
+        yield StreamEvent("done", meta={"stop_reason": "tool_use"})
+
+
+class _SameDomainSearch(Tool):
+    name = "web_search"
+    description = "fake"
+    input_schema = {"type": "object", "properties": {"query": {"type": "string"}}}
+    dangerous = False
+
+    def run(self, params):  # 每轮返回**同一个域名** → 第2轮起零新来源（NO_PROGRESS）
+        return ToolOutput(text="1. 某显卡 ¥4999 http://www.zhongguancun.com.cn/p", blocks=[])
+
+
+class _NewDomainSearch(Tool):
+    name = "web_search"
+    description = "fake"
+    input_schema = {"type": "object", "properties": {"query": {"type": "string"}}}
+    dangerous = False
+
+    def run(self, params):  # 每轮按 query 返回**不同新域名** → 始终 NEW_INFORMATION
+        q = (params or {}).get("query", "x").split()[-1]
+        return ToolOutput(text=f"1. 某显卡 ¥4999 http://{q}.example.com/p", blocks=[])
+
+
+def test_no_progress_escalates_to_switch_strategy():
+    # 反复召回同一域名（零新信息）→ 第2轮起从"换词"升级为按阶梯"换来源"，而非原地换词泛搜
+    prov = _VaryQueryProvider()
+    reg = ToolRegistry([_SameDomainSearch(Path("."))])
+    loop = AgentLoop(prov, reg, PermissionGate(lambda req: None), max_steps=8,
+                     research_refine=True, research_refine_max=1, research_max_rounds=3,
+                     research_judge=lambda p, i: '{"on_target": false, "off": ["都不对题"]}')
+    hints = []
+    loop.run([Message("user", "帮我查2026最新显卡价格")], None,
+             lambda e, d: hints.append(d["text"]) if e == "research_hint" else None)
+    # 第1轮有新域名 → 仍是"换词重搜"（不对题）；第2、3轮零新域名 → 阶梯换源(site→browser)
+    assert "不对题" in hints[0] and "没带来任何新来源" not in hints[0]
+    assert any("site:" in h for h in hints)          # 升到站内/官方定向
+    assert any("浏览器直通" in h for h in hints)       # 再升到浏览器直通
+    assert any("立即停止继续搜索" in h for h in hints)  # 预算用尽仍兜底停搜
+
+
+def test_new_information_keeps_keyword_refine_not_switch():
+    # 每轮都有新域名（NEW_INFORMATION）→ 始终走"换词重搜"，绝不升级为换源策略
+    prov = _VaryQueryProvider()
+    reg = ToolRegistry([_NewDomainSearch(Path("."))])
+    loop = AgentLoop(prov, reg, PermissionGate(lambda req: None), max_steps=8,
+                     research_refine=True, research_refine_max=1, research_max_rounds=3,
+                     research_judge=lambda p, i: '{"on_target": false, "off": ["都不对题"]}')
+    hints = []
+    loop.run([Message("user", "帮我查2026最新显卡价格")], None,
+             lambda e, d: hints.append(d["text"]) if e == "research_hint" else None)
+    research = [h for h in hints if "立即停止继续搜索" not in h]
+    assert research and all("没带来任何新来源" not in h for h in research)  # 有进展 → 不换源
+    assert all("不对题" in h for h in research)                              # 全是换词重搜
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

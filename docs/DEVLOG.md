@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块H：Novelty/Progress + 换源策略阶梯（重搜从"换词"升级为"换源"）
+
+**背景**（与用户+GPT 的架构讨论收敛）：上一条全局预算只是**止血**（一刀切封顶轮数），治不了根——根因是"**换关键词泛搜**"在搜索引擎排序不变时**反复召回同一批站点、零新信息**（用户实测：搜「苹果 水果」仍一堆 Apple 公司结果）。GPT 提的 `expected_gain` 浮点分被否（模型臆测、不可证伪、且违反 ADR 0014「Evaluation 禁 score」），改用**确定性的 Novelty 事实**。核心原则：**Evaluator 只产事实、Policy 才决策**，本就是 ADR 0014 的设计；这次把越权的就地重搜拉回该纪律。见 [[adr-0018]]。
+**做了什么**（`loop.py`，纯逻辑、零模型、零分数）：
+- **Novelty（确定性信号源）**：`extract_domains(text)` 抽搜索结果里的域名（去 www./归一大小写/去重）。per-run `seen_domains` 累积，每轮搜索算**新域名差集**。
+- **Progress（两态，由 Novelty 派生）**：本轮有新域名=`NEW_INFORMATION`、零新域名=`NO_PROGRESS`。**只做两态，不做 REGRESSION**——"结果更差"需质量比较=又引模糊分；留到能挂硬指标（如 within_budget 条数减少）处再补。
+- **换源策略阶梯** `_SEARCH_STRATEGIES` + `switch_strategy_nudge(step)`：`NO_PROGRESS` 且结果仍不达标/不对题时，**不再换词**，按阶梯逐级升级**检索方式**：① `site:`官方/github 定向 → ② 浏览器直通读权威页 → ③ ask_user 问用户；越界（阶梯走完）返回 None，交全局预算止血出口收尾。
+- **Policy 接线**（run 内 H2/H3a 块）：仅当 H2/H3a 判**结果不达标**（rq≠None）时才动作——`NEW_INFORMATION`→沿用"换词重搜"文案（换词仍有进展）；`NO_PROGRESS`→替换为换源阶梯文案、阶梯 +1。仍计入全局预算 `research_max_rounds`，最终仍会停搜兜底。
+**关键决策**：① **用 Novelty 事实替 expected_gain 浮点分**——可证伪（域名差集）、不污染决策层，守住 ADR 0014「Evaluation 禁 score」。② **Progress 决定"换词 vs 换源"，预算决定"搜 vs 停"**——两个正交信号，对应 GPT 的 `NEW_INFORMATION→Retry / NO_PROGRESS→Switch / budget==0→Stop`。③ **换源阶梯先焊死、不预抽象成通用 Search Policy**——Vision/Browser 第二个消费者还没到，按 ADR「别建你不需要的引擎」YAGNI。④ **Issue 生命周期(OPEN→MITIGATED)暂不上**——Novelty+Progress 已覆盖其 80% 价值（"连续 NO_PROGRESS"≈"UNCHANGED"），不为优雅建身份追踪引擎。
+**自检**：`tests/test_research_answer_judge.py` +4（共 17）：`extract_domains` 去重/去 www.、`switch_strategy_nudge` 阶梯 site→browser→ask_user 越界停、`test_no_progress_escalates_to_switch_strategy`（同域名反复→第2轮起升级换源）、`test_new_information_keeps_keyword_refine_not_switch`（每轮新域名→始终换词不换源）。`diag_blockH.py` 扩到 22 项。**全回归绿：Python 55 文件 + 前端 30 + Golden 3 runner(28 case) + 编码守卫，0 失败。**
+**验证状态**：纯逻辑全本地自检。**改了 loop 决策控制流，待 Windows 真机验**——搜"2026最新显卡价格"：看某轮重搜无新来源时，提示是否从"换词"升级为"site:/浏览器直通/问用户"，而非一直换词泛搜。
+**待做**：上游治本（option B 拓宽抓取 20–30 条 + 模型重排过滤再读）仍欠；Issue 生命周期/通用 Search Policy 按需后置。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块H 止血：全局重搜预算（修无限重搜→交白卷）
 
 **背景（真机 bug，用户报）**：搜"2026最新显卡价格"跑了 **1500 秒、仍在重搜、交白卷**（穿透关、web_search 路）。

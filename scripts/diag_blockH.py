@@ -151,6 +151,17 @@ def main():
           _insp.signature(_AL.__init__).parameters.get("research_max_rounds") is not None
           and _insp.signature(_AL.__init__).parameters["research_max_rounds"].default == 3)
 
+    # —— Novelty/Progress + 换源策略阶梯（确定性事实，无模型、无分数）——
+    from agentcore.agent.loop import extract_domains, switch_strategy_nudge
+    check("Novelty 去重：抽域名、去 www.、大小写归一",
+          extract_domains("http://www.JD.com/x https://b.tmall.com/y http://JD.com/z")
+          == {"jd.com", "b.tmall.com"})
+    s0, s1, s2 = (switch_strategy_nudge(i) for i in range(3))
+    check("★换源阶梯：NO_PROGRESS 逐级 site→browser→ask_user，越界停",
+          bool(s0) and "site:" in s0 and "浏览器直通" in s1 and "ask_user" in s2
+          and switch_strategy_nudge(3) is None,
+          "site→browser→ask_user")
+
     ok = all(_results)
     print()
     if ok:
@@ -166,7 +177,10 @@ def main():
               "（不整批丢），以及最终答案是否**带搜到的来源**而非凭记忆（凭记忆答时效问题会被催据来源/声明过时）")
         print("  5) **全局预算止血**：搜『2026最新显卡价格』这类老搜不到的——看是否最多催重搜 research_max_rounds(默认3)"
               "次后**强制停搜、用现有内容综合作答+声明局限**，而不是无限换词重搜交白卷（调 config 的 research_max_rounds）")
-        print("  6) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
+        print("  6) **换源策略阶梯**：同上搜不到时——若某轮重搜**没带来任何新来源**（还是那几个站点），看提示是否"
+              "**从『换词重搜』升级为『换检索方式』**：site:官方/github → 浏览器直通 → ask_user 问用户（逐级升），"
+              "而不是一直换关键词泛搜；有新来源时才继续换词")
+        print("  7) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
         return 0
     failed = len(_results) - sum(_results)
     print(f"===== RESULT: {failed} FAILED （共 {len(_results)} 项）=====")

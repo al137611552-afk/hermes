@@ -330,6 +330,52 @@ def detect_ungrounded_answer(goal, answer_text, did_research):
             "不要让人误以为是当前准确信息。")
 
 
+# ── Novelty / Progress（确定性事实，无模型、无分数）+ 换源策略阶梯 ─────────────
+#
+# 见 docs/adr/0018。重搜空转的根因之一：换关键词泛搜，但搜索引擎排序不变 → 反复
+# 召回同一批站点、零新信息。Novelty = 本轮是否带来**新域名**（可证伪、去重事实，
+# 非 expected_gain 那种模型臆测的浮点分）。Progress 据此二态：
+#   · NEW_INFORMATION（有新域名）→ 还值得换词再搜（沿用 H2/H3a 文案）
+#   · NO_PROGRESS（零新域名）   → 别再换词泛搜，按阶梯换**检索策略/来源**
+# 严守 ADR 0014：探测只产事实（域名差集），是否换/怎么换由这层文案 + 全局预算决定。
+_DOMAIN_RE = re.compile(r"https?://(?:www\.)?([a-z0-9.\-]+\.[a-z]{2,})", re.I)
+
+
+def extract_domains(text: str) -> "set[str]":
+    """从搜索结果文本里抽出现的域名（去 www.、小写），作为 Novelty 的确定性信号源。"""
+    return {m.group(1).lower().rstrip(".") for m in _DOMAIN_RE.finditer(text or "")}
+
+
+# 换源阶梯：泛搜不奏效时**逐级升级检索方式**（不是再换关键词）。先焊死这条具体阶梯，
+# 等 Vision/Browser 等第二个消费者真要复用时再提炼通用 Search Policy（避免预先抽象）。
+_SEARCH_STRATEGIES = (
+    ("site_filter",
+     "改用**站内/官方源定向检索**：在 query 里加 `site:` 限定到权威站点"
+     "（如 `site:` 官网域名、`site:github.com`、知名垂直站/榜单站），"
+     "或直接搜「官方 公告/文档/报价」，绕开泛搜噪声。"),
+    ("browser",
+     "改用**浏览器直通**：用 browser_navigate 打开权威页面（官网/榜单页/电商详情页）"
+     "直接读取，而不是反复泛搜——搜索引擎排序对这个问题已被证明不奏效。"),
+    ("ask_user",
+     "**停止盲搜，改用 ask_user** 向用户确认更精确的限定"
+     "（具体型号/平台/时间范围/可信来源），拿到后再定向检索。"),
+)
+
+
+def switch_strategy_nudge(step: int) -> "str | None":
+    """块H（换源策略）：连续重搜**零新信息**（NO_PROGRESS）→ 按阶梯换检索方式/来源。
+
+    step 从 0 起逐级升级；超出阶梯返回 None（交由全局重搜预算的止血出口收尾）。
+    纯函数、零模型成本。文案明确「换的是检索方式、不是再换关键词」。
+    """
+    if step < 0 or step >= len(_SEARCH_STRATEGIES):
+        return None
+    _name, how = _SEARCH_STRATEGIES[step]
+    return ("[系统观察] 这一轮重搜**没带来任何新来源**（还是之前那几个站点）——"
+            "继续用同样的方式泛搜大概率仍原地打转。" + how +
+            "（换的是**检索方式/来源**，不是再换几个关键词。）")
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -405,6 +451,8 @@ class AgentLoop:
         research_nudged: dict = {}        # 块H2：已就某搜索 query 催过重搜的计数（每 query 封顶）
         research_nudge_count = 0           # 块H2/H3a：**整轮**催重搜总次数（全局预算，防换词绕过 per-query cap）
         research_stopped = False           # 全局预算用尽 → 已发"停搜、综合作答"出口（每轮一次）
+        seen_domains: set[str] = set()     # 换源策略：本轮搜过的全部域名（Novelty 去重事实，判"是否带来新来源"）
+        search_strategy_step = 0           # 换源策略：阶梯当前级（NO_PROGRESS 时逐级 site→browser→ask_user）
         research_goal = _latest_user_text(messages)  # 块H3a：用户目标（裁判判相关性的基准）
         seen_images: list[dict] = []      # 块H3b：本轮模型"看过"的配图块（截图/浏览器图），供终局多模态裁判
         did_research = False              # 块H3b：本轮是否做过研究（web_search/browser_*）——给配图判定划范围
@@ -567,8 +615,14 @@ class AgentLoop:
             # 一次性出口（防无限重搜→1500s 交白卷）。纯观测+注入、try 包死。
             if self.research_refine:
                 try:
-                    searched = any(getattr(c, "name", "") == "web_search" for c in calls)
-                    if searched and not research_stopped:
+                    searched_calls = [c for c in calls if getattr(c, "name", "") == "web_search"]
+                    if searched_calls and not research_stopped:
+                        out_by_id = {r["tool_use_id"]: r.get("content", "") for r in results}
+                        # Novelty/Progress（确定性事实）：本轮搜索带来了**新域名**吗？
+                        round_text = " ".join(
+                            str(out_by_id.get(getattr(c, "id", None), "")) for c in searched_calls)
+                        new_domains = extract_domains(round_text) - seen_domains
+                        seen_domains |= extract_domains(round_text)
                         if research_nudge_count >= max(1, self.research_max_rounds):
                             # 预算用尽：止血出口——停搜、萃取现有、声明局限（贯彻 H3c"优先萃取/声明，不空转"）
                             research_stopped = True
@@ -579,7 +633,6 @@ class AgentLoop:
                             inject_blocks.append({"type": "text", "text": rq})
                             emit("research_hint", {"text": rq})
                         else:
-                            out_by_id = {r["tool_use_id"]: r.get("content", "") for r in results}
                             rq = detect_low_quality_research(calls, out_by_id, research_nudged,
                                                              self.research_refine_max)
                             if rq is None and self.research_judge is not None and research_goal:
@@ -588,6 +641,13 @@ class AgentLoop:
                                     research_nudged, self.research_refine_max)
                             if rq:
                                 research_nudge_count += 1
+                                # Progress=NO_PROGRESS（本轮零新来源）→ 别再换词泛搜，按阶梯换检索方式/来源。
+                                # NEW_INFORMATION（有新域名）→ 沿用 H2/H3a 的"换词重搜"文案（换词仍有进展）。
+                                if not new_domains:
+                                    switch = switch_strategy_nudge(search_strategy_step)
+                                    if switch:
+                                        search_strategy_step += 1
+                                        rq = switch
                                 inject_blocks.append({"type": "text", "text": rq})
                                 emit("research_hint", {"text": rq})
                 except Exception:  # noqa: BLE001
