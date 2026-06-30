@@ -1101,6 +1101,21 @@ body.plan-on .composer::before {
 .prov-del-svc:hover { border-color: #d9534f; color: #d9534f; }
 .prov-item.prov-special { margin-top: 6px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; padding-top: 12px; }
 .br-busy { margin-top: 14px; color: var(--accent); font-size: 13px; }
+/* 浏览器穿透 · 手动安装说明（下载超时时的兜底，命令一键复制） */
+.br-manual { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.br-manual > summary { cursor: pointer; color: var(--accent); font-size: 13px; list-style: none; user-select: none; }
+.br-manual > summary::-webkit-details-marker { display: none; }
+.br-manual > summary:hover { text-decoration: underline; }
+.br-manual-body { margin-top: 8px; }
+.br-cmd-note { margin: 10px 0 4px; color: var(--muted); font-size: 12px; }
+.br-cmd { display: flex; align-items: stretch; gap: 8px; }
+.br-cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: pre;
+  background: var(--code-bg); color: var(--code-fg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; font-family: "Cascadia Code", "Consolas", monospace; font-size: 12.5px; }
+.br-cmd-copy { flex: none; background: transparent; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 6px; padding: 0 12px; cursor: pointer; font-size: 12px; }
+.br-cmd-copy:hover { color: var(--text); border-color: var(--accent); }
+.br-cmd-copy.copied { color: var(--accent); border-color: var(--accent); }
 .ws-changes.collapsed .ws-chg-row,
 .ws-checkpoints.collapsed .ws-chg-row { display: none; }
 .tool-diff {

@@ -2247,18 +2247,47 @@ async function renderBrowserPane() {
   const statusTxt = s.enabled
     ? (s.connected ? `已启用 · 已连上（${s.tools} 个工具）` : (resuming ? "已启用 · 正在继续安装…" : "已启用 · 未连上"))
     : "未启用";
+  // 手动安装说明（点「启用」自动下载 Chrome 约 150MB，网络不好易超时 → 给可一键复制的手动方案）
+  const MANUAL_CMDS = [
+    "npx -y playwright@latest install chrome",
+    "npx -y @playwright/mcp@latest --version",
+  ];
+  const cmdRow = (i, note) =>
+    `<div class="br-cmd-note">${escapeHtml(note)}</div>` +
+    `<div class="br-cmd"><code>${escapeHtml(MANUAL_CMDS[i])}</code>` +
+    `<button class="br-cmd-copy" type="button" data-i="${i}"><span>复制</span></button></div>`;
+  const manualHtml =
+    '<details class="br-manual"><summary>⬇ 下载老是超时 / 想自己手动装？点这里看说明</summary>' +
+    '<div class="br-manual-body">' +
+    '<p class="settings-hint">点「启用」会自动下载 Google Chrome（约 150MB），网络不稳时容易超时失败。' +
+    '你可以改成<b>自己手动装</b>——装好后回来点「启用浏览器穿透」会<b>直接秒连、不再下载</b>。</p>' +
+    '<p class="settings-hint"><b>① 前提：装 Node.js</b>（已装可跳过）。没有就去官网 <b>nodejs.org</b> 下 LTS 版装上，' +
+    '装完<b>重启本应用</b>让它检测到。</p>' +
+    '<p class="settings-hint"><b>② 最省事：直接装一个 Google Chrome 浏览器</b>（官网 <b>google.cn/chrome</b>）。' +
+    '装了系统 Chrome 后，Playwright 会直接复用它，启用时<b>完全不用再下载那 150MB</b>。</p>' +
+    '<p class="settings-hint"><b>③ 或在终端手动跑命令预装</b>（Windows 用 PowerShell；能看到进度、失败可直接重试）：</p>' +
+    cmdRow(0, "下载 / 检测 Chrome —— 已装系统 Chrome 则秒过，否则下载约 150MB") +
+    cmdRow(1, "预热 Playwright MCP server 包 —— 免首次连接时再拉包超时") +
+    '<p class="settings-hint">两条都成功后，回到此页点「启用浏览器穿透」即可连上。' +
+    '若公司网 / 校园网下载特别慢，建议优先用 ② 直接装系统 Chrome。</p>' +
+    '</div></details>';
   provDetailEl.innerHTML =
     '<div class="prov-d-head"><span class="prov-d-title">🌐 浏览器穿透（深度调研）</span></div>' +
     '<p class="settings-hint">让 Agent 真实开浏览器在站内导航 / 点击 / 翻页 / 抽取，突破「只能搜 + 读一级页面」' +
-    '——搜索被污染、深层链接 404 时能像人一样逐层点进去。底层走 Playwright，需本机有 <b>Node.js</b>；' +
-    '首次启用会自动下载浏览器（约 150MB）。</p>' +
+    '——搜索被污染、深层链接 404 时能像人一样逐层点进去。底层走 Playwright 驱动你本机的 <b>Google Chrome</b>，' +
+    '需本机有 <b>Node.js</b>；首次启用会自动下载 / 检测 Chrome（约 150MB，已装系统 Chrome 则秒过）。</p>' +
     `<div class="prov-field"><div class="prov-label">状态</div><div class="prov-fmt">${escapeHtml(statusTxt)}　·　Node：${s.node ? "已检测到" : "未检测到 ⚠"}</div></div>` +
     `<label class="feat-row" style="margin-top:4px"><input type="checkbox" class="feat-ck" id="br-headed"${s.headed ? " checked" : ""}>` +
     '<span class="feat-text"><span class="feat-title">有头·登录态模式</span>' +
     '<span class="feat-desc">弹出<b>可见浏览器</b>：碰到要登录的网站 / 滑块验证，你手动登录·划一次，登录态会<b>保留复用</b>，' +
     '之后 hermes 就以你的已登录身份类人查询——这是绕过反爬的正解（别跟滑块硬刚）。关掉=无头后台跑（快但易撞反爬）。</span></label>' +
     `<div class="model-ops"><button class="br-toggle btn-primary">${s.enabled ? "关闭" : "启用浏览器穿透"}</button></div>` +
-    '<div class="br-busy" hidden>⏳ 安装中…（首次约 150MB，请稍候，别关窗口）</div>';
+    '<div class="br-busy" hidden>⏳ 安装中…（首次约 150MB，请稍候，别关窗口）</div>' +
+    manualHtml;
+  // 手动安装命令的一键复制（复用 copyText + flashCopied，带 WebView2 降级）
+  provDetailEl.querySelectorAll(".br-cmd-copy").forEach((b) => {
+    b.addEventListener("click", () => copyText(MANUAL_CMDS[+b.dataset.i], b));
+  });
   const headedCk = provDetailEl.querySelector("#br-headed");
   if (headedCk) headedCk.addEventListener("change", async () => {
     const r = await window.pywebview.api.set_browser_headed(headedCk.checked);
