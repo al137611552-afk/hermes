@@ -144,6 +144,13 @@ def main():
     check("H3c 非时效问题 → 凭常识答不误杀",
           detect_ungrounded_answer("光合作用原理", "植物把光能转化为化学能。", True) is None)
 
+    # —— 全局重搜预算（止血：防"换关键词"无限重搜→交白卷）——
+    import inspect as _insp
+    from agentcore.agent.loop import AgentLoop as _AL
+    check("★全局重搜预算 research_max_rounds 存在（默认3）",
+          _insp.signature(_AL.__init__).parameters.get("research_max_rounds") is not None
+          and _insp.signature(_AL.__init__).parameters["research_max_rounds"].default == 3)
+
     ok = all(_results)
     print()
     if ok:
@@ -157,7 +164,9 @@ def main():
         print("     （带图答案收尾时多一次视觉模型调用；每轮最多重判一次）")
         print("  4) 萃取+接地（H3c）：搜『2026最新显卡价格』，结果有相关有无关时——看是否**挑出相关的用**"
               "（不整批丢），以及最终答案是否**带搜到的来源**而非凭记忆（凭记忆答时效问题会被催据来源/声明过时）")
-        print("  5) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
+        print("  5) **全局预算止血**：搜『2026最新显卡价格』这类老搜不到的——看是否最多催重搜 research_max_rounds(默认3)"
+              "次后**强制停搜、用现有内容综合作答+声明局限**，而不是无限换词重搜交白卷（调 config 的 research_max_rounds）")
+        print("  6) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
         return 0
     failed = len(_results) - sum(_results)
     print(f"===== RESULT: {failed} FAILED （共 {len(_results)} 项）=====")

@@ -348,6 +348,7 @@ class AgentLoop:
         deadend_threshold: int = 2,
         research_refine: bool = False,
         research_refine_max: int = 1,
+        research_max_rounds: int = 3,
         research_judge=None,
     ) -> None:
         self.provider = provider
@@ -364,6 +365,7 @@ class AgentLoop:
         self.deadend_threshold = deadend_threshold  # 同一条路累计失败 ≥ 此值 → 提示换思路
         self.research_refine = research_refine   # 块H2：联网搜索不达标→提示重搜；False=关
         self.research_refine_max = research_refine_max  # 同一 query 最多催重搜几次（防无限）
+        self.research_max_rounds = research_max_rounds   # **整轮**催重搜总预算；达上限→停搜、综合作答（防换词无限重搜）
         self.research_judge = research_judge     # 块H3a：模型裁判 judge_fn(prompt,images)->str；None=只用H1/H2正则
         import time as _t
         self._sleep = _t.sleep                  # 退避用；测试可替换为 no-op
@@ -401,6 +403,8 @@ class AgentLoop:
         world = WorldState()              # 块E：本轮世界状态（Need 历史 / 死路计数）
         deadend_fps: set[str] = set()     # 块E：已就某指纹提示过换思路（每路一次）
         research_nudged: dict = {}        # 块H2：已就某搜索 query 催过重搜的计数（每 query 封顶）
+        research_nudge_count = 0           # 块H2/H3a：**整轮**催重搜总次数（全局预算，防换词绕过 per-query cap）
+        research_stopped = False           # 全局预算用尽 → 已发"停搜、综合作答"出口（每轮一次）
         research_goal = _latest_user_text(messages)  # 块H3a：用户目标（裁判判相关性的基准）
         seen_images: list[dict] = []      # 块H3b：本轮模型"看过"的配图块（截图/浏览器图），供终局多模态裁判
         did_research = False              # 块H3b：本轮是否做过研究（web_search/browser_*）——给配图判定划范围
@@ -557,20 +561,35 @@ class AgentLoop:
                         emit("deadend_hint", {"text": df})
                 except Exception:  # noqa: BLE001
                     pass
-            # 块H2：联网搜索返回了但不达标（如无一在预算内）→ 提示换词/换源重搜。同上纯观测+注入、try 包死。
+            # 块H2/H3a：联网搜索不达标/不对题 → 提示重搜。**全局预算**封顶（research_max_rounds）：
+            # per-query cap 会被"换关键词"绕过（每换个说法=新 key），故再加一道**整轮总预算**——
+            # 累计催重搜达上限后，**翻面**：不再催搜，强制"停搜、用现有最相关内容综合作答+声明局限"
+            # 一次性出口（防无限重搜→1500s 交白卷）。纯观测+注入、try 包死。
             if self.research_refine:
                 try:
-                    out_by_id = {r["tool_use_id"]: r.get("content", "") for r in results}
-                    rq = detect_low_quality_research(calls, out_by_id, research_nudged,
-                                                     self.research_refine_max)
-                    # H3a：H2 正则未拦时，再过模型裁判判语义相关性（"夏季"≠秋冬款等）
-                    if rq is None and self.research_judge is not None and research_goal:
-                        rq = detect_offtarget_research(
-                            calls, out_by_id, research_goal, self.research_judge,
-                            research_nudged, self.research_refine_max)
-                    if rq:
-                        inject_blocks.append({"type": "text", "text": rq})
-                        emit("research_hint", {"text": rq})
+                    searched = any(getattr(c, "name", "") == "web_search" for c in calls)
+                    if searched and not research_stopped:
+                        if research_nudge_count >= max(1, self.research_max_rounds):
+                            # 预算用尽：止血出口——停搜、萃取现有、声明局限（贯彻 H3c"优先萃取/声明，不空转"）
+                            research_stopped = True
+                            rq = ("[系统观察] 这个问题已**重搜多次仍不理想**，请**立即停止继续搜索**——"
+                                  "用目前已搜到的最相关内容**直接综合作答**，挑出有用的部分；"
+                                  "并明确声明「部分信息可能不全或非最新，建议以实时来源为准」。"
+                                  "不要再重搜，也不要凭空编造。")
+                            inject_blocks.append({"type": "text", "text": rq})
+                            emit("research_hint", {"text": rq})
+                        else:
+                            out_by_id = {r["tool_use_id"]: r.get("content", "") for r in results}
+                            rq = detect_low_quality_research(calls, out_by_id, research_nudged,
+                                                             self.research_refine_max)
+                            if rq is None and self.research_judge is not None and research_goal:
+                                rq = detect_offtarget_research(
+                                    calls, out_by_id, research_goal, self.research_judge,
+                                    research_nudged, self.research_refine_max)
+                            if rq:
+                                research_nudge_count += 1
+                                inject_blocks.append({"type": "text", "text": rq})
+                                emit("research_hint", {"text": rq})
                 except Exception:  # noqa: BLE001
                     pass
             messages.append(Message("user", results + extra_blocks + inject_blocks))

@@ -470,6 +470,7 @@ class Conversation:
             deadend_threshold=res.config.agent.deadend_threshold,
             research_refine=res.config.agent.research_refine,
             research_refine_max=res.config.agent.research_refine_max,
+            research_max_rounds=res.config.agent.research_max_rounds,
             research_judge=self._make_research_judge(provider, res.config.agent.research_judge),
         )
         n_in = len(model_messages)  # 压缩后喂入条数；loop 仅在其后追加新消息
@@ -1188,6 +1189,7 @@ class Conversation:
             deadend_threshold=cfg.agent.deadend_threshold,
             research_refine=cfg.agent.research_refine,
             research_refine_max=cfg.agent.research_refine_max,
+            research_max_rounds=cfg.agent.research_max_rounds,
             research_judge=self._make_research_judge(provider, cfg.agent.research_judge),
         )
         # 子循环抛异常时自动重试一次（附上失败原因），仍失败才回灌主 Agent（FR-11.6b）。

@@ -118,6 +118,7 @@ class AgentConfig(BaseModel):
     deadend_threshold: int = 2         # 同一条路累计失败 ≥ 此值 → 提示换思路（瞬时 IO 不计，归 auto_retry）
     research_refine: bool = True       # 块H2：联网搜索返回了但不达标（如无一在预算内）时提示换词/换源重搜。False=关
     research_refine_max: int = 1       # 同一搜索 query 最多催重搜几次（防无限重搜）
+    research_max_rounds: int = 3        # **整轮**催重搜总预算；达上限→停搜、用现有内容综合作答+声明局限（防换词绕过 per-query cap 无限重搜）
     research_judge: bool = True        # 块H3a：H2 正则拦不住时再过模型裁判判语义相关性（"夏季"≠秋冬款）。
                                        # 每次搜索后多一次模型调用（有成本/延迟）；False=关（只用 H1/H2 正则）
 

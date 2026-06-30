@@ -199,6 +199,52 @@ def test_loop_grounded_answer_no_extra_round():
     assert prov.round == 2
 
 
+# ---- 全局重搜预算：换关键词也不能无限重搜 → 封顶后强制"停搜、综合作答" ----
+class _EndlessSearch:
+    """每轮都搜，且**每轮换个 query**（绕过 per-query cap），结果永远不对题。"""
+    def __init__(self):
+        self.round = 0
+
+    def stream_chat(self, messages, system=None, tools=None):
+        self.round += 1
+        yield StreamEvent("tool_use", meta={
+            "call": ToolCall(f"c{self.round}", "web_search", {"query": f"显卡价格 第{self.round}次尝试"})})
+        yield StreamEvent("done", meta={"stop_reason": "tool_use"})
+
+
+class _AnyQuerySearch(Tool):
+    name = "web_search"
+    description = "fake"
+    input_schema = {"type": "object", "properties": {"query": {"type": "string"}}}
+    dangerous = False
+
+    def run(self, params):
+        return ToolOutput(text="1. 某显卡 ¥4999 中关村行情", blocks=[])
+
+
+def test_global_budget_caps_endless_research():
+    prov = _EndlessSearch()
+    reg = ToolRegistry([_AnyQuerySearch(Path("."))])
+    loop = AgentLoop(prov, reg, PermissionGate(lambda req: None), max_steps=6,
+                     research_refine=True, research_refine_max=1, research_max_rounds=2,
+                     research_judge=lambda p, i: '{"on_target": false, "off": ["都不对题"]}')
+    hints = []
+    loop.run([Message("user", "帮我查2026最新显卡价格")], None,
+             lambda e, d: hints.append(d["text"]) if e == "research_hint" else None)
+    research = [h for h in hints if "停止" not in h]       # 催重搜的
+    stop = [h for h in hints if "立即停止继续搜索" in h]   # 止血出口
+    assert len(research) == 2          # 整轮催重搜被全局预算封到 2 次（换词也不行）
+    assert len(stop) == 1              # 达上限后**恰好一次**"停搜、综合作答"出口
+    # 出口之后不再催重搜：总提示 = 2 催 + 1 停
+    assert len(hints) == 3
+
+
+def test_global_budget_default_three():
+    from agentcore.agent.loop import AgentLoop as _AL
+    import inspect
+    assert inspect.signature(_AL.__init__).parameters["research_max_rounds"].default == 3
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()
