@@ -124,6 +124,8 @@ class AgentConfig(BaseModel):
     design_review: bool = False        # ADR 0019 Architecture Review Mode：规划模式下多角色（Execution⟷Architecture）
                                        # 评审方案、产出四态共识、开工 gate 卡"未决阻塞==0"。默认关（opt-in，引擎已就绪、UI 接线后再默认）
     design_review_max_rounds: int = 3  # 评审最大轮数（防无限互评，同 research_max_rounds 纪律）
+    design_review_models: dict = {}    # 异构路由：reviewer 名→模型档案名（如 {"architecture":"openai/gpt-4o"}）。
+                                       # 空=全部用当前主模型（同模型双角色，离线零成本）；大设计才给某角色配异构档
 
     def resolve_workspace(self) -> Path:
         return Path(self.workspace).expanduser().resolve() if self.workspace else ROOT

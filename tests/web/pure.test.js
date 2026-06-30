@@ -10,7 +10,36 @@ const {
   accumulateUsage, estimateCostUsd,
   findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
   formatEval,
+  reviewGateLabel, decisionsByStatus, decisionNeedsUser,
 } = require("../../web/pure.js");
+
+test("reviewGateLabel：可数文案、绝不百分比（守 ADR 0019 禁 score）", () => {
+  assert.deepEqual(reviewGateLabel(null), { enabled: false, text: "尚未评审" });
+  assert.deepEqual(reviewGateLabel({ can_start: true }), { enabled: true, text: "开始编码" });
+  const locked = reviewGateLabel({ can_start: false, blocking_count: 3 });
+  assert.equal(locked.enabled, false);
+  assert.equal(locked.text, "还有 3 个未决问题");
+  assert.ok(!locked.text.includes("%"));
+  assert.equal(reviewGateLabel({ can_start: false, blocking_count: 0 }).text, "等待签字确认");
+});
+
+test("decisionsByStatus：四态分组、非法 status 归 Open", () => {
+  const g = decisionsByStatus([
+    { id: "a", status: "Accepted" }, { id: "b", status: "NeedUser" },
+    { id: "c", status: "魔幻" },
+  ]);
+  assert.equal(g.Accepted.length, 1);
+  assert.equal(g.NeedUser.length, 1);
+  assert.equal(g.Open.length, 1);          // 非法 status 落 Open
+  assert.equal(g.Rejected.length, 0);
+});
+
+test("decisionNeedsUser：NeedUser 或带 blocking → 需用户拍板", () => {
+  assert.equal(decisionNeedsUser({ status: "NeedUser" }), true);
+  assert.equal(decisionNeedsUser({ status: "Accepted", blocking: ["x"] }), true);
+  assert.equal(decisionNeedsUser({ status: "Accepted", blocking: [] }), false);
+  assert.equal(decisionNeedsUser(null), false);
+});
 
 test("formatEval：测试通过 → ok 级、N/total 摘要", () => {
   const r = formatEval({ metrics: { passed: 3, total: 3 }, signals: ["测试全过"], issues: [], score: 1 });

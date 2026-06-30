@@ -261,6 +261,40 @@
     return { level, text, score: typeof ev.score === "number" ? ev.score : null };
   }
 
+  // ── ADR 0019 方案评审面板：纯逻辑（DOM 由 app.js 渲染）─────────────────
+  const REVIEW_STATUSES = ["Accepted", "Rejected", "Deferred", "NeedUser", "Open"];
+  const REVIEW_LABELS = {
+    Accepted: "Accepted（采纳）", Rejected: "Rejected（否决）",
+    Deferred: "Deferred（后置）", NeedUser: "Need User Decision（待你拍板）",
+    Open: "Open（仍在评审）",
+  };
+
+  // 把 gate 状态译成"开工按钮"的 UI 态：能否点 + 文案。**绝不出现百分比**（守 ADR 0014/0019）。
+  function reviewGateLabel(gate) {
+    if (!gate) return { enabled: false, text: "尚未评审" };
+    if (gate.can_start) return { enabled: true, text: "开始编码" };
+    const n = gate.blocking_count || 0;
+    return { enabled: false,
+             text: n > 0 ? `还有 ${n} 个未决问题` : "等待签字确认" };
+  }
+
+  // 决策按四态分组（Open 垫底），供面板分区渲染。
+  function decisionsByStatus(decisions) {
+    const groups = {};
+    REVIEW_STATUSES.forEach((s) => { groups[s] = []; });
+    (decisions || []).forEach((d) => {
+      const s = REVIEW_STATUSES.includes(d.status) ? d.status : "Open";
+      groups[s].push(d);
+    });
+    return groups;
+  }
+
+  // 一个决策是否还"挂着未决"（NeedUser 或带未澄清 blocking）→ 面板高亮提示用户拍板。
+  function decisionNeedsUser(d) {
+    return !!d && (d.status === "NeedUser" ||
+                   (Array.isArray(d.blocking) && d.blocking.length > 0));
+  }
+
   return {
     summarize, escapeHtml, sessionRowClasses, isBusyState, composerState,
     computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
@@ -269,5 +303,6 @@
     accumulateUsage, estimateCostUsd, MODEL_PRICING,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval,
+    REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
   };
 });

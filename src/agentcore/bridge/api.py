@@ -932,6 +932,29 @@ class Api:
         """切换当前活动对话的规划模式（FR-11.5）。"""
         return {"ok": True, "plan_mode": self.active.set_plan_mode(on), "cid": self.active.cid}
 
+    # ---- 方案评审（ADR 0019 Architecture Review Mode）-----------------------
+
+    def start_design_review(self, proposal_text: "str | None" = None) -> dict:
+        """对当前方案（缺省取 notes）跑多角色评审，返回四态共识 + 开工 gate。"""
+        return self.active.start_design_review(proposal_text)
+
+    def get_design_review(self) -> dict:
+        """取当前评审状态（共识/gate/决策），未开始则 ok=False。"""
+        return self.active.get_design_review()
+
+    def resolve_decision(self, decision_id: str, status: str,
+                         current_choice: "str | None" = None) -> dict:
+        """用户拍板一个决策（设四态/定稿/清未决，作废旧签字）。"""
+        return self.active.resolve_decision(decision_id, status, current_choice)
+
+    def sign_off_design_review(self) -> dict:
+        """用户签字确认开工（gate 仍复核未决阻塞==0）。"""
+        return self.active.sign_off_design_review()
+
+    def can_start_coding(self) -> dict:
+        """开工 gate：未决阻塞==0 且已签字。"""
+        return {"can_start": self.active.can_start_coding(), "cid": self.active.cid}
+
     def start_autonomous(self, intent: str, max_rounds: int = 0) -> dict:
         """启动当前活动对话的自主/crazy 模式（无人值守外层目标循环）。用现有「停止」即可中止。"""
         return self.active.start_autonomous(intent, max_rounds or None)

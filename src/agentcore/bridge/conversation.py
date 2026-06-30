@@ -209,6 +209,7 @@ class Conversation:
         self._sub_seq = 0                 # 子 Agent 计数（FR-9.3，前端按 id 归集子任务块）
         self._sub_lock = threading.Lock() # 并行委派时计数安全（FR-10.5）
         self.plan_mode = False            # 规划模式（FR-11.5）：只读勘察+产出方案，运行时态不持久化
+        self._review_session = None       # ADR 0019：规划模式下的方案评审会话（DesignReviewSession），运行时态
         self.crazy_mode = False           # 自主/crazy 模式（无人值守外层循环），运行时态不持久化
         self._last_turn_hit_max = False   # 上一轮 send_message 是否撞步数上限（crazy 外层据此强制续命）
         self._last_turn_had_inject = False # 上一轮是否有用户中途补充（crazy 外层据此不轻信 [[DONE]]）
@@ -874,6 +875,94 @@ class Conversation:
         """切换规划模式（FR-11.5），返回新状态。"""
         self.plan_mode = bool(on)
         return self.plan_mode
+
+    # ---- ADR 0019：规划模式方案评审（Architecture Review Mode）------------------
+
+    _DECOMPOSE_PROMPT = (
+        "把下面这份方案拆成「架构决策（Decision）」列表，仅输出 JSON 数组，每个决策一项：\n"
+        '[{"id":"短标识","title":"这个决策在定什么","current_choice":"当前选择",'
+        '"alternatives":[{"choice":"备选","tradeoff":"取舍"}],"rationale":"为什么这么选","status":"Open"}]\n'
+        "只抽真正的方向性/架构取舍（存储/框架/范围/拆分等），琐碎实现细节不算。只输出 JSON，不要解释。\n\n方案：\n"
+    )
+
+    def _oneshot_text(self, provider, prompt: str) -> str:
+        """一次性只读补全（无 system/无 tools），同 judge 范式。"""
+        out = []
+        for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
+            if getattr(ev, "type", None) == "text":
+                out.append(ev.text)
+        return "".join(out)
+
+    def _design_review_provider_for(self):
+        """据 config.agent.design_review_models 把 reviewer 名路由到模型档案；缺省=主模型（异构唯一落点）。"""
+        cfg = self.res.config
+        mapping = cfg.agent.design_review_models or {}
+
+        def provider_for(name):
+            profile = mapping.get(name) or self.active_model
+            try:
+                return build_provider(cfg, profile)
+            except Exception:
+                return None                  # 构造失败 → 该角色跳过，不阻断评审
+        return provider_for
+
+    def _review_state(self, ok: bool = True) -> dict:
+        s = self._review_session
+        if s is None:
+            return {"ok": False, "error": "尚未开始评审"}
+        return {"ok": ok, "consensus": s.consensus(), "gate": s.gate(),
+                "stop_reason": (s.last_result or {}).get("stop_reason", ""),
+                "can_start": s.can_start(),
+                "decisions": [{"id": d.id, "title": d.title, "current_choice": d.current_choice,
+                               "status": d.status, "blocking": list(d.blocking)}
+                              for d in s.decisions]}
+
+    def start_design_review(self, proposal_text: "str | None" = None) -> dict:
+        """对当前方案跑多角色评审。proposal_text 缺省取 notes（规划产出）。
+
+        流程：方案文本 → 主模型拆成 Decision JSON → 建 DesignReviewSession → 两角色评审 → 返回四态共识+gate。
+        """
+        from ..agent.design_review import DesignReviewSession, make_review_fn
+        if not self.res.config.agent.design_review:
+            return {"ok": False, "error": "design_review 未启用（config.agent.design_review=false）"}
+        text = (proposal_text or self.get_notes() or "").strip()
+        if not text:
+            return {"ok": False, "error": "没有可评审的方案（先在规划模式产出 notes，或传入 proposal_text）"}
+        try:
+            provider = build_provider(self.res.config, self.active_model)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e)}
+        decisions_json = self._oneshot_text(provider, self._DECOMPOSE_PROMPT + text)
+        session = DesignReviewSession.from_proposal(
+            decisions_json, max_rounds=self.res.config.agent.design_review_max_rounds)
+        if not session.decisions:
+            return {"ok": False, "error": "未能从方案抽出决策（模型输出非预期）",
+                    "raw": decisions_json[:500]}
+        session.review(make_review_fn(self._design_review_provider_for()))
+        self._review_session = session
+        return self._review_state(ok=True)
+
+    def get_design_review(self) -> dict:
+        return self._review_state() if self._review_session else {"ok": False, "error": "尚未开始评审"}
+
+    def resolve_decision(self, decision_id: str, status: str,
+                         current_choice: "str | None" = None) -> dict:
+        """用户拍板一个 NeedUser/未决决策：设四态、可定稿 choice、清 blocking（会作废已有签字）。"""
+        if self._review_session is None:
+            return {"ok": False, "error": "尚未开始评审"}
+        hit = self._review_session.resolve(decision_id, status, current_choice)
+        return self._review_state(ok=hit)
+
+    def sign_off_design_review(self) -> dict:
+        """用户签字确认开工（gate 仍复核未决阻塞==0）。"""
+        if self._review_session is None:
+            return {"ok": False, "error": "尚未开始评审"}
+        self._review_session.sign()
+        return self._review_state(ok=True)
+
+    def can_start_coding(self) -> bool:
+        """开工 gate：未决阻塞==0 且已签字。"""
+        return bool(self._review_session and self._review_session.can_start())
 
     # ---- 自主 / crazy 模式（无人值守外层目标循环）----------------------------
 

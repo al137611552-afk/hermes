@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-06-30 — Architecture Review Mode MVP 第 3 刀：接线（conversation + api + 前端纯逻辑）
+
+- **做了什么**：把引擎/会话接进规划模式与前端 API（后端 + 前端纯逻辑已 headless 验；可见 DOM 面板留 Windows 真机做）。
+  - **conversation.py**：`_review_session` 运行时态 + 方法 `start_design_review`(方案文本→主模型拆 Decision JSON→建 `DesignReviewSession`→两角色评审→返回四态共识+gate)/`get_design_review`/`resolve_decision`/`sign_off_design_review`/`can_start_coding`；
+    `_design_review_provider_for`(据 `config.agent.design_review_models` 把 reviewer 名路由到模型档案，缺省主模型——**异构唯一落点**)；`_oneshot_text`(只读补全，同 judge 范式)。
+  - **api.py**：5 个 passthrough（`start_design_review`/`get_design_review`/`resolve_decision`/`sign_off_design_review`/`can_start_coding`）暴露给前端。
+  - **web/pure.js**：评审面板纯逻辑 `reviewGateLabel`(gate→按钮态，**绝不百分比**)/`decisionsByStatus`(四态分组)/`decisionNeedsUser`/`REVIEW_LABELS`。
+  - **config**：`design_review_models: dict`（reviewer→档案映射，空=同模型双角色离线零成本）。
+- **关键决策**：① 拆方案用主模型一次性 `_oneshot_text`，按 Decision JSON 契约出题；抽不出决策→明确报错带 raw 片段，不硬塞。
+  ② 异构是接线层一个 mapping（`build_provider(cfg, profile)` 据 name 选档），构造失败该角色跳过不阻断。③ 前端按钮文案走 `reviewGateLabel`，断言无 `%`。
+- **自检（headless）**：conversation `test_design_review_end_to_end_wiring`（start→gate 锁→resolve→sign→开，假 provider 不触网）+ disabled 报错；前端 pure +3。
+  全回归绿：conversation **85/85**、design_review 21/21、golden 3/3(50)、config_keys 14/14、delegate 28/28、contract 9/9、前端 **33/33**。
+- **验证状态**：后端接线 + 前端纯逻辑 → Linux headless 已验；**可见 DOM 面板 + 活模型评审质量 + 异构对比 = 需 Windows GUI 真机**；**不定版**。
+
+### Windows 真机验证清单（第 3 刀）
+1. **开开关**：config.yaml `agent.design_review: true`（异构可选 `agent.design_review_models: {architecture: "<另一档名>"}`）。`python -m agentcore.app` 起。
+2. **出方案**：开规划模式，让 Hermes 对一个真任务产出 notes（方案）。
+3. **跑评审**：前端调 `start_design_review`（DOM 面板按钮待建；可先在控制台 `pywebview.api.start_design_review()` 触发）。
+   观察：返回 `decisions`（四态）+ `consensus` 文档 + `gate.reason`（应是"还有 N 个未决"、**无百分比**）。
+4. **看质量**：两角色（Execution 压范围/Architecture 拉天花板）提的 blocking/NeedUser 是否对路、像不像两个不同脑子。
+5. **异构对比**：给 architecture 配另一模型档（`design_review_models`），同方案再跑，看是否提出同模型提不出的反对（错误相关性更低）。
+6. **拍板→开工**：`resolve_decision(id,"Accepted","选定值")` 清未决 → `sign_off_design_review` → `can_start_coding` 应转 true（未决归零+签字前一直 false）。
+7. **DOM 面板（本刀未做，需在 app.js/index.html 建并真机验）**：四态共识分区展示 + 灰/亮「开始编码」按钮（走 `reviewGateLabel`）+ 逐条 NeedUser 拍板控件。
+
+---
+
 ## 2026-06-30 — Architecture Review Mode MVP 第 2 刀（后端）：会话状态机 + 异构路由 seam
 
 - **做了什么**：在引擎之上补两块**可 headless 验**的后端，为 api/前端接线铺路：

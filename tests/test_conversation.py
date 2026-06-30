@@ -1364,6 +1364,57 @@ def test_run_autonomous_replan_off_continues_plainly(tmp: Path):
     assert "crazy_replan" not in events                      # 关掉：不发事件
 
 
+class _ReviewProvider:
+    """假 provider：拆方案时吐 Decision JSON；扮 reviewer 时按角色吐评审 JSON（不碰网络）。"""
+    def stream_chat(self, messages, system=None, tools=None):
+        from agentcore.providers import StreamEvent
+        prompt = str(messages[0].content)
+        if "拆成" in prompt:                                   # 拆方案 → Decision 列表
+            txt = '[{"id":"db","title":"数据库","current_choice":"SQLite","status":"Open"},' \
+                  '{"id":"idx","title":"全文检索","current_choice":"先不做","status":"Open"}]'
+        elif "Execution" in prompt:                            # Execution 评审
+            txt = '[{"id":"idx","status":"Accepted"}]'
+        elif "Architecture" in prompt:                         # Architecture 把 db 升级待拍板
+            txt = '[{"id":"db","status":"NeedUser","add_blocking":["SQLite vs DuckDB 需拍板"]}]'
+        else:
+            txt = "[]"
+        yield StreamEvent("text", txt)
+        yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+
+
+def test_design_review_end_to_end_wiring(tmp: Path):
+    """ADR 0019 接线：start→评审→gate 锁→resolve 拍板→sign→gate 开（假 provider，不触网）。"""
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv.res.config.agent.design_review = True                # 开 opt-in 开关
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _ReviewProvider()
+    try:
+        r = conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
+        assert r["ok"] and len(r["decisions"]) == 2
+        ids = {d["id"]: d for d in r["decisions"]}
+        assert ids["idx"]["status"] == "Accepted"             # Execution 采纳
+        assert ids["db"]["status"] == "NeedUser"              # Architecture 升级待拍板
+        assert r["gate"]["can_start"] is False                # 有 NeedUser → 锁
+        assert "%" not in r["gate"]["reason"]                 # 守禁百分比
+        # 用户拍板 db=SQLite → 清未决 → 签字 → 开工
+        r2 = conv.resolve_decision("db", "Accepted", "SQLite")
+        assert r2["ok"] and r2["gate"]["blocking_count"] == 0
+        assert conv.can_start_coding() is False               # 还没签字
+        r3 = conv.sign_off_design_review()
+        assert r3["can_start"] is True and conv.can_start_coding() is True
+    finally:
+        convmod.build_provider = orig
+
+
+def test_design_review_disabled_returns_error(tmp: Path):
+    api = _api(tmp)
+    api.active.res.config.agent.design_review = False
+    r = api.active.start_design_review("方案")
+    assert r["ok"] is False and "design_review" in r["error"]
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()
