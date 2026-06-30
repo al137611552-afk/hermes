@@ -912,17 +912,19 @@ class Conversation:
             return {"ok": False, "error": "尚未开始评审"}
         return {"ok": ok, "consensus": s.consensus(), "gate": s.gate(),
                 "stop_reason": (s.last_result or {}).get("stop_reason", ""),
+                "reviewed": s.last_result is not None,
                 "can_start": s.can_start(),
                 "decisions": [{"id": d.id, "title": d.title, "current_choice": d.current_choice,
                                "status": d.status, "blocking": list(d.blocking)}
                               for d in s.decisions]}
 
     def start_design_review(self, proposal_text: "str | None" = None) -> dict:
-        """对当前方案跑多角色评审。proposal_text 缺省取 notes（规划产出）。
+        """**第一阶段**：方案文本 → 主模型拆成 Decision JSON → 建会话 → 立即返回（决策可见，未评审）。
 
-        流程：方案文本 → 主模型拆成 Decision JSON → 建 DesignReviewSession → 两角色评审 → 返回四态共识+gate。
+        刻意只做"拆解"这一次模型调用就返回，让前端先把面板亮出来；多角色评审由 `run_design_review`
+        续跑（否则 1 次拆解 + 最多 3 轮×2 角色 = 至多 7 次串行模型调用全压在一个调用里，前端看着像卡死）。
         """
-        from ..agent.design_review import DesignReviewSession, make_review_fn
+        from ..agent.design_review import DesignReviewSession
         if not self.res.config.agent.design_review:
             return {"ok": False, "error": "design_review 未启用（config.agent.design_review=false）"}
         text = (proposal_text or self.get_notes() or "").strip()
@@ -938,8 +940,15 @@ class Conversation:
         if not session.decisions:
             return {"ok": False, "error": "未能从方案抽出决策（模型输出非预期）",
                     "raw": decisions_json[:500]}
-        session.review(make_review_fn(self._design_review_provider_for()))
         self._review_session = session
+        return self._review_state(ok=True)
+
+    def run_design_review(self) -> dict:
+        """**第二阶段**：对已拆解的会话跑多角色评审（最多 3 轮×2 角色），回填四态共识 + gate。"""
+        from ..agent.design_review import make_review_fn
+        if self._review_session is None:
+            return {"ok": False, "error": "尚未拆解方案（先调 start_design_review）"}
+        self._review_session.review(make_review_fn(self._design_review_provider_for()))
         return self._review_state(ok=True)
 
     def get_design_review(self) -> dict:

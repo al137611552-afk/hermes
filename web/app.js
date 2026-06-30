@@ -1354,19 +1354,21 @@ function renderDecisionCard(d) {
   return html + `</div>`;
 }
 
-function renderReviewPanel(state) {
+function renderReviewPanel(state, opts) {
   const el = reviewPanelEl();
   if (!el) return;
   if (!state || !state.ok) { el.hidden = true; el.innerHTML = ""; return; }
   el.hidden = false;
+  const running = !!(opts && opts.running);
   const gate = state.gate || {};
   const lbl = reviewGateLabel(gate);          // {enabled, text}
   const groups = decisionsByStatus(state.decisions || []);
   const parts = [];
   parts.push(`<div class="rv-head"><span class="rv-title">架构评审</span>` +
     `<span class="rv-actions">` +
-    `<button class="rv-btn" data-rv="refresh" title="重新拉取评审状态">↻</button>` +
+    `<button class="rv-btn" data-rv="rerun" title="对已拆解的决策重新跑一轮评审">↻</button>` +
     `<button class="rv-btn" data-rv="close" title="收起面板">✕</button></span></div>`);
+  if (running) parts.push(`<div class="rv-running">⏳ 多角色评审进行中…（拆出 ${(state.decisions || []).length} 项决策，正在收敛）</div>`);
   parts.push(`<div class="rv-gate ${lbl.enabled ? "ok" : "blocked"}">` +
     `<button class="rv-start" data-rv="start-coding"${lbl.enabled ? "" : " disabled"}>${escapeHtml(lbl.text)}</button>` +
     (gate.reason ? `<span class="rv-reason">${escapeHtml(gate.reason)}</span>` : "") + `</div>`);
@@ -1396,13 +1398,19 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
   const v = activeView();
   if (!v || !window.pywebview) return;
   if (!v.planMode) { showToast("先开规划模式产出方案，再发起架构评审"); return; }
-  showToast("正在拆解方案并多角色评审…");
+  showToast("正在拆解方案…");
   reviewBtn.classList.add("busy");
   try {
+    // 第一阶段：拆解（一次模型调用）→ 立刻把面板亮出来，决策可见
     const st = await window.pywebview.api.start_design_review();
-    renderReviewPanel(st);
-    if (!st || !st.ok) showToast(st && st.error ? st.error : "评审未能开始");
-  } catch (e) { showToast("评审失败"); } finally { reviewBtn.classList.remove("busy"); }
+    if (!st || !st.ok) { showToast(st && st.error ? st.error : "评审未能开始"); return; }
+    renderReviewPanel(st, { running: true });
+    showToast(`已拆出 ${(st.decisions || []).length} 项决策，多角色评审中…`);
+    // 第二阶段：跑评审（最多 3 轮×2 角色，耗时较长）→ 回填共识
+    const st2 = await window.pywebview.api.run_design_review();
+    renderReviewPanel(st2 && st2.ok ? st2 : st);
+    if (!st2 || !st2.ok) showToast(st2 && st2.error ? st2.error : "评审过程出错（决策已保留，可点 ↻ 重试）");
+  } catch (e) { showToast("评审失败：" + (e && e.message ? e.message : e)); } finally { reviewBtn.classList.remove("busy"); }
 });
 
 (function bindReviewPanel() {
@@ -1413,7 +1421,14 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
     if (!t || !window.pywebview) return;
     const act = t.getAttribute("data-rv");
     if (act === "close") { renderReviewPanel(null); return; }
-    if (act === "refresh") { await refreshReview(); return; }
+    if (act === "rerun") {
+      const cur = await window.pywebview.api.get_design_review();
+      if (cur && cur.ok) renderReviewPanel(cur, { running: true });
+      const st = await window.pywebview.api.run_design_review();
+      renderReviewPanel(st && st.ok ? st : cur);
+      if (!st || !st.ok) showToast(st && st.error ? st.error : "评审出错");
+      return;
+    }
     if (act === "sign") { renderReviewPanel(await window.pywebview.api.sign_off_design_review()); return; }
     if (act === "start-coding") {
       const r = await window.pywebview.api.can_start_coding();

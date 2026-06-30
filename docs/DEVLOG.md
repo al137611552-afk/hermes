@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-07-01 — 修：架构评审「按钮一直闪、面板不出」（拆成两阶段）
+
+- **症状**：点「架构评审」按钮，按钮一直转、右侧不出面板、像卡死。
+- **根因**：`start_design_review` 在**一次调用里**串行跑满 1 次拆解 + 最多 3 轮×2 角色 = **至多 7 次阻塞模型调用**才返回。pywebview 把它丢到工作线程（窗口不冻、按钮一直 busy），但前端 `await` 一直挂着、面板要等全部跑完才渲染——慢模型下几十秒到几分钟，看着就是没反应。
+- **修法（两阶段）**：
+  - **conversation.py**：`start_design_review` 只做「拆解」一次调用就返回（决策可见、`reviewed=false`）；新增 `run_design_review()` 续跑多角色评审回填四态。`_review_state` 加 `reviewed` 字段。
+  - **api.py**：加 `run_design_review` passthrough。
+  - **app.js**：点击改两步——先 `start`(快) → 立刻 `renderReviewPanel(st,{running:true})` 把面板+「⏳ 评审进行中」横幅亮出来 → 再 `run`(慢) 回填；`↻` 改为「对已拆解决策重跑一轮评审」（带 running 横幅）；出错保留决策、提示可重试。
+  - **style.css**：`.rv-running` 金色提示条。
+- **附带诊断价值**：现在「面板始终不出」=卡在拆解（provider/模型档配置问题）；「面板出了但迟迟无共识」=卡在评审。一眼能分。
+- **自检**：`node --check` 过；wiring 测试改两阶段（start 后断言全 Open 且 reviewed=false → run 后断言四态回填）；全回归绿（conversation 85、design_review 21、contract 9、前端 33、Python 全量 55 套件）。
+- **验证状态**：留 Windows 真机（重点：点按钮后**几秒内**面板就应出现+「评审中」横幅，不再像卡死）。**不定版**。
+
+---
+
 ## 2026-06-30 — Architecture Review Mode MVP 第 4 刀：DOM 评审面板（可见 UI）
 
 - **做了什么**：把第 3 刀已就绪的 pure.js 纯逻辑 + 5 个 api 方法接成右侧工作区里的可见面板。

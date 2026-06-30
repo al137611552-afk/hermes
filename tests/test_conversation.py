@@ -1391,8 +1391,13 @@ def test_design_review_end_to_end_wiring(tmp: Path):
     orig = convmod.build_provider
     convmod.build_provider = lambda cfg, model: _ReviewProvider()
     try:
-        r = conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
-        assert r["ok"] and len(r["decisions"]) == 2
+        # 第一阶段：只拆解，决策可见、尚未评审
+        r0 = conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
+        assert r0["ok"] and len(r0["decisions"]) == 2 and r0["reviewed"] is False
+        assert all(d["status"] == "Open" for d in r0["decisions"])   # 拆完都 Open
+        # 第二阶段：跑多角色评审，回填四态
+        r = conv.run_design_review()
+        assert r["ok"] and r["reviewed"] is True and len(r["decisions"]) == 2
         ids = {d["id"]: d for d in r["decisions"]}
         assert ids["idx"]["status"] == "Accepted"             # Execution 采纳
         assert ids["db"]["status"] == "NeedUser"              # Architecture 升级待拍板
