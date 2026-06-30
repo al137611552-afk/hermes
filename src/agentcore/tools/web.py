@@ -41,7 +41,8 @@ def looks_blocked(text: str, is_html: bool) -> "str | None":
         return "正文几乎为空（疑似 JS 动态渲染，HTTP 抓不到内容）"
     return None
 DEFAULT_FETCH_CHARS = 20_000     # web_fetch 默认输出字符上限
-MAX_RESULTS_CAP = 10             # 单次搜索条数硬上限
+MAX_RESULTS_CAP = 10             # **返回给模型**的条数硬上限
+_WIDEN_COUNT = 30                # **宽召回**候选池大小（多抓、再重排过滤，治"直吞前 N 噪声"）
 _ENGINES = ("bing", "duckduckgo")
 
 
@@ -129,6 +130,63 @@ def parse_ddg_lite(page: str) -> list[dict]:
     return out
 
 
+# ---- 纯函数：宽召回结果的确定性重排 / 去重 / 控源多样性（option B 治本，无模型、无分数）----
+
+def _domain_of(url: str) -> str:
+    m = re.match(r"https?://(?:www\.)?([^/]+)", url or "", re.I)
+    return m.group(1).lower() if m else ""
+
+
+def _query_terms(query: str) -> list[str]:
+    """按空白/常见分隔切词（中英混排够用：中文用户多用空格分词，如「苹果 水果」）。"""
+    return [t for t in re.split(r"[\s,，、;；/|]+", (query or "").lower()) if t]
+
+
+def rerank_results(query: str, results: list[dict], top_n: int, per_domain_cap: int = 2) -> list[dict]:
+    """对宽召回结果做**确定性**重排+去重+控源多样性，返回 top_n（option B 核心）。
+
+    打分 = 查询词**覆盖度**（标题命中权重更高）——多词全覆盖的结果（如「苹果 水果」同时含两词的
+    营养页）排到只覆盖单词的（只含「苹果」的 Apple 公司页）前面，治搜索引擎排序跑偏。
+    每域名最多 `per_domain_cap` 条（避免单站霸屏、提升来源多样性，直接利好 Novelty）；去重完全相同 URL；
+    分相同按原序稳定。配额没填满 top_n 时用被压的高分项补足。**纯函数**：只排不抓，便于单测/Golden。
+    """
+    terms = _query_terms(query)
+    seen_url: set[str] = set()
+    scored: list[tuple] = []
+    for i, r in enumerate(results or []):
+        url = (r.get("url") or "").strip()
+        if not url or url in seen_url:
+            continue
+        seen_url.add(url)
+        title = (r.get("title") or "").lower()
+        snip = (r.get("snippet") or "").lower()
+        if terms:
+            in_title = sum(1 for t in terms if t in title)
+            in_any = sum(1 for t in terms if t in title or t in snip)
+            score = in_any * 10 + in_title * 3 + (1 if snip else 0)
+        else:
+            score = 0
+        scored.append((-score, i, r))     # -score：分降序；i：原序稳定兜底
+    scored.sort(key=lambda x: (x[0], x[1]))
+    out: list[dict] = []
+    overflow: list[dict] = []
+    per_domain: dict[str, int] = {}
+    for _s, _i, r in scored:
+        d = _domain_of(r.get("url", ""))
+        if per_domain.get(d, 0) >= max(1, per_domain_cap):
+            overflow.append(r)           # 同域超额：先压住，配额不够再补
+            continue
+        per_domain[d] = per_domain.get(d, 0) + 1
+        out.append(r)
+        if len(out) >= top_n:
+            return out
+    for r in overflow:                   # 多样性配额没填满 → 用高分溢出项补足 top_n
+        if len(out) >= top_n:
+            break
+        out.append(r)
+    return out
+
+
 class _TextExtractor(HTMLParser):
     """HTML → 可读正文：跳过 script/style/noscript，块级标签换行，抓 <title>。"""
     _SKIP = {"script", "style", "noscript", "svg", "template"}
@@ -185,8 +243,8 @@ def extract_text(page: str) -> tuple[str, str]:
 class WebSearchTool(Tool):
     name = "web_search"
     description = (
-        "联网搜索（只读，免确认）：返回若干条「标题/URL/摘要」。适合查文档、报错信息、"
-        "库用法、近期事实。拿到结果后用 web_fetch 读具体页面正文。"
+        "联网搜索（只读，免确认）：返回若干条「标题/URL/摘要」（已宽召回后按相关性重排、控源多样、去重）。"
+        "适合查文档、报错信息、库用法、近期事实。拿到结果后用 web_fetch 读具体页面正文。"
     )
     input_schema = {
         "type": "object",
@@ -205,7 +263,9 @@ class WebSearchTool(Tool):
     def _search_one(self, engine: str, query: str) -> list[dict]:
         q = urllib.parse.quote(query)
         if engine == "bing":
-            _, page, _ = _http_get(f"https://www.bing.com/search?q={q}", self._timeout)
+            # 宽召回：count=N 多抓候选，交给 rerank_results 重排过滤，而非直吞前几条
+            _, page, _ = _http_get(
+                f"https://www.bing.com/search?q={q}&count={_WIDEN_COUNT}", self._timeout)
             return parse_bing(page)
         _, page, _ = _http_get(f"https://lite.duckduckgo.com/lite/?q={q}", self._timeout)
         return parse_ddg_lite(page)
@@ -229,8 +289,10 @@ class WebSearchTool(Tool):
                 errors.append(f"{eng}: {e}")
                 continue
             if results:
-                lines = [f"[搜索结果·{eng}] {query}"]
-                for i, r in enumerate(results[:n], 1):
+                # 宽召回后**确定性重排+去重+控源多样性**，再取 top-n（治"直吞前几条噪声/单站霸屏"）
+                ranked = rerank_results(query, results, n)
+                lines = [f"[搜索结果·{eng}] {query}（已按相关性重排、控源多样，自 {len(results)} 条候选选 {len(ranked)} 条）"]
+                for i, r in enumerate(ranked, 1):
                     lines.append(f"{i}. {r['title']}\n   {r['url']}"
                                  + (f"\n   {r['snippet']}" if r["snippet"] else ""))
                 return "\n".join(lines)

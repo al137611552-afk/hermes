@@ -16,6 +16,7 @@ from agentcore.tools import build_registry  # noqa: E402
 from agentcore.tools.base import Tool, ToolError  # noqa: E402
 from agentcore.tools.web import (  # noqa: E402
     WebSearchTool, bing_real_url, extract_text, looks_blocked, parse_bing, parse_ddg_lite,
+    rerank_results,
 )
 
 
@@ -72,6 +73,45 @@ def test_extract_text_strips_script_keeps_title():
     assert title == "测试页"
     assert "标题一" in text and "第一段 内容。" in text and "第二段" in text
     assert "不该出现" not in text and "color:red" not in text
+
+
+def test_rerank_coverage_lifts_multi_term_match():
+    # "苹果 水果"：同时含两词的营养页应排到只含"苹果"的 Apple 公司页前面（治排序跑偏）
+    cands = [
+        {"title": "Apple 苹果官网 iPhone", "url": "https://apple.com/cn", "snippet": "Apple 公司产品"},
+        {"title": "苹果新品发布", "url": "https://apple.com.cn/news", "snippet": "苹果 iPhone 发布会"},
+        {"title": "苹果的营养价值", "url": "https://jiankang.com/apple", "snippet": "苹果这种水果富含维生素"},
+    ]
+    out = rerank_results("苹果 水果", cands, top_n=3)
+    assert out[0]["url"] == "https://jiankang.com/apple"   # 覆盖"苹果"+"水果" → 居首
+
+
+def test_rerank_per_domain_cap_and_dedup():
+    cands = [
+        {"title": "A1", "url": "https://x.com/1", "snippet": "苹果 水果 甜"},
+        {"title": "A2", "url": "https://x.com/2", "snippet": "苹果 水果 脆"},
+        {"title": "A3", "url": "https://x.com/3", "snippet": "苹果 水果 香"},
+        {"title": "B1", "url": "https://y.com/1", "snippet": "苹果 水果"},
+        {"title": "dup", "url": "https://x.com/1", "snippet": "苹果 水果 甜"},  # 完全重复 URL
+    ]
+    out = rerank_results("苹果 水果", cands, top_n=3, per_domain_cap=2)
+    urls = [r["url"] for r in out]
+    assert urls.count("https://x.com/1") == 1                       # 去重
+    assert sum(1 for u in urls if u.startswith("https://x.com")) == 2  # 单域封顶 2（名额够时严格）
+    assert "https://y.com/1" in urls                                # 多样性纳入别的域
+
+
+def test_rerank_keeps_results_when_no_term_match():
+    # 无词命中也不能把结果清空（保证 auto_chain 等存量行为不被重排吃掉）
+    out = rerank_results("zzz", [{"title": "T", "url": "https://u", "snippet": "S"}], top_n=3)
+    assert len(out) == 1 and out[0]["url"] == "https://u"
+
+
+def test_rerank_overflow_fills_when_diversity_short():
+    # 全同域、top_n>cap：配额只放 cap 条会不足 top_n → 用溢出高分项补足
+    cands = [{"title": f"T{i}", "url": f"https://x.com/{i}", "snippet": "苹果"} for i in range(5)]
+    out = rerank_results("苹果", cands, top_n=4, per_domain_cap=2)
+    assert len(out) == 4   # 不因单域封顶而少给
 
 
 def test_search_tool_validation_and_auto_chain():
