@@ -135,11 +135,38 @@ def _check_novelty(c):
     return got == c["expect"], {"domains": got}
 
 
+def _check_consensus_gate(c):
+    # ADR 0019：开工 gate = 可数事实"未决阻塞==0" 且 用户签字。绝不换算百分比。
+    # case 给 decisions（[{id,status,blocking}]）+ signed → 期望 can_start（locked/open）。
+    from agentcore.agent.design_review import Decision, gate_status
+    ds = [Decision(id=d["id"], title=d["id"], status=d.get("status", "Open"),
+                   blocking=list(d.get("blocking", []))) for d in c["decisions"]]
+    g = gate_status(ds, user_signed=c["signed"])
+    assert "%" not in g["reason"]                       # 活性：门理由里出现百分比即回归
+    got = "open" if g["can_start"] else "locked"
+    return got == c["expect"], {"got": got, "blocking": g["blocking_count"]}
+
+
+def _check_review_stop(c):
+    # ADR 0019：评审停止条件全部可证伪、可数（轮数 / 零新增 blocking / 连两轮只改措辞）。
+    from agentcore.agent.design_review import Decision, round_snapshot, should_stop
+    rounds = [round_snapshot([Decision(id=d["id"], title=d["id"],
+                                       current_choice=d.get("choice", "x"),
+                                       status=d.get("status", "Open"),
+                                       blocking=list(d.get("blocking", [])))
+                              for d in snap])
+              for snap in c["rounds"]]
+    stop, reason = should_stop(rounds, max_rounds=c.get("max_rounds", 3))
+    got = reason if stop else "continue"
+    return got == c["expect"], got
+
+
 _DISPATCH = {
     "need": _check_need, "evaluate": _check_evaluate, "classify": _check_classify,
     "retry": _check_retry, "deadend": _check_deadend, "learn": _check_learn,
     "research_judge": _check_research_judge, "grounding": _check_grounding,
     "switch": _check_switch, "novelty": _check_novelty,
+    "consensus_gate": _check_consensus_gate, "review_stop": _check_review_stop,
 }
 
 

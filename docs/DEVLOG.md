@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-06-30 — Architecture Review Mode MVP 第 1 刀：评审引擎（纯逻辑，ADR 0019 v2）
+
+- **做了什么**：用户绿灯后开工。先把 ADR 0019 跑了一轮真实评审收敛成 v2（GPT proposal → Claude 做 Execution+Architecture review → Consensus），
+  再实现**纯逻辑评审引擎** `src/agentcore/agent/design_review.py`：`Decision` 对象 + 四态共识 + 可数 gate + 可证伪停止条件 + 两角色 directive + 注入式 `review_fn`（同 judge 范式）。
+- **关键决策（ADR v2 Consensus）**：① **评审单位=Decision 对象**（`id/title/current_choice/alternatives/rationale/status`），不评文档措辞。
+  ② **四态共识=Decision.status**（`Accepted/Rejected/Deferred/NeedUser`）——①③合一，一个对象搞定评审对象+共识+ADR 渲染。
+  ③ **开工 gate 卡可数 `count_blocking==0` 且签字**，`gate_status.reason` 显式断言禁含 `%`（活性自检）。
+  ④ **停止条件三选一全可数**：`max_rounds` / `no_new_blocking`（零新增阻塞）/ `wording_only`（连两轮架构签名不变、只改措辞，签名 `id|choice|status` 不含 rationale/blocking）。
+  ⑤ **两对冲角色 Execution⟷Architecture**（Execution 取代虚的 Simplicity，问"48h 能做吗/会改 100 文件吗/更小 MVP/Golden 怎么验"）。
+- **自检**：`tests/test_design_review.py` 14/14（含端到端注入假 review_fn、评审员故障被吞不中断、wording_only 真分支）；
+  Golden 新增 2 kind `consensus_gate`/`review_stop` 共 8 例（42→**50**，含"NeedUser/有阻塞/没签字→locked、干净+签字→open"与四种停止）。
+  config 加 `design_review`（默认 **False**，opt-in）/`design_review_max_rounds=3`。全回归绿：Python 全绿 + Golden 50/50 + 前端 30/30。
+- **验证状态**：纯逻辑、无 GUI、未接活循环 → Linux 已完整自检通过；**不定版**（功能未完成）。
+- **遗留（下一刀，需 Windows 验）**：① conversation.py/api 接线——plan_mode 下从 proposal 抽 Decision、跑 `run_review`、产出共识、gate 控"开始编码"；
+  ② 前端 UI——四态共识展示 + 灰/亮开工按钮 + 用户签字/逐条拍板 NeedUser；③ reviewer 是否升级为可读代码的 delegate Role（让 Execution 能 grep "会改几个文件"）。
+
+---
+
 ## 2026-06-30 — 立项草案：Architecture Review Mode（规划模式多角色方案评审，ADR 0019）
 
 - **做了什么**：纯文档立项——`docs/adr/0019-design-review-mode.md`（草案）。源起用户在外部用两模型来回讨论方案体验更好，

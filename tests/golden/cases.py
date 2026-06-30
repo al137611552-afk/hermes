@@ -11,6 +11,8 @@
 - "grounding" : 答案接地/时效闸（块H3c detect_ungrounded_answer：时效敏感+搜过+无引用无声明→催）
 - "switch"    : 换源策略阶梯（块H switch_strategy_nudge：NO_PROGRESS 逐级 site→browser→ask_user）
 - "novelty"   : 搜索结果 → 域名集（块H extract_domains：确定性去重/归一，Novelty 信号源）
+- "consensus_gate": 开工 gate（ADR 0019 gate_status：未决阻塞==0 且签字→open，否则 locked；门理由禁含百分比）
+- "review_stop"   : 评审停止条件（ADR 0019 should_stop：max_rounds / no_new_blocking / wording_only / continue）
 
 这是 G（Learning）改 Need→Decision 映射前必须先过的门：任一改动让某条偏离期望即回归。
 新增能力时**追加**语料、不改既有期望（除非确是有意的行为变更，需同步说明）。
@@ -163,4 +165,31 @@ CASES = [
      "expect": ["b.tmall.com", "jd.com"]},
     {"id": "novelty-no-links-empty", "kind": "novelty",
      "text": "纯文本无任何链接，只有文字描述。", "expect": []},
+
+    # ---- ADR 0019 开工 gate：可数事实"未决阻塞==0"且签字，绝不百分比 ------------
+    {"id": "gate-needuser-locked", "kind": "consensus_gate", "signed": True,
+     "decisions": [{"id": "d1", "status": "NeedUser"}], "expect": "locked"},   # 待用户拍板 → 锁
+    {"id": "gate-open-blocking-locked", "kind": "consensus_gate", "signed": True,
+     "decisions": [{"id": "d1", "status": "Accepted", "blocking": ["还没定"]}],
+     "expect": "locked"},                                                      # 有未决阻塞 → 锁
+    {"id": "gate-unsigned-locked", "kind": "consensus_gate", "signed": False,
+     "decisions": [{"id": "d1", "status": "Accepted"}], "expect": "locked"},   # 零阻塞但没签字 → 锁
+    {"id": "gate-clean-signed-open", "kind": "consensus_gate", "signed": True,
+     "decisions": [{"id": "d1", "status": "Accepted"}, {"id": "d2", "status": "Deferred"},
+                   {"id": "d3", "status": "Rejected"}], "expect": "open"},     # 零阻塞+签字 → 开
+
+    # ---- ADR 0019 评审停止条件：可证伪、可数 ------------------------------------
+    {"id": "stop-max-rounds", "kind": "review_stop", "max_rounds": 3,
+     "rounds": [[{"id": "d1", "blocking": ["q"]}]] * 3, "expect": "max_rounds"},
+    {"id": "stop-no-new-blocking", "kind": "review_stop", "max_rounds": 9,
+     "rounds": [[{"id": "d1", "blocking": ["q1"]}], [{"id": "d1", "blocking": ["q1"]}]],
+     "expect": "no_new_blocking"},                                             # 第二轮零新增 → 停
+    {"id": "stop-wording-only", "kind": "review_stop", "max_rounds": 9,
+     "rounds": [[{"id": "d1", "choice": "X", "blocking": ["q1"]}],
+                [{"id": "d1", "choice": "X", "blocking": ["q1", "q2"]}],
+                [{"id": "d1", "choice": "X", "blocking": ["q1", "q2", "q3"]}]],
+     "expect": "wording_only"},                                               # 签名不变、blocking 仍增 → 只改措辞
+    {"id": "stop-continue-new-blocking", "kind": "review_stop", "max_rounds": 9,
+     "rounds": [[{"id": "d1", "blocking": ["q1"]}], [{"id": "d1", "blocking": ["q1", "q2"]}]],
+     "expect": "continue"},                                                    # 仍有新增阻塞 → 继续评
 ]
