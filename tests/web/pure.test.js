@@ -38,6 +38,17 @@ test("formatEval：无事实 → null（不渲染）；非对象 → null", () =
   assert.equal(formatEval(undefined), null);
 });
 
+test("formatEval：失败附错误分类标签（块C）", () => {
+  const r = formatEval({ metrics: { exit_code: 1 }, signals: ["退出码 1"],
+                         issues: ["退出码非零=失败"], error_classes: ["transient_io"], score: 0.2 });
+  assert.ok(r.text.includes("[transient_io]"));
+});
+
+test("formatEval：无错误分类时不加标签", () => {
+  const r = formatEval({ metrics: { passed: 3, total: 3 }, signals: ["测试全过"], issues: [] });
+  assert.ok(!r.text.includes("["));
+});
+
 test("formatEval：signals 最多取两条，避免刷屏", () => {
   const r = formatEval({ metrics: {}, signals: ["a", "b", "c", "d"], issues: [] });
   assert.ok(r.text.includes("a") && r.text.includes("b"));

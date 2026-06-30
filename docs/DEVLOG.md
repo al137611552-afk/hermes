@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块C：Error Taxonomy（错误分类）
+
+**背景**：块B 出了结构化事实，但"失败"还只是自由文本，无法聚合/当 key。块C 把失败归到稳定分类，作块D 重试判据、块E/G 聚合 key。见 [[adr-0015]] `docs/adr/0015-error-taxonomy.md`。
+**做了什么**：
+- 新增 `src/agentcore/agent/taxonomy.py`：`ErrorClass` 枚举 9 类（TRANSIENT_IO/AUTH/NOT_FOUND/SYNTAX/LOGIC/RESOURCE/AMBIGUOUS/EXTERNAL_BLOCKED/UNKNOWN，与 Need 正交）+ `classify_text()`（正则规则跑文本，按优先级去重）+ `classify(evaluation, output)`（主入口）。
+- **两条纪律**：① 失败判定=`evaluation.issues` 非空，没失败→`[]`（不污染 Failure-Memory，如空检索结果不算失败）；② 有失败必给类，规则没命中→`[UNKNOWN]` 兜底，绝不吞失败。
+- **优先级**：TRANSIENT_IO 最前（最可行动，块D 据此重试）；根因类 NOT_FOUND/SYNTAX 排在表象类 LOGIC 前（import 缺失常是断言失败真因）。
+- 接线（纯观测，不参与控制流）：`loop.py _emit_result` 在 `eval` 里附 `error_classes`；前端 `formatEval` 把 `[transient_io]` 标签缀在摘要条末尾。
+**关键决策**：先规则不先上模型——零成本、确定、可测、可解释；UNKNOWN 占比就是规则盲区的度量，块G 可据此补规则/引模型，对外两函数+枚举形态不变。
+**自检**：新增 `tests/test_taxonomy.py` 20 测（8 类规则 + 优先级 + 失败门控 + UNKNOWN 兜底 + 三类 Evaluator 典型失败端到端 + 枚举完整性）；`tests/web/pure.test.js` +2（分类标签）。**全回归绿：Python 47 文件 + 前端 node:test 30，0 失败。**
+**验证状态**：纯后端逻辑 + pure.js 纯函数本地全自检过；前端标签视觉随块B 摘要条一起待 Windows 验。
+**待做**：块D=Auto-Retry（第一条 `TRANSIENT_IO + Need` → 退避重试硬规则）。见 ROADMAP。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块B：Evaluator 标准化（事实层）
 
 **背景**：块A 搭好契约后，块B 让每个 Skill 把工具原始输出解析成结构化 `Evaluation`（事实），不再散落字符串/退出码。见 [[adr-0014]] + ROADMAP 块B。

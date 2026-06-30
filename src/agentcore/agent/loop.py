@@ -396,9 +396,13 @@ class AgentLoop:
         # + 一个仅展示用的 score。纯观测——不参与任何控制流（ADR 0014 块B）。
         try:
             from .evaluators import evaluate, score
+            from .taxonomy import classify
             _ev = evaluate(call.name, output, getattr(call, "input", None))
             if _ev is not None:
-                ev["eval"] = {**_ev.as_event(), "score": score(_ev)}
+                # 块C：失败时附错误分类（Failure-Memory/Learning 的聚合 key）
+                klasses = [c.value for c in classify(_ev, output)]
+                ev["eval"] = {**_ev.as_event(), "score": score(_ev),
+                              "error_classes": klasses}
         except Exception:
             pass   # 评估是锦上添花，绝不能因它影响工具结果回传
         img = next((b for b in blocks if b.get("type") == "image"), None)

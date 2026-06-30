@@ -253,8 +253,11 @@
     signals.slice(0, 2).forEach((s) => { if (!parts.includes(s)) parts.push(s); });
     if (!parts.length && !issues.length) return null;
     const level = issues.length ? "warn" : "ok";
+    // 块C：失败时把错误分类标签缀在末尾（如 [transient_io]），给人快速根因感
+    const classes = (ev.error_classes || []).filter(Boolean);
+    const tag = classes.length ? ` [${classes.join("/")}]` : "";
     const text = (issues.length ? "⚠ " : "") + parts.join(" · ") +
-                 (issues.length ? `（${issues.join("；")}）` : "");
+                 (issues.length ? `（${issues.join("；")}）` : "") + tag;
     return { level, text, score: typeof ev.score === "number" ? ev.score : null };
   }
 
