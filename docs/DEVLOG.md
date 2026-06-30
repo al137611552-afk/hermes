@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-06-30 — Architecture Review Mode MVP 第 4 刀：DOM 评审面板（可见 UI）
+
+- **做了什么**：把第 3 刀已就绪的 pure.js 纯逻辑 + 5 个 api 方法接成右侧工作区里的可见面板。
+  - **web/index.html**：合成器加「架构评审」按钮 `#review-btn`（✓-on-clipboard 图标，绿调区分 plan-btn）；工作区面板内 `#ws-checkpoints` 后插 `#ws-review` 容器（默认 hidden）。
+  - **web/app.js**：`renderReviewPanel(state)` 渲染——头部(刷新/收起) + gate 横幅(灰/亮「开始编码」按钮走 `reviewGateLabel`，**绝无百分比**) + 签字控件(未决==0 且未签字才出) + 四态分区(`decisionsByStatus`+`REVIEW_LABELS`，左色条区分) + 逐条 NeedUser 拍板控件(四态下拉 + 定稿输入 + 拍板)；`renderDecisionCard` 单条卡片(`decisionNeedsUser` 高亮)；事件委派绑 `[data-rv]`(close/refresh/sign/start-coding/resolve)；`#review-btn` 点击→校验在规划模式→`start_design_review`；`setActive` 内加 `refreshReview()`（面板按会话独立，切到无评审的会话自动隐藏）。
+  - **web/style.css**：`.ws-review`/`.rv-*` 一套样式。**守 WebView2 滚动坑**：缩进只用 padding(不用 margin)、不重构 hr/table、面板不另设 overflow(随工作区面板整体滚)。
+- **关键决策**：① 面板挂右侧工作区(评审是工作区级产物，与改动区/检查点同栏)，不抢对话流。② 触发按钮仅规划模式可用，否则 toast 引导先出 notes。③ 「开始编码」按钮即便亮着，点击仍回查 `can_start_coding` 再确认——UI 态与后端 gate 双保险，不靠前端自判。④ 拍板/签字后用后端返回的最新 state 重渲染（单一数据源在后端）。
+- **自检（headless）**：`node --check` 过 app.js/pure.js；前端 pure **33/33**、Python 全量 **55 个套件全绿**(conversation 85、design_review 21、golden、contract 9…)。DOM 渲染本身 Linux 无显示跑不了，留 Windows。
+- **验证状态**：纯逻辑 + 语法 → Linux headless 已验；**可见面板渲染/交互 + 滚动 + 活模型评审质量 = 需 Windows GUI 真机**；**不定版**。
+
+### Windows 真机验证清单（第 4 刀 · DOM 面板）
+1. **开开关 + 起应用**：config.yaml `agent.design_review: true`，`python -m agentcore.app`。
+2. **出方案**：开规划模式 → 让 Hermes 对真任务产出 notes。
+3. **点「架构评审」按钮**(合成器，plan-btn 右侧)：应 toast「正在拆解…」、按钮转动；完成后右侧工作区出现评审面板。
+4. **看面板**：四态分区(Accepted/Rejected/Deferred/NeedUser/Open)各带计数与左色条；gate 横幅文案为「还有 N 个未决问题」/「等待签字确认」，**确认无百分比**；「开始编码」按钮此时应为灰(不可点)。
+5. **逐条拍板**：某 NeedUser 卡片选四态 + 填定稿值 → 点「拍板」；面板应即时重渲染、该条移出 NeedUser 区。
+6. **签字开工**：未决清零后出现「签字确认开工」→ 点 → gate 转亮、「开始编码」可点；点它 toast「✅ …可以开始编码」。
+7. **滚动坑复核**：面板内容撑长后**滚长对话/工作区**，确认不跳顶(WebView2 专属，见 CLAUDE.md 滚动坑)。
+8. **会话独立**：切到另一个没跑评审的会话，面板应自动隐藏；切回应恢复。
+9. **异构(可选)**：`design_review_models: {architecture: "<另一档名>"}` 再跑，比对反对意见是否更互补。
+
+---
+
 ## 2026-06-30 — Architecture Review Mode MVP 第 3 刀：接线（conversation + api + 前端纯逻辑）
 
 - **做了什么**：把引擎/会话接进规划模式与前端 API（后端 + 前端纯逻辑已 headless 验；可见 DOM 面板留 Windows 真机做）。

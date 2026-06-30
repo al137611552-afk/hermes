@@ -109,6 +109,7 @@ function mountView(cid) {
   refreshTasks();    // 再从后端拉当前会话权威清单
   updateComposerButtons();  // 同步规划模式/发送按钮到该会话状态（FR-11.5）
   updateUsageChip();        // 刷新顶部累计用量芯片到该会话（P2）
+  if (typeof refreshReview === "function") refreshReview();  // 评审面板按会话独立（无则自动隐藏）
 }
 
 // ---- 任务清单面板（FR-9.1，对话区顶部可折叠条）-------------------------
@@ -1328,6 +1329,107 @@ planBtn.addEventListener("click", async () => {
   } catch (e) { return; }
   updateComposerButtons();
 });
+
+// ---- 架构评审面板（ADR 0019 Architecture Review Mode）-------------------
+// 纯逻辑（reviewGateLabel / decisionsByStatus / decisionNeedsUser / REVIEW_*）在 pure.js，
+// 这里只做 DOM 渲染与 api 调用。gate 永不显示百分比（守 ADR 0014/0019）。
+const reviewBtn = document.getElementById("review-btn");
+function reviewPanelEl() { return document.getElementById("ws-review"); }
+
+function renderDecisionCard(d) {
+  const needs = decisionNeedsUser(d);
+  const blk = (d.blocking || []).map((b) => `<li>${escapeHtml(b)}</li>`).join("");
+  let html = `<div class="rv-card ${needs ? "needs" : ""}" data-id="${escapeHtml(d.id)}">` +
+    `<div class="rv-card-t">${escapeHtml(d.title || d.id)}</div>`;
+  if (d.current_choice) html += `<div class="rv-choice">${escapeHtml(d.current_choice)}</div>`;
+  if (blk) html += `<ul class="rv-blocking">${blk}</ul>`;
+  if (needs) {
+    const opts = ["Accepted", "Rejected", "Deferred", "NeedUser"]
+      .map((s) => `<option value="${s}">${escapeHtml(REVIEW_LABELS[s] || s)}</option>`).join("");
+    html += `<div class="rv-resolve">` +
+      `<select class="rv-status">${opts}</select>` +
+      `<input class="rv-input" type="text" placeholder="定稿选择（可选）" />` +
+      `<button class="rv-btn" data-rv="resolve">拍板</button></div>`;
+  }
+  return html + `</div>`;
+}
+
+function renderReviewPanel(state) {
+  const el = reviewPanelEl();
+  if (!el) return;
+  if (!state || !state.ok) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  const gate = state.gate || {};
+  const lbl = reviewGateLabel(gate);          // {enabled, text}
+  const groups = decisionsByStatus(state.decisions || []);
+  const parts = [];
+  parts.push(`<div class="rv-head"><span class="rv-title">架构评审</span>` +
+    `<span class="rv-actions">` +
+    `<button class="rv-btn" data-rv="refresh" title="重新拉取评审状态">↻</button>` +
+    `<button class="rv-btn" data-rv="close" title="收起面板">✕</button></span></div>`);
+  parts.push(`<div class="rv-gate ${lbl.enabled ? "ok" : "blocked"}">` +
+    `<button class="rv-start" data-rv="start-coding"${lbl.enabled ? "" : " disabled"}>${escapeHtml(lbl.text)}</button>` +
+    (gate.reason ? `<span class="rv-reason">${escapeHtml(gate.reason)}</span>` : "") + `</div>`);
+  if ((gate.blocking_count || 0) === 0 && !gate.user_signed) {
+    parts.push(`<div class="rv-sign"><button class="rv-btn primary" data-rv="sign">签字确认开工</button>` +
+      `<span class="rv-hint">未决已清零，签字后放行编码</span></div>`);
+  } else if (gate.user_signed) {
+    parts.push(`<div class="rv-sign signed">已签字 ✓</div>`);
+  }
+  REVIEW_STATUSES.forEach((s) => {
+    const items = groups[s] || [];
+    if (!items.length) return;
+    parts.push(`<div class="rv-group rv-${s.toLowerCase()}">` +
+      `<div class="rv-group-h">${escapeHtml(REVIEW_LABELS[s] || s)}<span class="rv-count">${items.length}</span></div>` +
+      items.map(renderDecisionCard).join("") + `</div>`);
+  });
+  if (state.stop_reason) parts.push(`<div class="rv-stop">收敛于：${escapeHtml(state.stop_reason)}</div>`);
+  el.innerHTML = parts.join("");
+}
+
+async function refreshReview() {
+  if (!window.pywebview) return;
+  try { renderReviewPanel(await window.pywebview.api.get_design_review()); } catch (e) { /* ignore */ }
+}
+
+if (reviewBtn) reviewBtn.addEventListener("click", async () => {
+  const v = activeView();
+  if (!v || !window.pywebview) return;
+  if (!v.planMode) { showToast("先开规划模式产出方案，再发起架构评审"); return; }
+  showToast("正在拆解方案并多角色评审…");
+  reviewBtn.classList.add("busy");
+  try {
+    const st = await window.pywebview.api.start_design_review();
+    renderReviewPanel(st);
+    if (!st || !st.ok) showToast(st && st.error ? st.error : "评审未能开始");
+  } catch (e) { showToast("评审失败"); } finally { reviewBtn.classList.remove("busy"); }
+});
+
+(function bindReviewPanel() {
+  const el = reviewPanelEl();
+  if (!el) return;
+  el.addEventListener("click", async (e) => {
+    const t = e.target.closest("[data-rv]");
+    if (!t || !window.pywebview) return;
+    const act = t.getAttribute("data-rv");
+    if (act === "close") { renderReviewPanel(null); return; }
+    if (act === "refresh") { await refreshReview(); return; }
+    if (act === "sign") { renderReviewPanel(await window.pywebview.api.sign_off_design_review()); return; }
+    if (act === "start-coding") {
+      const r = await window.pywebview.api.can_start_coding();
+      showToast(r && r.can_start ? "✅ 未决已清零且已签字，可以开始编码" : "尚未满足开工条件");
+      return;
+    }
+    if (act === "resolve") {
+      const card = t.closest(".rv-card");
+      if (!card) return;
+      const id = card.getAttribute("data-id");
+      const status = card.querySelector(".rv-status").value;
+      const choice = card.querySelector(".rv-input").value.trim();
+      renderReviewPanel(await window.pywebview.api.resolve_decision(id, status, choice || null));
+    }
+  });
+})();
 
 // ---- 附件 --------------------------------------------------------------
 function readFileAsDataUrl(file) {

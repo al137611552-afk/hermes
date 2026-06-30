@@ -791,6 +791,57 @@ body.plan-on .composer::before {
   color: #e8c87a; background: rgba(180, 142, 60, .14);
   border: 1px solid rgba(180, 142, 60, .35); border-radius: var(--radius-md, 8px);
 }
+/* 架构评审按钮：发起时高亮转动（与 plan-btn 同风格，绿调区分） */
+.review-btn.busy { color: #6fcf97; border-color: #3f8f5f; animation: rv-pulse 1.1s ease-in-out infinite; }
+@keyframes rv-pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+
+/* ── 架构评审面板（ADR 0019）：四态共识 + 开工 gate（绝无百分比）─────────
+   WebView2 滚动坑规避：缩进只用 padding（不用 margin），不重构 hr/table，
+   面板自身不再设 overflow（随工作区面板整体滚动）。 */
+.ws-review { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; font-size: .82rem; }
+.rv-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 6px; }
+.rv-title { font-weight: 600; color: var(--text); }
+.rv-actions { display: inline-flex; gap: 4px; }
+.rv-btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: .8rem;
+  transition: border-color .14s ease, background .14s ease;
+}
+.rv-btn:hover { border-color: var(--accent); }
+.rv-btn.primary { border-color: var(--accent); color: var(--accent); }
+/* 开工 gate 横幅：亮=可开工（绿），灰=阻塞（不可点） */
+.rv-gate { display: flex; align-items: center; gap: 8px; padding: 6px;
+  border-radius: 8px; background: var(--panel); border: 1px solid var(--border); }
+.rv-start { border: none; border-radius: 6px; padding: 4px 12px; font-weight: 600; cursor: pointer; }
+.rv-gate.ok .rv-start { background: #2f9e5f; color: #fff; }
+.rv-gate.blocked .rv-start { background: var(--panel-2); color: var(--muted); cursor: not-allowed; }
+.rv-reason { color: var(--muted); font-size: .78rem; }
+.rv-sign { display: flex; align-items: center; gap: 8px; padding: 6px 2px 2px; }
+.rv-sign.signed { color: #6fcf97; font-weight: 600; }
+.rv-hint { color: var(--muted); font-size: .76rem; }
+/* 四态分区：组头 + 左色条区分状态 */
+.rv-group { margin-top: 8px; padding-left: 8px; border-left: 3px solid var(--border); }
+.rv-group-h { display: flex; align-items: center; gap: 6px; font-weight: 600;
+  color: var(--text); padding: 2px 0; }
+.rv-count { color: var(--muted); font-size: .74rem; font-weight: 400; }
+.rv-accepted { border-left-color: #2f9e5f; }
+.rv-rejected { border-left-color: #d05a5a; }
+.rv-deferred { border-left-color: #b48e3c; }
+.rv-needuser { border-left-color: var(--accent); }
+.rv-open { border-left-color: var(--muted); }
+.rv-card { padding: 6px; margin-top: 4px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--border); }
+.rv-card.needs { border-color: var(--accent); }
+.rv-card-t { font-weight: 600; color: var(--text); }
+.rv-choice { color: var(--muted); font-size: .8rem; padding-top: 2px; }
+.rv-blocking { list-style: disc; padding: 4px 0 0 18px; color: #d6a86a; font-size: .78rem; }
+.rv-resolve { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 6px; }
+.rv-status, .rv-input {
+  background: var(--bg-deep); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 2px 6px; font-size: .78rem;
+}
+.rv-input { flex: 1; min-width: 80px; }
+.rv-stop { color: var(--muted); font-size: .76rem; padding: 8px 2px 2px; }
 
 /* 会话项：选中态更克制清晰 */
 .session-item.active { background: var(--active); }
