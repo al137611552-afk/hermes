@@ -114,7 +114,7 @@ Tool ─► Evaluation(事实) ─► Policy ─► Need(差距) ─► Planner 
 - H1 ✅ 事实层 `evaluators/research.py`（已实现 2026-06-30）：接管 `web_search`（注册早于 Search），抽**预算约束满足度**（query 解析上限 + 结果解析标价 → `within_budget`）。**blocker issue 只在可证伪时触发**（有上限/有命中/有标价却无一在内）；模糊项只当 signal。8 测含小红书验收。
 - H2 ✅ 决策层（已实现 2026-06-30，待 Windows 验）：`loop.py detect_low_quality_research`——web_search 出 blocker issue → 注入"返回了但不达标，换词/换源重搜"事实促模型重搜。per-query 计数封顶（config `research_refine_max`）防无限重搜；换关键词=新 query=另起计数。**喂事实非硬拦截**（同块E）。config `research_refine`(默认 true)；构造器默认 `research_refine=False` → 存量行为零变化。
 - H3a ✅ 模型裁判·文字层（已实现 2026-06-30，待 Windows 验）：`agent/judge.py` provider 注入式裁判（`judge_fn(prompt,images)`，**多模态就绪**），判语义相关性（"夏季"≠厚秋冬款、来源权威/时效）。`loop.py detect_offtarget_research` 挂 web_search 结果，H2 正则未拦时再过裁判，不对题→提示换词/换源重搜。**裁判故障/解析失败一律放行不拦**（不因模型出错误触发）。config `research_judge`(默认 true)；构造器默认 `research_judge=None` → 存量零变化。
-- H3b ⏳ 模型裁判·**多模态看图**（下一步）：挂在 Hermes 组装好的"带图答案"呈现前，连配图一起判（抓"配图是冬季"那一环）。引擎已就绪（judge_fn 收 images），差接图+挂答案路径。
+- H3b ✅ 模型裁判·**多模态看图**（已实现 2026-06-30，待 Windows 验）：挂在带图答案**收尾呈现前**，连配图一起判（抓"配图是冬季"那一环）。`loop.py detect_offtarget_answer` + 终局 `if not calls` 钩子：本轮做过研究（web_search/browser_*）且累积了模型真"看过"的配图块（截图/浏览器图，`seen_images`）→ 连图喂裁判判图文相关性，不对题→注入提示并**再放一轮**让模型据图重选/重搜（`answer_refined` 每轮封顶一次，防无限）。`conversation.py _make_research_judge` 把 image 块合进多模态 user 消息真正喂像素（anthropic 直传 / openai 转 image_url）。**裁判故障一律放行不拦**。**已知边界**：仅判模型真看过的 image 块（浏览器截图/截屏/上传图）；配图若是模型没看过的 markdown 图 URL，需先抓取再判（后续增量）。
 - H4 ⏳ Golden 语料（小红书 case 已并入，共 28 条）+ Windows 真机验。
 
 **交付物**：`evaluators/research.py`（H1）+ `loop.py detect_low_quality_research`（H2）+ `tests/test_research_evaluator.py` 8 测 + `tests/test_research_refine.py` 7 测 + config 两项 + ADR 0018 + Golden 2 条 + `scripts/diag_blockH.py`。

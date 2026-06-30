@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-06-30 — 评估/策略内核 · 块H3b：带图答案的多模态裁判（看图判季节/款式）
+
+**背景**：H3a 在**文字层**判语义，但用户原始反馈"配图一看就是冬季"——很多时候文字摘要看不出季节，是**配图**露的馅。这正是 H3b：把裁判挂在**带图答案收尾前**，连图一起看。先核实"附图"链路：`web.py` 不返回图，配图作为真 `image` 块进对话**只有**经 `browser_take_screenshot`(Playwright MCP)/`screenshot` 工具/用户上传三条路——即模型本轮**真看过**像素。见 [[adr-0018]]。
+**做了什么**：
+- `loop.py detect_offtarget_answer(goal, answer_text, images, judge_fn, max_images=6)`：连图喂裁判判图文相关性，不对题→返回"配图与目标不符（理由）+据图重选"提示；无图/无目标/无答案/裁判故障→None（放行）。只喂最近 6 张控成本。
+- `loop.py` run()：每轮 `_exec_calls` 后累积 `seen_images`(extra_blocks 里的 image 块) + `did_research`(本轮用过 web_search/browser_*)。终局 `if not calls` 钩子：研究轮且有配图且未重判过→跑裁判，不对题→注入提示 user 消息 + **再放一轮**让模型据图重选/重搜，`answer_refined` **每轮封顶一次**防无限。
+- `conversation.py _make_research_judge`：judge_fn 收到 images 时合成多模态 user 消息（`[{text},{image}...]`），provider 各自序列化（anthropic 直传 / openai 转 image_url data-url）**真把像素喂给原生视觉模型**。
+**关键决策**：① **只判模型真看过的 image 块**（浏览器截图/截屏/上传图）——这正是用户 case 的链路（穿透浏览→截图）；配图若是模型没看过的 markdown 图 URL，得先抓取再判，列为后续增量（**诚实边界，已记 ROADMAP/ADR**）。② **范围限研究轮**（did_research）——避免误扰编程截图答案。③ **终局再放一轮**而非事后报警——要让模型真的据图重做，不是只提示用户。④ `answer_refined` 每轮一次 + 裁判故障放行，双保险不卡收尾。
+**自检**：`tests/test_research_answer_judge.py` 9 测（detector：带图不对题催/对题静默/无图不空跑/无目标放行/故障放行/喂图封顶6；端到端 loop：不对题触发再放一轮且每轮只判一次+重答落库/对题不重答/judge=None 全惰性）。`scripts/diag_blockH.py` 扩到 15 项（加 H3b 假裁判机制）。**全回归绿：Python 55 文件 + 前端 30 + Golden 28 + 编码守卫，0 失败。**
+**验证状态**：纯逻辑全本地自检（假裁判+假 provider/工具）。**改了 loop 终局控制流 + 多模态真模型调用，待 Windows 真机验**——`diag_blockH.py` 验机制 + 活体：GUI 开**浏览器穿透**搜"618夏季女士睡衣并附图"，配图若冬季款观察裁判连图判"配图与目标不符"并据图重选。
+**待做**：H4 Golden 扩充（带图 case）+ Win 验后定版；markdown 图 URL 抓取再判（后续增量）。
+
+---
+
 ## 2026-06-30 — 评估/策略内核 · 块H3a：搜索结果模型裁判（语义相关性）
 
 **背景**：H1/H2 只判数值硬约束（预算）。真实反馈更难的一类——"搜 618 夏季女士睡衣却推厚秋冬款、配图一看就是冬季"——是**语义+多模态**相关性，正则判不了，资料查询/竞品调研同理。用户拍板"开，且两处都挂"。分两步：H3a=裁判引擎+挂搜索结果（文字层，本条）；H3b=挂带图答案前（多模态看图，下一步）。见 [[adr-0018]]。

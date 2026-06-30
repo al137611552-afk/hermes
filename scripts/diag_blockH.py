@@ -108,6 +108,27 @@ def main():
     v_fail = judge_research("夏季睡衣", "厚款", _boom)
     check("H3a 裁判故障 → 放行不拦（不误触发）", v_fail.on_target is True)
 
+    # —— H3b 带图答案多模态裁判（用假裁判验机制；真看图在 GUI 活体验）——
+    from agentcore.agent.loop import detect_offtarget_answer
+    _IMG = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "QUJD"}}
+    _OFFA = '{"on_target": false, "off": ["配图为加厚秋冬款，不符夏季"], "suggestion": "据图改选冰丝短袖"}'
+    # 夏季睡衣答案配的却是冬季厚款图 → 裁判看图判不对题、催据图重选
+    m_img = detect_offtarget_answer("搜618夏季女士睡衣并附图", "推荐这几款真丝睡衣。",
+                                    [dict(_IMG)], lambda p, i: _OFFA)
+    check("★H3b 答案配图是冬季款 → 看图判不符、催据图重选",
+          bool(m_img) and "配图与目标不符" in m_img, (m_img[:26] if m_img else "无"))
+    # 无配图 → 不空跑裁判
+    calls_img = {"n": 0}
+    def _cnt(p, i):
+        calls_img["n"] += 1
+        return _OFFA
+    m_noimg = detect_offtarget_answer("夏季睡衣", "纯文字答案", [], _cnt)
+    check("H3b 答案无配图 → 不触发、也不空跑裁判", m_noimg is None and calls_img["n"] == 0)
+    # 裁判故障 → 放行不拦
+    m_boom = detect_offtarget_answer("夏季睡衣", "答案", [dict(_IMG)],
+                                     lambda p, i: (_ for _ in ()).throw(RuntimeError("视觉超时")))
+    check("H3b 裁判故障 → 放行不拦（不误触发）", m_boom is None)
+
     ok = all(_results)
     print()
     if ok:
@@ -116,8 +137,10 @@ def main():
         print("  1) 预算（H1/H2 正则）：搜『618女士睡衣 500元以内』→ 看是否因超预算自动重搜")
         print("  2) 语义（H3a 模型裁判）：搜『618夏季女士睡衣』→ 若返回厚秋冬款，看裁判是否判")
         print("     『多数不对题』并据此换词/换源重搜（每次搜索后多一次模型调用）")
-        print("  3) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
-        print("  注：看图判季节（配图是冬季）属 H3b 多模态，下一步交付")
+        print("  3) 看图（H3b 多模态）：搜『618夏季女士睡衣并附图』走**浏览器穿透**截图配图 →")
+        print("     若配图是冬季厚款，看裁判是否**连图判**『配图与目标不符』并据图重选/重搜")
+        print("     （带图答案收尾时多一次视觉模型调用；每轮最多重判一次）")
+        print("  4) 开关：research_refine=false 关重搜；research_judge=false 只留正则不调裁判")
         return 0
     failed = len(_results) - sum(_results)
     print(f"===== RESULT: {failed} FAILED （共 {len(_results)} 项）=====")

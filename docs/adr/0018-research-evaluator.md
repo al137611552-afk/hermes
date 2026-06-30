@@ -1,6 +1,7 @@
 # ADR 0018 — Research Evaluator（搜索/调研结果质量评估，块H）
 
-状态：H1 已实现（2026-06-30）；H2 接线中；H3 模型裁判待定；H4 Golden+Win 验。
+状态：H1/H2/H3a/H3b 均已实现（2026-06-30，待 Windows 真机验）；H4 Golden 扩充+Win 验后定版。
+H3b（带图答案多模态裁判）：`loop.py detect_offtarget_answer` 挂终局 `if not calls` 钩子，连模型本轮真看过的配图块（截图/浏览器图）判图文相关性，不对题→再放一轮据图重选；`conversation.py _make_research_judge` 把 image 块合成多模态 user 消息真喂像素。**已知边界**：仅判模型看过的 image 块；markdown 图 URL 需先抓取再判（后续增量）。
 关联：[0014 评估/策略架构](0014-evaluation-policy-architecture.md)、[0015 错误分类](0015-error-taxonomy.md)、[0016 World State](0016-world-state-failure-memory.md)；块F Golden 门为其前置。
 
 ## 背景

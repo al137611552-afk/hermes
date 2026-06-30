@@ -269,6 +269,26 @@ def detect_offtarget_research(calls, out_by_id, goal, judge_fn, nudged_queries,
     return None
 
 
+def detect_offtarget_answer(goal, answer_text, images, judge_fn, max_images=6):
+    """块H3b：对**带图的最终答案**做多模态裁判——把答案配图（截图/浏览器图块，模型本轮真"看过"
+    的像素）连同用户目标一起喂模型，判图文是否对题（如"夏季睡衣"答案配的却是冬季厚款图）。
+
+    不对题 → 返回一条让模型据图重筛/重搜的提示；对题/无图/无目标/无答案 → None。
+    judge_fn 故障由 judge_research 内 try 包死，一律放行不拦（绝不因裁判出错卡住收尾）。
+    """
+    from .judge import judge_research
+    imgs = list(images or [])[-max(1, max_images):]
+    if not imgs or not (goal and goal.strip()) or not (answer_text and answer_text.strip()):
+        return None
+    v = judge_research(goal, answer_text, judge_fn, images=imgs)
+    if v.on_target:
+        return None
+    reasons = "；".join(v.off[:3]) if v.off else "配图与目标的关键限定（季节/款式/品类等）对不上"
+    sug = v.suggestion or "据图重新筛选符合目标的项，必要时换词/换源重搜后再作答"
+    return ("[系统观察] 你这版答案**配图与目标不符**：" + reasons +
+            "。请不要就这么给——" + sug + "。")
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -341,6 +361,9 @@ class AgentLoop:
         deadend_fps: set[str] = set()     # 块E：已就某指纹提示过换思路（每路一次）
         research_nudged: dict = {}        # 块H2：已就某搜索 query 催过重搜的计数（每 query 封顶）
         research_goal = _latest_user_text(messages)  # 块H3a：用户目标（裁判判相关性的基准）
+        seen_images: list[dict] = []      # 块H3b：本轮模型"看过"的配图块（截图/浏览器图），供终局多模态裁判
+        did_research = False              # 块H3b：本轮是否做过研究（web_search/browser_*）——给配图判定划范围
+        answer_refined = False            # 块H3b：终局带图答案已据图重判一次（每轮封顶，防无限）
         _names = self.registry.names() if hasattr(self.registry, "names") else []
         browser_present = any(n.split("__", 1)[-1].startswith("browser_") for n in _names)
 
@@ -401,7 +424,25 @@ class AgentLoop:
                 break
 
             if not calls:
-                # 模型不再调用工具：本轮结束
+                # 模型不再调用工具：本轮结束。
+                # 块H3b：研究/购物轮若产出了"配图"（本轮模型看过的截图/浏览器图块），在呈现前
+                # 连图一起判一次相关性（如"夏季"答案配的却是冬季厚款图）。不对题→注入提示并**再放一轮**
+                # 让模型据图重筛/重搜；每轮最多触发一次（answer_refined 封顶，防无限）。
+                # 整段 try 包死：裁判故障绝不影响正常收尾。
+                if (self.research_refine and self.research_judge is not None
+                        and research_goal and assistant_text.strip()
+                        and did_research and seen_images and not answer_refined):
+                    try:
+                        nudge = detect_offtarget_answer(
+                            research_goal, assistant_text, seen_images, self.research_judge)
+                    except Exception:  # noqa: BLE001
+                        nudge = None
+                    if nudge:
+                        answer_refined = True
+                        messages.append(Message("assistant", assistant_text))
+                        messages.append(Message("user", [{"type": "text", "text": nudge}]))
+                        emit("research_hint", {"text": nudge})
+                        continue
                 messages.append(Message("assistant", assistant_text))
                 break
 
@@ -418,6 +459,15 @@ class AgentLoop:
             #    富内容块（如截图 image）单独收集，作为并列块追加到同一条 user 消息
             #    （部分端点不解析 tool_result 内嵌图片，见 ToolOutput / ADR-0010）。
             results, extra_blocks = self._exec_calls(calls, emit)
+
+            # 块H3b：累积本轮模型真"看过"的配图（截图/浏览器图块）+ 标记是否做过研究——
+            # 供本轮收尾时对"带图答案"做一次多模态相关性裁判（范围限研究/购物，避免误扰编程截图）。
+            if not did_research:
+                did_research = any(
+                    getattr(c, "name", "") == "web_search"
+                    or getattr(c, "name", "").split("__", 1)[-1].startswith("browser_")
+                    for c in calls)
+            seen_images.extend(b for b in extra_blocks if b.get("type") == "image")
 
             # 3) tool_result（+ 富内容并列块）作为 user 消息回灌，进入下一轮。
             #    若用户在执行中追加了补充（steering），附进**同一条** user 消息——既让模型下一轮

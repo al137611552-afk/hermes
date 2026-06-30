@@ -1523,9 +1523,11 @@ class Conversation:
         return fm
 
     def _make_research_judge(self, provider, enabled: bool):
-        """块H3a：构造模型裁判 judge_fn(prompt, images)->str，用当前 provider 跑一次只读判断。
+        """块H3a/H3b：构造模型裁判 judge_fn(prompt, images)->str，用当前 provider 跑一次只读判断。
 
-        enabled=False → None（只用 H1/H2 正则）。判断纯文本（H3a）；images 预留给 H3b 接图。
+        enabled=False → None（只用 H1/H2 正则）。H3a 判纯文本；H3b 传入答案配图块（截图/浏览器图，
+        Anthropic 风格 image 块），与 prompt 合成一条多模态 user 消息——provider 按各自格式序列化
+        （anthropic 直传、openai 转 image_url data-url），真正把像素喂给原生视觉模型判图。
         裁判调用本身由 judge_research 包 try/except，故障一律放行不拦。
         """
         if not enabled or provider is None:
@@ -1533,8 +1535,14 @@ class Conversation:
         from ..providers.base import Message
 
         def judge_fn(prompt, images=None):
+            if images:
+                content = [{"type": "text", "text": prompt}]
+                content.extend(b for b in images if isinstance(b, dict) and b.get("type") == "image")
+                msg = Message("user", content)
+            else:
+                msg = Message("user", prompt)
             out = []
-            for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
+            for ev in provider.stream_chat([msg], system=None, tools=[]):
                 if getattr(ev, "type", None) == "text":
                     out.append(ev.text)
             return "".join(out)
