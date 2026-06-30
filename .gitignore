@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+sessions.db
+data/
+*.db
+.playwright-mcp/
+*.zip

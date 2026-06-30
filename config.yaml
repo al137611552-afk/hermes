@@ -1,0 +1,235 @@
+# 模型档案。增删模型只改这里，UI 下拉自动读取。
+# active_model 指向 models 下的某个 key。
+active_model: volcengine-ark/kimi-k2.6
+
+# 全局系统提示词
+system_prompt: |
+  You are a helpful, precise coding assistant running on the user's desktop (Windows / macOS / Linux).
+  用用户的语言回答；代码用 markdown 围栏。你能用工具真正读写文件、检索代码、执行命令、联网、
+  用 git、起后台进程、委派子 Agent 等——**每个工具具体怎么用看它自己的说明**，这里只讲工作准则。
+
+  开发准则（除非用户当次另有要求）：
+  - 先读后改：动手前先用读取/检索工具核实现状，不凭假设或记忆改动。
+  - 最小改动：只改任务所需，不顺手重构无关代码、不删未经确认的东西。
+  - 贴合风格：命名、注释密度、惯用法与周围保持一致，不引入无谓的新依赖。
+  - 重视可测：改完尽量自检；项目有测试就跑，失败如实说明、不假装通过。
+  - 如实报告：做了什么、结果如何、跳过了什么都讲清楚，不夸大"已完成/已验证"。
+  - 沟通简洁：先结论后细节；遇到影响方向的取舍，给带推荐项的简短选项让用户拍板，
+    能合理推断的小事直接做、不为小事反复发问。
+  - 危险操作（写文件/执行命令/git 提交等）会请用户确认；被拒绝就换思路，别反复重试同一件事。
+  - 若工作区根目录有 hermes.md（项目规范），其要求优先于本通用准则。
+
+  跨工具的协同策略（单个工具说明覆盖不到的）：
+  - 复杂/多步任务：先用 update_tasks 列有序子任务再分步做、边做边更新状态；长任务用 update_notes
+    把已确认的事实/决定/坑沉淀下来。两者都会注入上下文、抗压缩与重启，是你跨多轮的记忆。
+  - 委派与并行：较重、相对独立的子任务用 delegate 给子 Agent（独立上下文、只回摘要）。
+    **两种情况优先并行委派 researcher、别一个人串行干**：①任务含多个不同大块（"分别调研 A、B、C"）；
+    ②任务要**逐项处理很多个相似单元**（"逐一/每个/各自"分析很多文件/模块、查很多网页/来源等）——
+    把这些单元**分成几组**、同一轮派给多个 researcher 并行，自己只做汇总，别一个人串行读完所有的、
+    把步数耗光。**看到"分别/逐一/每个/各自"这类措辞、且每项都要读不少东西时，默认就并行委派。**
+    简单任务（只读三五个文件、查一两个来源）自己直接做，别委派。
+  - 代码定位：在**大型/陌生**项目里要「按意图/概念找代码」（不知道叫什么、只知道想干嘛，如
+    「处理退款的地方」「鉴权中间件」）时，先用 **search_code**（按相关性检索、含中文）一次拉到最相关的
+    几段，再 read_file 看细节——比 list_dir+逐个读省步数。知道确切符号名用 find_symbol、要精确串用
+    grep_search。小项目（三五个文件）直接列目录读即可、不必检索。
+  - 联网：查框架用法/API 文档/报错/时效性事实时先 web_search 再 web_fetch、答案附来源；不确定且
+    时效相关的别凭记忆答；纯本地代码问题不必联网。
+  - 深度调研（竞品数据/舆情/选品/赛事预测等需逐层深挖的）：别搜一轮一级页面就收。像人一样顺着
+    线索逐层下钻——聚合数据→具体条目→分布/排名→定性内容（评论/正文/要点），每深一层带着新问题继续。
+    **有浏览器工具（browser_*）时一切走浏览器**：browser_navigate 到目标站（用户点名站就直接去，如「在知乎查」
+    开 zhihu.com）或搜索引擎 → **点进具体结果 → 到内容页 browser_snapshot 读**；**别从杂乱的搜索/列表页 snapshot
+    硬读、别为此跳回 web_search 绕路**（搜索页读不出很正常、点进去到内容页就好读）。**搜索结果页里带 ref 的标题/链接条目
+    就是结果——挑相关的前几条用其 ref browser_click 点进去读正文；只要列出了相关条目就别换另一个搜索引擎重搜（再开百度/必应/谷歌
+    重搜关键词＝换汤不换药的绕路，和跳 web_search 同性质，禁止）**。**snapshot 看着空/像骨架/没看到正文时，
+    别急着判「页面没加载/要登录/被反爬」就放弃——很多站（知乎等）正文是 JS 懒加载或在下方：先 browser_navigate 等一下重新
+    snapshot、或往下 scroll 再 snapshot、或直接点进一个具体结果到内容页；snapshot 没出全内容是常态，不等于页面没加载**。没浏览器工具才用 web_search
+    找 URL + web_fetch 读。**最关键：别只看摘要/标题/snapshot 标题栏就判「不相关」——往下读正文、看够再判断**
+    （答案常在正文深处）。**浏览中遇到登录墙/要登录/验证码/滑块——别绕去别的搜索引擎或来源！先用 ask_user 暂停**，提示用户
+    「需要登录 <网站> 才能继续，请在弹出的浏览器里登录·划过滑块，好了回复『继续』」。**用户回复『继续』后＝默认他已登录、要信任他**：
+    直接 browser_navigate 重开**目标页**（别再去登录页）读正文继续——登录态在持久 profile 里、重开就生效；**别再 ask_user 问第二遍、
+    也别一看到残留登录提示就以为没登上**（多半只是没刷新），只有重开目标页确认**仍是登录页**才再问一次。别自己破解滑块/验证码。
+    只有用户明确说登不了时才换其它来源。边查边用 update_notes
+    记证据，多源交叉印证、综合成**带来源**的结论；子主题多就并行 delegate 给 researcher、自己汇总。
+  - 简单咨询要快：问版本号/日期/赛程/定义这类**简单事实**时，知道就直接答；要联网就 web_search
+    一两次、用摘要（顶多一两个 fetch）综合回答，别逐页查证、别拖很多步。这类简单咨询**不要委派、
+    也不必建任务清单**（委派/清单是给"深入分析很多文件/模块"那种重活的）。
+  - 长进程：起 dev server / watch 这类长命令用 background:true 后台跑再轮询输出，别阻塞。
+  - git：在 git 仓库里随手用 git_status/git_diff 看状态；提交时若用户没指定分支，先开分支再提交，
+    不要直接提交到 main/master。
+  - 调试（debug 定位，最易反复改不好的环节）：遇到"结果不对/报错/改半天改不好"，**别盲改瞎试**。
+    ①复现优先：先用具体输入把"现象+触发输入+期望值/实际值"固化下来，再动手；②看证据再定位：
+    用 trace_run 跑一段调用目标函数的驱动代码，**直接看每步中间值**（哪一步算出了什么、分支为何没进、
+    入参对不对），凭证据定位而不是猜；③难复现/重要的 bug，**改之前先用 capture_fixture 把触发输入固化**成
+    复现测试（修好后自动随受影响测试转绿、守住回归）；④改完看回灌的受影响测试是否转绿（开了
+    auto_affected_test 时改完即跑）。用 update_notes 维护「## 调试便签」（现象/假设/证据/已排除/下一步验证），
+    跨轮别重复试同一条死路。
+  - 长期记忆：只把跨项目通用的事（用户偏好/工作习惯/反复强调的要求）用 remember 记；项目专属的
+    （架构/决定/约定）写进该项目的 hermes.md，不要进全局记忆。
+  - 系统会在你每回合首次改文件前自动存检查点，用户可一键回退；你无需也无法操作它。
+
+  可视化输出：可直接在回答里出 <svg>（别放进代码块，否则只显示源码）、```mermaid 图，或用
+  write_file 写自包含 .html 高保真原型——需要画 UI / 流程图 / 可点击原型时主动用。
+
+# Agent 工具循环配置（P3）
+agent:
+  workspace: null        # 显式固定工作区；设了则全局用它、并关闭"按会话隔离"。
+                         # null（默认）= 按会话隔离：每个会话用独立文件夹，互不污染。
+  per_session_workspace: true   # 每个会话一个独立工作区文件夹（workspaces_root/<会话id>/）
+  workspaces_root: null  # 会话工作区根目录；null = 项目根 data/workspaces。可改成你放项目的目录
+  auto_conventions: true # 工作区有项目内容但缺 hermes.md 时，后台据「全局标准+本项目」自动生成一版
+  max_steps: 50          # 单轮对话内最多工具调用步数，防死循环（调研类长任务给余量；
+                         # 真正的长任务靠委派分摊步数——每个子 Agent 另有独立预算）
+  shell: auto            # auto=按系统自动（Windows→powershell，macOS/Linux→bash）；也可显式指定 powershell/pwsh/cmd/bash/zsh
+  shell_timeout: 180     # 前台命令超时（秒）：放宽容纳装依赖/编译；长服务用 background:true
+  screenshot: true       # 给 Agent 截屏工具 take_screenshot（每次执行仍需用户授权）；
+                         # 需视觉模型（如 ark-kimi）才能理解截图。设 false 可彻底关闭
+  conventions_file: hermes.md  # 工作区根目录若有此文件，其内容作为「项目规范」注入 system_prompt
+                               # （类似 Claude Code 的 CLAUDE.md）。设空字符串 "" 可关闭
+  # 细粒度权限（FR-11.4）：按「工具+参数模式」放行/拦截危险操作，治长任务确认疲劳。
+  # 规则形如 `工具名` 或 `工具名(glob)`，glob 匹配该工具主体（命令/路径/URL，fnmatch）。
+  # deny 优先于 allow。对话里点「总是允许这类」会临时往本会话 allow 追加一条（重启不保留）。
+  permissions:
+    allow: []            # 免确认，例：["run_powershell(git *)", "write_file(docs/*)", "git_status"]
+    deny: []             # 直接拦截，例：["run_powershell(rm *)", "run_powershell(del *)"]
+  auto_verify: true      # 写文件后零成本语法校验（FR-11.2a）：.py/.json 必校（标准库），
+                         # .js/.ts 等有 node 才校；改坏立刻在工具结果里提示模型修，不必等它自己想起来
+  auto_review: false     # 一轮里改过文件就在收尾自动派 reviewer 子 Agent 审 diff（FR-11.2b）。
+                         # 默认关：每次会多一次模型调用。重型/重要改动时开，纯对话与只读轮不会触发
+  auto_test: false       # 验证闭环（FR-11.2c）：一轮改过文件就在收尾跑 test_command；失败把输出回灌、
+                         # 复用同一循环让模型修，最多 test_max_iters 次。默认关，配好 test_command 再开
+  test_command: ""       # 全局测试命令，如 "pytest -q" / "npm test"；空=不跑。shell 执行、cwd=工作区、
+                         # 限时 180s、退出码 0 为通过。**项目级优先**：在某项目的工作区根放一个
+                         # .hermes.yaml、写一行 `test_command: <你的命令>`，该项目就用它（覆盖本全局值），
+                         # 多项目切换自动对上、不必回来改全局
+  test_max_iters: 2      # auto_test 失败后自动迭代修复的最大轮数（防死循环）
+  auto_affected_test: false  # 编辑后跑定向测试（FR-13.C）：改完文件即识别**受影响的测试**（按文件主名匹配
+                             # test_<名>/<名>.test）并直跑、失败连同 traceback 附加到工具结果回灌模型——给「每轮
+                             # 改完即时对错信号」。区别于 auto_test（收尾跑整套、要先配命令）：这个免配置、按文件定向、
+                             # 更快。默认关（会起子进程），按需开。本项目自测是独立脚本，建议配 affected_test_runner: python
+  affected_test_runner: auto # FR-13.C 运行器：auto（.py 有 pytest 用 pytest、否则当独立脚本 python 跑）/ pytest / python
+  delegate_max_revisions: 0  # 委派评分回炉：子 Agent 产出由 lead 模型按验收标准评分，不达标打回重做最多 N 轮。0=关
+  # 可编程 hooks（对标 Claude Code PreToolUse/PostToolUse）：在工具调用前/后跑你的命令，做自定义
+  # 守卫/动作。命令的 stdin 会收到 {event,tool,params,workspace[,result]} 的 JSON，cwd=工作区。
+  #  - PreToolUse：退出码 2=拦截工具（stdout 作拒绝理由回灌）、1=放行但警告、0=放行。
+  #  - PostToolUse：stdout 追加到工具结果回灌模型（如把 linter 诊断喂回去）。
+  # matcher 是对工具名的正则（空=全部）。默认空列表（不启用）。示例（去掉注释即生效）：
+  # hooks:
+  #   - {event: PreToolUse, matcher: "write_file|edit_file", name: 扫密钥,
+  #      command: "python scripts/check_secret.py"}      # 内容含密钥就 exit 2 拦截
+  #   - {event: PostToolUse, matcher: "write_file|edit_file", name: lint,
+  #      command: "ruff check - 2>&1 | head -20 || true"} # 改完跑 linter、诊断回灌
+  hooks: []
+  # crazy 自主模式（/crazy 无人值守）的护栏，统一在此调：软护栏（轮数/时间）可按需放宽，
+  # 硬闸（token 止损）建议保留——无人值守跑飞时兜底，别设 0（不限）。
+  crazy_max_rounds: 20         # 外层目标循环最大轮数
+  crazy_max_seconds: 3600      # 墙钟时间预算（秒，=1 小时），0=不限；超时回合间停
+  crazy_max_tokens: 3000000    # 累计 token 预算（300 万，资源止损），0=不限；超预算回合间停
+  crazy_stall_rounds: 3        # 连续多少轮没动用任何工具（疑似空转）就停
+  # subagent_model: ark-deepseek  # 委派子任务默认用的模型档案；省略 = 当前对话模型
+  # roles:                  # 自定义子 Agent 角色（FR-10.5）：与内置 general/researcher/
+  #   docwriter:            #   reviewer/tester 合并，同名覆盖。示例：
+  #     label: 文档          # 前端子任务块显示名
+  #     directive: 你的职责是撰写/完善文档：读懂代码后产出准确、简洁的中文文档。
+  #     tools: [read_file, list_dir, grep_search, glob_search, code_outline, write_file]
+  #                         # 工具白名单（所列即所得）；省略 = 全工具
+  #     model: ark-deepseek # 该角色用的模型档案（按角色配模型）；省略 = subagent_model→当前模型
+
+# 多模态输入配置（P4）
+multimodal:
+  max_image_mb: 5        # 单张图片大小上限
+  max_doc_chars: 100000  # 单个文档/PDF 抽取文本的字符上限
+  max_attachments: 10    # 单条消息最多附件数
+
+# 视觉预处理回退（P4.1）：主模型不支持视觉（vision: false）时，
+# 先用 VL 端点把图转成文字描述再喂给主模型。支持视觉的模型直接发原图。
+#
+# 默认关闭。MiniMax 的 coding_plan/vlm 端点需要「编程套餐」凭证，普通开放平台
+# API key 访问会报「密钥无效」（实测：Global 域报无效、CN 域无此端点）。
+# 拿到可访问 vlm 的凭证后：enabled 改 true、endpoint 用 Global 域、
+# api_key_env 指向能访问该端点的 key。也可把 endpoint/key 指向其它视觉服务。
+vision_fallback:
+  enabled: false
+  endpoint: https://api.minimax.io/v1/coding_plan/vlm  # Global 域（.io）
+  model: MiniMax-VL-01
+  api_key_env: MINIMAX_API_KEY
+  timeout: 60
+  # prompt: 可覆盖默认的描述指令
+
+# 会话持久化（P6.1）：对话存 SQLite，重启后可恢复、多会话切换
+storage:
+  enabled: true
+  db_path: null            # null = 项目根 data/hermes.db
+  externalize_images: true # 图片外置 blob（data/blobs/），DB 只存引用，避免 base64 撑大库
+
+# 上下文 token 预算与压缩（P6.2）：会话变长后，喂给模型前若超预算，
+# 保留最近 keep_recent_turns 个回合，把更早内容压成摘要塞进 system。
+# 持久化历史不受影响（DB 始终完整）。token 为启发式估算（无需额外依赖）。
+context:
+  enabled: true
+  max_input_tokens: 32000   # 喂给模型的输入预算（含 system）；按你的模型上下文窗口调整
+  keep_recent_turns: 6      # 至少保留最近多少个用户回合
+  model_summary: true       # 压缩摘要由模型生成（更高质量，对标 /compact）；摘要按覆盖范围缓存、
+                            # 切点前移才增量调用一次，失败自动回退启发式截断
+  summary_model: ""         # 生成摘要用的模型档案名；留空 = 用当前对话模型
+
+# 长期记忆（P6.3）：跨会话持久的事实/偏好/项目背景，独立于单会话历史。
+# 模型可用 remember/recall/forget 工具增删查；离开会话（新建/切换）时自动从刚结束的
+# 对话里抽取要点存为记忆；每次发消息时把记忆注入 system，使新会话也「记得」。
+# 用独立 SQLite 库（默认 data/memory.db），与会话库解耦。
+memory:
+  enabled: true
+  auto_capture: true          # 离开会话时自动抽取记忆（会多一次模型调用；设 false 仅保留工具）
+  db_path: null               # null = 项目根 data/memory.db
+  max_inject: 30              # 注入 system 的记忆条数上限
+  max_inject_chars: 2000      # 注入 system 的字符预算
+  min_messages_to_capture: 4  # 对话至少这么多条消息才触发自动抽取
+
+# MCP 工具接入（P6.4）：作为客户端连接外部 MCP server（stdio 本地子进程），
+# 把其工具自动接进 Agent 工具循环。外部工具默认「危险」逐次过权限 gate；server 配
+# trust:true 可免确认。默认关闭——需本机有运行 server 的环境（Node 的 npx / Python 的 uvx）。
+# 某 server 起不来只会被跳过，不影响 app 与其它 server。工具名形如 服务名__工具名。
+mcp:
+  enabled: false
+  connect_timeout: 60   # 单个 server 启动+握手+列工具 超时（秒）；60s 容纳首次 npx/uvx 下载 server 包
+  call_timeout: 60      # 单次工具调用超时（秒）
+  # 启用某个 server：直接解注释下面对应的块（已是正确缩进，servers 这行不用动）。留空 = 无 server。
+  servers:
+    # 示例：官方 filesystem server（需先装 Node）。把下面解注释并改成你的目录：
+    # filesystem:
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "C:\\Users\\你\\项目目录"]
+    #   trust: false      # 想免确认改 true
+    # 示例：git server（需 uvx / pipx）：
+    # git:
+    #   command: uvx
+    #   args: ["mcp-server-git", "--repository", "C:\\Users\\你\\项目目录"]
+    # 示例：Playwright 浏览器——深度调研用，让 Agent 真实开浏览器导航/点击/翻页/填表/抽取，
+    #   突破「只能读一级页面」。需先装 Node；**首次用前装浏览器**（用 @playwright/mcp 自带安装器，
+    #   不是 playwright install）：npx @playwright/mcp@latest install-browser chrome-for-testing
+    #   （若本机已装 Google Chrome，也可去掉下面 args 里的 "--browser","chromium" 两项、直接用系统 Chrome）
+    #   （已端到端实测：连上后有 browser_navigate/click/snapshot/fill_form/type/take_screenshot 等
+    #   23 个工具；browser_snapshot 返回带 ref 的无障碍结构，Agent 据此决定点哪个 ref、往哪里钻）。
+    # browser:
+    #   command: npx
+    #   args: ["-y", "@playwright/mcp@latest", "--headless", "--browser", "chromium",
+    #          "--output-dir", "C:\\Users\\你\\hermes-pw"]
+    #   trust: true        # 深度调研一次几十步交互，建议 true 免逐次确认（只读浏览风险低）；
+    #                      #   注意它含 browser_evaluate/run_code_unsafe（可跑任意 JS），介意就改
+    #                      #   trust:false，再在 agent.permissions.allow 里只放行 browser_navigate/
+    #                      #   browser_snapshot/browser_click 等只读浏览工具。
+    #   # 登录平台（如蝉妈妈）：先去掉 --headless 人工登一次、配 --storage-state 存登录态，
+    #   #   再切回 headless 复用，避免每次重新登录。
+
+# 联网检索（P11 FR-11.1）：web_search + web_fetch 两个只读工具（免 key、零新依赖）
+web:
+  enabled: true
+  search_engine: auto   # auto = Bing 优先、DuckDuckGo 兜底；也可固定 bing / duckduckgo
+  timeout: 20           # 单次请求超时（秒）
+  max_results: 5        # 搜索默认返回条数（上限 10）
+  fetch_max_chars: 20000  # web_fetch 正文输出默认上限（模型可临时调大）
+
+
+# 模型档案改由「设置面板 → Provider」管理（内置预设：火山方舟 / Anthropic / OpenAI / DeepSeek /
+# Kimi-Moonshot，只填 key 即用）；用户加的 provider / 模型存 providers.yaml + user_models.yaml、不写这里。
+# 默认启用火山方舟（填 ARK_API_KEY 即可用其下 kimi-k2.6 等模型）。
+models: {}
