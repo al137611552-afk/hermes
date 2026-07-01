@@ -295,6 +295,22 @@
                    (Array.isArray(d.blocking) && d.blocking.length > 0));
   }
 
+  // 会话列表分组渲染计划（对齐 Figma：已置顶 / 最近）。返回有序渲染项：
+  // {type:"group",label} 或 {type:"item",session}。无置顶时不加分组标题（保持扁平列表）。
+  function planSessionList(sessions) {
+    const list = sessions || [];
+    const pinned = list.filter((s) => s && s.pinned);
+    const recent = list.filter((s) => s && !s.pinned);
+    const plan = [];
+    if (pinned.length) {
+      plan.push({ type: "group", label: "已置顶" });
+      pinned.forEach((s) => plan.push({ type: "item", session: s }));
+      if (recent.length) plan.push({ type: "group", label: "最近" }); // 有置顶才需「最近」分隔
+    }
+    recent.forEach((s) => plan.push({ type: "item", session: s }));
+    return plan;
+  }
+
   // 工作区标签页可见性（对齐 Figma 重设计）：改动/评审「发生才出现」，文件/预览常驻。
   // avail = { hasChanges, hasCheckpoints, hasReview }（都是布尔）。纯逻辑，DOM 只负责喂状态+渲染。
   const WS_TAB_KEYS = ["changes", "files", "preview", "review"];
@@ -321,6 +337,7 @@
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
+    planSessionList,
     WS_TAB_KEYS, wsTabVisible, resolveWorkspaceTabs,
   };
 });

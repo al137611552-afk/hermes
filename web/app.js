@@ -1663,7 +1663,12 @@ async function refreshSessions() {
   }
   lastSessions = sessions || [];
   sessionList.innerHTML = "";
-  lastSessions.forEach((s) => sessionList.appendChild(makeSessionItem(s)));
+  // 分组渲染计划（已置顶 / 最近）由 pure.js 决定，DOM 只按计划建行——纯逻辑可单测
+  planSessionList(lastSessions).forEach((row) => {
+    sessionList.appendChild(row.type === "group"
+      ? makeSessionGroup(row.label)
+      : makeSessionItem(row.session));
+  });
   applySessionFilter();
   updateRunningChip();
   if (ccPopover && !ccPopover.hidden) renderCommandCenter();   // 弹层开着时同步刷新
@@ -1759,9 +1764,18 @@ function toggleCommandCenter() {
 // ⑥ 会话搜索：按标题过滤列表行（每次重渲染后重新应用）
 function applySessionFilter() {
   const q = sessionSearch.value;
-  sessionList.querySelectorAll("li").forEach((li) => {
+  sessionList.querySelectorAll("li.session-item").forEach((li) => {
     const t = li.querySelector(".session-title")?.textContent || "";
     li.style.display = sessionTitleMatches(t, q) ? "" : "none";
+  });
+  // 分组标题：本组无可见会话则隐藏（搜索无命中时不留空标题）
+  sessionList.querySelectorAll("li.session-group").forEach((h) => {
+    let n = h.nextElementSibling, visible = false;
+    while (n && !n.classList.contains("session-group")) {
+      if (n.classList.contains("session-item") && n.style.display !== "none") { visible = true; break; }
+      n = n.nextElementSibling;
+    }
+    h.style.display = visible ? "" : "none";
   });
 }
 
@@ -1892,6 +1906,26 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// 会话行操作按钮的线性图标（对齐 Figma，替代原 emoji）——统一 stroke 风格
+const SESSION_ICONS = {
+  pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+  rename: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  export: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  delete: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+};
+function svgIcon(name) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" `
+       + `stroke-linecap="round" stroke-linejoin="round">${SESSION_ICONS[name]}</svg>`;
+}
+
+// 分组标题行（已置顶 / 最近）——非会话行，搜索过滤时跳过、整组空则隐藏
+function makeSessionGroup(label) {
+  const li = document.createElement("li");
+  li.className = "session-group";
+  li.textContent = label;
+  return li;
+}
+
 function makeSessionItem(s) {
   const li = document.createElement("li");
   li.dataset.sid = String(s.id);
@@ -1913,7 +1947,7 @@ function makeSessionItem(s) {
 
   const pin = document.createElement("button");
   pin.className = "session-pin";
-  pin.textContent = "📌";
+  pin.innerHTML = svgIcon("pin");
   pin.title = s.pinned ? "取消置顶" : "置顶会话";
   pin.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -1923,7 +1957,7 @@ function makeSessionItem(s) {
 
   const exp = document.createElement("button");
   exp.className = "session-exp";
-  exp.textContent = "⬇";
+  exp.innerHTML = svgIcon("export");
   exp.title = "导出该会话为 Markdown";
   exp.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -1933,7 +1967,7 @@ function makeSessionItem(s) {
 
   const ren = document.createElement("button");
   ren.className = "session-ren";
-  ren.textContent = "✎";
+  ren.innerHTML = svgIcon("rename");
   ren.title = "重命名会话";
   ren.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1942,7 +1976,7 @@ function makeSessionItem(s) {
 
   const del = document.createElement("button");
   del.className = "session-del";
-  del.textContent = "🗑";
+  del.innerHTML = svgIcon("delete");
   del.title = "删除会话";
   del.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -2422,7 +2456,34 @@ function applyAppearance() {
   const el = document.documentElement;
   el.dataset.theme = resolveTheme(getThemePref(), _mqlDark ? _mqlDark.matches : true);
   el.dataset.font = getFontSize();
+  renderThemeToggle();  // 顶栏明暗切换图标随当前生效主题更新（函数声明已提升，可前向调用）
 }
+
+// 顶栏明暗切换（对齐 Figma）：在 light/dark 间直接切换，复用 themePref + applyAppearance。
+// 深色时显示「太阳」（点→转浅），浅色时显示「月亮」（点→转深）。所有主题变更都过 applyAppearance，图标随之刷新。
+function currentThemeIsDark() {
+  return resolveTheme(getThemePref(), _mqlDark ? _mqlDark.matches : true) === "dark";
+}
+function renderThemeToggle() {
+  const btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+  const dark = currentThemeIsDark();
+  const sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+  const moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+  btn.innerHTML = dark ? sun : moon;
+  btn.title = dark ? "切换到浅色主题" : "切换到深色主题";
+}
+(function bindThemeToggle() {
+  const btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    localStorage.setItem("themePref", currentThemeIsDark() ? "light" : "dark");
+    applyAppearance();
+    if (typeof renderAppearancePane === "function" &&
+        document.querySelector('.ap-segs[data-name="theme"]')) renderAppearancePane();  // 设置弹层开着时同步高亮
+  });
+})();
+
 applyAppearance(); // 立即应用，避免渲染后才换肤的闪烁
 // 跟随系统时，系统明暗变化要实时反映
 if (_mqlDark) {
