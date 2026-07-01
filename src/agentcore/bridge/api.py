@@ -975,8 +975,9 @@ class Api:
 
     # ---- 发消息（入队到活动对话的后台 worker，非阻塞返回） ----------------
 
-    def send_message(self, text: str, attachments=None) -> dict:
-        return self.active.enqueue(text, attachments)
+    def send_message(self, text: str, attachments=None, cid: "int | None" = None) -> dict:
+        # cid 缺省=活动对话；评审开工的自动指令带上发起 cid，重排后切走也不会发错对话。
+        return self._conv_by_cid(cid).enqueue(text, attachments)
 
     def regenerate(self, turn: int) -> dict:
         """重新生成第 turn（0-based 用户轮次）的回答：丢弃旧答案及其后、在原用户消息上重跑。"""
@@ -996,9 +997,18 @@ class Api:
         """当前活动对话的工作笔记（FR-11.3a）。"""
         return {"notes": self.active.get_notes(), "cid": self.active.cid}
 
-    def set_plan_mode(self, on: bool) -> dict:
-        """切换当前活动对话的规划模式（FR-11.5）。"""
-        return {"ok": True, "plan_mode": self.active.set_plan_mode(on), "cid": self.active.cid}
+    def _conv_by_cid(self, cid: "int | None"):
+        """按 cid 路由到对应对话；未给或已失效则退回活动对话（兼容）。
+        评审「开始编码」这类跨异步的动作要锁定发起时的对话——重排耗时里用户可能切走，
+        不能固定解到活动对话（否则会在新对话里开工，见 resolve_permission 同类修复）。"""
+        if cid is None:
+            return self.active
+        return self.conversations.get(int(cid)) or self.active
+
+    def set_plan_mode(self, on: bool, cid: "int | None" = None) -> dict:
+        """切换指定对话（缺省=活动对话）的规划模式（FR-11.5）。"""
+        conv = self._conv_by_cid(cid)
+        return {"ok": True, "plan_mode": conv.set_plan_mode(on), "cid": conv.cid}
 
     # ---- 方案评审（ADR 0019 Architecture Review Mode）-----------------------
 
@@ -1023,13 +1033,15 @@ class Api:
         """用户签字确认开工（gate 仍复核未决阻塞==0）。"""
         return self.active.sign_off_design_review()
 
-    def can_start_coding(self) -> dict:
-        """开工 gate：未决阻塞==0 且已签字。"""
-        return {"can_start": self.active.can_start_coding(), "cid": self.active.cid}
+    def can_start_coding(self, cid: "int | None" = None) -> dict:
+        """开工 gate：未决阻塞==0 且已签字。cid 缺省=活动对话。"""
+        conv = self._conv_by_cid(cid)
+        return {"can_start": conv.can_start_coding(), "cid": conv.cid}
 
-    def apply_review_to_plan(self) -> dict:
-        """把评审定稿落回规划(notes)+任务清单(tasks)；仅 gate 放行后可用。"""
-        return self.active.apply_review_to_plan()
+    def apply_review_to_plan(self, cid: "int | None" = None) -> dict:
+        """把评审定稿落回规划(notes)+任务清单(tasks)；仅 gate 放行后可用。
+        cid 缺省=活动对话；主模型重排耗时里用户可能切走，锁定发起对话才不会落错。"""
+        return self._conv_by_cid(cid).apply_review_to_plan()
 
     def get_design_review_models(self) -> dict:
         """评审模型选择：两个角色名、可用模型档名、当前映射（空=跟随主模型）。供 UI 下拉。"""

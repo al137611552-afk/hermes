@@ -1501,29 +1501,46 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
     }
     if (act === "sign") { renderReviewPanel(await window.pywebview.api.sign_off_design_review()); return; }
     if (act === "start-coding") {
-      const r = await window.pywebview.api.can_start_coding();
+      const originCid = activeCid;   // 锁定发起时的对话：重排耗时里用户可能切走，别在新对话开工
+      const r = await window.pywebview.api.can_start_coding(originCid);
       if (!r || !r.can_start) { showToast("尚未满足开工条件：未决清零并签字后再点"); return; }
       // 终态动作：把采纳项落回规划/任务（幂等）+ 退出规划模式，放行编码
       const prev = t.textContent;                       // 同样先给"重排中"态，主模型重排耗时别让按钮假死
       t.disabled = true; t.textContent = "主模型重排待办中…";
       showToast("主模型正在按评审共识重排待办清单…");
       let ap;
-      try { ap = await window.pywebview.api.apply_review_to_plan(); }
+      try { ap = await window.pywebview.api.apply_review_to_plan(originCid); }
       finally { t.disabled = false; t.textContent = prev; }
-      const v = activeView();
+      // 重排期间若用户切到别的对话，先切回原对话再开工（否则会在当前对话里发指令）
+      if (activeCid !== originCid && views.has(originCid)) {
+        try {
+          const sw = await window.pywebview.api.switch_conversation(originCid);
+          if (sw && sw.ok) {
+            mountView(originCid);
+            activeSessionId = sw.session_id != null ? sw.session_id : null;
+            if (sw.active_model) syncModelSelect(sw.active_model);
+            refreshSessions();
+            refreshWorkspace();
+          }
+        } catch (e) { /* 切回失败则下方不自动发送，避免发错对话 */ }
+      }
+      const backOnOrigin = activeCid === originCid;
+      const v = getView(originCid);
       try {
-        const pm = await window.pywebview.api.set_plan_mode(false);
+        const pm = await window.pywebview.api.set_plan_mode(false, originCid);
         if (v) v.planMode = !!(pm && pm.plan_mode);
         updateComposerButtons();
       } catch (e) { /* 退出规划模式失败不阻断提示 */ }
       if (ap && ap.ok) { refreshTasks(); showToast(`✅ 采纳项已落回（${ap.replanned ? "已重排清单" : "+" + (ap.tasks_added || 0) + " 待办"}）、退出规划模式，开始编码`); }
       else showToast("✅ 已退出规划模式，开始编码");
       renderReviewPanel(null);      // 收起评审面板，进入编码
-      // 直接开工：自动发一条起始指令，不用用户再手敲「继续」
-      if (input && typeof send === "function") {
+      // 直接开工：自动发一条起始指令，不用用户再手敲「继续」——只在已切回原对话时发，避免发错
+      if (backOnOrigin && input && typeof send === "function") {
         input.value = "评审已确认。请按已确认的方案和任务清单开始编码，逐项落实采纳的决策。";
         autoResize();
         send();
+      } else if (!backOnOrigin) {
+        showToast("原对话已重排完成，切回该对话即可开始编码");
       }
       return;
     }
