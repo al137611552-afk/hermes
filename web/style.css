@@ -1368,8 +1368,8 @@ body.plan-on .composer::before {
   border-radius: var(--radius); color: var(--muted); cursor: pointer;
 }
 .icon-btn:hover { background: var(--hover); border-color: var(--border-strong); color: var(--text); }
-.icon-btn svg { width: 18px; height: 18px; }
+/* 图标显示尺寸统一为 15px（Figma 动作图标基准）——顶栏/侧栏/输入区动作按钮一致 */
+.icon-btn svg { width: 15px; height: 15px; }
 /* 顶部设置 / 主题切换按钮：去掉常驻背景框，仅 hover 时淡底高亮暗示可点击 */
 #settings-btn, #theme-toggle { background: transparent; border-color: transparent; }
 #settings-btn:hover, #theme-toggle:hover { background: var(--panel-2); border-color: transparent; color: var(--text); }
-#theme-toggle svg { width: 16px; height: 16px; }

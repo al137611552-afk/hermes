@@ -1906,17 +1906,8 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// 会话行操作按钮的线性图标（对齐 Figma，替代原 emoji）——统一 stroke 风格
-const SESSION_ICONS = {
-  pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
-  rename: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
-  export: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
-  delete: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
-};
-function svgIcon(name) {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" `
-       + `stroke-linecap="round" stroke-linejoin="round">${SESSION_ICONS[name]}</svg>`;
-}
+// 会话行操作按钮图标：统一走 icons.js 的官方 lucide 矢量（尺寸由 CSS 控制，这里不设 size）
+function svgIcon(name) { return icon(name, 24); }
 
 // 分组标题行（已置顶 / 最近）——非会话行，搜索过滤时跳过、整组空则隐藏
 function makeSessionGroup(label) {
@@ -1957,7 +1948,7 @@ function makeSessionItem(s) {
 
   const exp = document.createElement("button");
   exp.className = "session-exp";
-  exp.innerHTML = svgIcon("export");
+  exp.innerHTML = svgIcon("download");
   exp.title = "导出该会话为 Markdown";
   exp.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -1967,7 +1958,7 @@ function makeSessionItem(s) {
 
   const ren = document.createElement("button");
   ren.className = "session-ren";
-  ren.innerHTML = svgIcon("rename");
+  ren.innerHTML = svgIcon("pencil");
   ren.title = "重命名会话";
   ren.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1976,7 +1967,7 @@ function makeSessionItem(s) {
 
   const del = document.createElement("button");
   del.className = "session-del";
-  del.innerHTML = svgIcon("delete");
+  del.innerHTML = svgIcon("trash-2");
   del.title = "删除会话";
   del.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -2468,9 +2459,7 @@ function renderThemeToggle() {
   const btn = document.getElementById("theme-toggle");
   if (!btn) return;
   const dark = currentThemeIsDark();
-  const sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
-  const moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
-  btn.innerHTML = dark ? sun : moon;
+  btn.innerHTML = icon(dark ? "sun" : "moon", 16);  // 深色显太阳（点→转浅），浅色显月亮
   btn.title = dark ? "切换到浅色主题" : "切换到深色主题";
 }
 (function bindThemeToggle() {
