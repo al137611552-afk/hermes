@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-07-01 — 架构评审：「开始编码」按钮落地 + 默认开启
+
+用户两问：③「开始编码」点了没反应；④ 为何 design_review 默认关、能否默认开。
+
+- **③「开始编码」做成终态动作**：原先只 `can_start_coding` 查一下弹 toast，不干活。现改为——gate 放行时点它
+  = `apply_review_to_plan`（采纳项落回规划/任务，幂等）+ `set_plan_mode(false)`（**退出规划模式、放行编码**）+ 刷新任务清单 + 提示。
+  没放行则提示"未决清零并签字后再点"。（保留独立「应用到规划/任务」按钮＝只落回、不退出，供想继续规划的场景。）
+- **④ 默认改为 `true`**：查惯例——config.yaml 里默认关的 `auto_review`/`auto_test` 都是**每轮自动触发、默认开=对所有人加成本**。
+  但 design_review **只在用户点「架构评审」按钮时才跑**，不点零成本，本不该套那条惯例；当初默认关只是把新功能藏在 flag 后（尚未定版）。
+  既然无被动成本、只 gate 一个显式动作，默认开更合理（开箱即用、可发现）。config.py 默认 `True` + config.yaml 补上带注释的 `design_review/max_rounds/models` 三键（原来只在 config.py 有默认、用户在 yaml 里看不到，才需手动加）。设 `false` 仍可整关。
+- **改动**：app.js start-coding handler（apply+退出规划+refreshTasks）；config.py 默认 True；config.yaml 新增三键+注释。
+- **自检**：config 加载验 `design_review=True`；config_keys 14/14、conversation 86/86、design_review 23/23、前端 33/33、Python 全量全绿。
+- **验证状态**：**「开始编码」真机点击应退出规划模式（顶部规划提示条消失、plan 按钮灭）+ 任务清单出采纳项；默认开箱即用不必改 config = 需 Windows 真机**；**不定版**。
+
+---
+
 ## 2026-07-01 — 架构评审两处补齐：收敛后未完成项 + 采纳建议落回规划/任务
 
 用户两问：① max_rounds 收敛后的未完成项怎么办？② 评审通过采纳的建议没回写到规划/任务清单。

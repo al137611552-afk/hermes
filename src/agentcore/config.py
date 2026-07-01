@@ -121,8 +121,9 @@ class AgentConfig(BaseModel):
     research_max_rounds: int = 3        # **整轮**催重搜总预算；达上限→停搜、用现有内容综合作答+声明局限（防换词绕过 per-query cap 无限重搜）
     research_judge: bool = True        # 块H3a：H2 正则拦不住时再过模型裁判判语义相关性（"夏季"≠秋冬款）。
                                        # 每次搜索后多一次模型调用（有成本/延迟）；False=关（只用 H1/H2 正则）
-    design_review: bool = False        # ADR 0019 Architecture Review Mode：规划模式下多角色（Execution⟷Architecture）
-                                       # 评审方案、产出四态共识、开工 gate 卡"未决阻塞==0"。默认关（opt-in，引擎已就绪、UI 接线后再默认）
+    design_review: bool = True         # ADR 0019 Architecture Review Mode：规划模式下多角色（Execution⟷Architecture）
+                                       # 评审方案、产出四态共识、开工 gate 卡"未决阻塞==0"。默认开——只在用户点「架构评审」时才跑，
+                                       # 不点零成本（区别于 auto_review/auto_test 那种每轮自动触发的功能，故不套"额外调用→默认关"惯例）
     design_review_max_rounds: int = 3  # 评审最大轮数（防无限互评，同 research_max_rounds 纪律）
     design_review_models: dict = {}    # 异构路由：reviewer 名→模型档案名（如 {"architecture":"openai/gpt-4o"}）。
                                        # 空=全部用当前主模型（同模型双角色，离线零成本）；大设计才给某角色配异构档

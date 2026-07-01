@@ -1437,7 +1437,17 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
     if (act === "sign") { renderReviewPanel(await window.pywebview.api.sign_off_design_review()); return; }
     if (act === "start-coding") {
       const r = await window.pywebview.api.can_start_coding();
-      showToast(r && r.can_start ? "✅ 未决已清零且已签字，可以开始编码" : "尚未满足开工条件");
+      if (!r || !r.can_start) { showToast("尚未满足开工条件：未决清零并签字后再点"); return; }
+      // 终态动作：把采纳项落回规划/任务（幂等）+ 退出规划模式，放行编码
+      const ap = await window.pywebview.api.apply_review_to_plan();
+      const v = activeView();
+      try {
+        const pm = await window.pywebview.api.set_plan_mode(false);
+        if (v) v.planMode = !!(pm && pm.plan_mode);
+        updateComposerButtons();
+      } catch (e) { /* 退出规划模式失败不阻断提示 */ }
+      if (ap && ap.ok) { refreshTasks(); showToast(`✅ 采纳项已落回（+${ap.tasks_added || 0} 待办）、已退出规划模式，可以开始编码`); }
+      else showToast("✅ 已退出规划模式，可以开始编码");
       return;
     }
     if (act === "apply") {

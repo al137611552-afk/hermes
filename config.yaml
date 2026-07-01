@@ -108,6 +108,13 @@ agent:
                              # 更快。默认关（会起子进程），按需开。本项目自测是独立脚本，建议配 affected_test_runner: python
   affected_test_runner: auto # FR-13.C 运行器：auto（.py 有 pytest 用 pytest、否则当独立脚本 python 跑）/ pytest / python
   delegate_max_revisions: 0  # 委派评分回炉：子 Agent 产出由 lead 模型按验收标准评分，不达标打回重做最多 N 轮。0=关
+  # 架构评审（ADR 0019）：规划模式下点「架构评审」按钮 → 把方案拆成决策、多角色（Execution⟷Architecture）
+  # 评审收敛成四态共识、开工 gate 卡"未决阻塞==0 且签字"。**只在你点按钮时才跑**，不点零成本（故默认开，
+  # 不像 auto_review/auto_test 那样每轮自动触发）。设 false 可彻底关掉这个按钮的功能。
+  design_review: true
+  design_review_max_rounds: 3   # 评审最大轮数（防无限互评）
+  design_review_models: {}      # 异构路由：reviewer 名→模型档名，如 {architecture: "openai/gpt-4o"}；
+                                # 空=全用当前主模型（同模型双角色，离线零成本）。大设计才给某角色配异构档降低错误相关性
   # 可编程 hooks（对标 Claude Code PreToolUse/PostToolUse）：在工具调用前/后跑你的命令，做自定义
   # 守卫/动作。命令的 stdin 会收到 {event,tool,params,workspace[,result]} 的 JSON，cwd=工作区。
   #  - PreToolUse：退出码 2=拦截工具（stdout 作拒绝理由回灌）、1=放行但警告、0=放行。
