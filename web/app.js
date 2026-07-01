@@ -1378,6 +1378,11 @@ function renderReviewPanel(state, opts) {
   } else if (gate.user_signed) {
     parts.push(`<div class="rv-sign signed">已签字 ✓</div>`);
   }
+  // gate 放行后：把定稿落回规划/任务（Accepted 建议→待办，共识→notes）
+  if (lbl.enabled) {
+    parts.push(`<div class="rv-apply"><button class="rv-btn primary" data-rv="apply">应用到规划 / 任务</button>` +
+      `<span class="rv-hint">采纳项写入待办、共识写入工作笔记（不改你原方案正文）</span></div>`);
+  }
   REVIEW_STATUSES.forEach((s) => {
     const items = groups[s] || [];
     if (!items.length) return;
@@ -1433,6 +1438,14 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
     if (act === "start-coding") {
       const r = await window.pywebview.api.can_start_coding();
       showToast(r && r.can_start ? "✅ 未决已清零且已签字，可以开始编码" : "尚未满足开工条件");
+      return;
+    }
+    if (act === "apply") {
+      const r = await window.pywebview.api.apply_review_to_plan();
+      if (r && r.ok) {
+        showToast(`已落回：采纳项 +${r.tasks_added || 0} 条待办，共识已写入工作笔记`);
+        refreshTasks();   // 刷新任务清单反映新待办
+      } else { showToast(r && r.error ? r.error : "应用失败"); }
       return;
     }
     if (act === "resolve") {

@@ -284,6 +284,23 @@ def build_review_prompt(role_directive: str, decisions) -> str:
     return role_directive + "\n\n" + "\n".join(body) + _REVIEW_OUTPUT_SPEC
 
 
+def escalate_unresolved(decisions) -> list:
+    """评审收敛后，凡还没收敛到共识四态的（Open）决策一律升级为 NeedUser（交用户拍板）。
+
+    否则「收敛后仍未完成项」会卡在 Open：`is_blocking` 为真锁死 gate，但前端又不把 Open 当"待拍板"
+    → 没有拍板入口、用户无从推进。升级为 NeedUser 后面板必给拍板控件，gate 依旧不自动放行（守 ADR 0014）。
+    保留原 blocking 与 choice，只改状态。
+    """
+    out = []
+    for d in decisions:
+        if d.status == OPEN:
+            out.append(Decision(d.id, d.title, d.current_choice, d.alternatives,
+                                 d.rationale, NEEDUSER, list(d.blocking)))
+        else:
+            out.append(d)
+    return out
+
+
 def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -> dict:
     """跑完整一轮多角色评审直到停止条件命中。
 
@@ -305,6 +322,7 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -
                 continue                # 评审员故障 → 跳过这一脑子，不中断评审
             cur = apply_review(cur, out)
         rounds.append(round_snapshot(cur))
+    cur = escalate_unresolved(cur)          # 收敛后仍未定的 Open → NeedUser（交用户拍板，不留死状态）
     return {
         "decisions": cur,
         "rounds": rounds,

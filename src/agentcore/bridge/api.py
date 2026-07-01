@@ -959,6 +959,10 @@ class Api:
         """开工 gate：未决阻塞==0 且已签字。"""
         return {"can_start": self.active.can_start_coding(), "cid": self.active.cid}
 
+    def apply_review_to_plan(self) -> dict:
+        """把评审定稿落回规划(notes)+任务清单(tasks)；仅 gate 放行后可用。"""
+        return self.active.apply_review_to_plan()
+
     def start_autonomous(self, intent: str, max_rounds: int = 0) -> dict:
         """启动当前活动对话的自主/crazy 模式（无人值守外层目标循环）。用现有「停止」即可中止。"""
         return self.active.start_autonomous(intent, max_rounds or None)

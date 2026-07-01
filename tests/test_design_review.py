@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from agentcore.agent.design_review import (  # noqa: E402
     ACCEPTED, DEFERRED, NEEDUSER, OPEN, REJECTED, Decision, DesignReviewSession,
-    apply_review, build_review_prompt, can_start_coding, count_blocking, gate_status,
+    apply_review, build_review_prompt, can_start_coding, count_blocking,
+    escalate_unresolved, gate_status,
     make_review_fn, parse_decisions, render_consensus, round_snapshot, run_review,
     should_stop,
 )
@@ -152,6 +153,23 @@ def test_run_review_routes_by_reviewer_name_heterogeneous():
         return "[]"
     run_review([_d("a", ACCEPTED)], routing_review_fn, max_rounds=2)
     assert "execution" in seen and "architecture" in seen   # 两脑子分别按名被调，可各接各模型
+
+
+def test_escalate_open_to_needuser_preserves_others():
+    ds = [_d("a", OPEN), _d("b", OPEN, blocking=["未决"]), _d("c", ACCEPTED),
+          _d("d", REJECTED), _d("e", DEFERRED)]
+    out = {d.id: d for d in escalate_unresolved(ds)}
+    assert out["a"].status == NEEDUSER                       # 纯 Open → 升级
+    assert out["b"].status == NEEDUSER and out["b"].blocking == ["未决"]  # Open+blocking → 升级且留 blocking
+    assert out["c"].status == ACCEPTED                       # 四态不动
+    assert out["d"].status == REJECTED and out["e"].status == DEFERRED
+
+
+def test_run_review_leftover_open_becomes_needuser_actionable():
+    # 评审员从不表态 → 收敛时全是 Open；escalate 后应成 NeedUser（前端才有拍板入口），gate 仍锁。
+    res = run_review([_d("a", OPEN), _d("b", OPEN)], lambda name, prompt: "[]", max_rounds=2)
+    assert all(d.status == NEEDUSER for d in res["decisions"])   # 无死 Open，全部可拍板
+    assert res["gate"]["can_start"] is False                     # 依旧不自动放行（守 ADR 0014）
 
 
 def test_run_review_survives_reviewer_exception():

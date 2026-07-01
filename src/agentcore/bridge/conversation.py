@@ -973,6 +973,45 @@ class Conversation:
         """开工 gate：未决阻塞==0 且已签字。"""
         return bool(self._review_session and self._review_session.can_start())
 
+    _REVIEW_SECTION_MARK = "## 架构评审共识（Architecture Review）"
+
+    def apply_review_to_plan(self) -> dict:
+        """把评审定稿落回**规划(notes)** + **任务清单(tasks)**。仅在 gate 放行（未决清零+签字）后可用。
+
+        - notes：追加/替换「架构评审共识」段（四态共识文档），**不动用户原方案正文**（非破坏，可反复应用幂等）。
+        - tasks：把 Accepted 决策补成待办（content=`标题：定稿选择`），已存在的跳过不重复。
+        Rejected/Deferred 不进任务；NeedUser 此刻应已清零（gate 放行的前提）。
+        """
+        from ..agent.design_review import ACCEPTED
+        s = self._review_session
+        if s is None:
+            return {"ok": False, "error": "尚未开始评审"}
+        if not s.can_start():
+            return {"ok": False, "error": "评审未放行（" + s.gate().get("reason", "") +
+                    "）：落回规划前需未决清零并签字"}
+        if self.res.store is None or self.session_id is None:
+            return {"ok": False, "error": "当前为草稿会话（未落库），无法写规划/任务"}
+        # 1) notes：剥掉旧共识段后追加新的（幂等）
+        consensus = s.consensus()
+        base = (self.get_notes() or "").split(self._REVIEW_SECTION_MARK)[0].rstrip()
+        section = self._REVIEW_SECTION_MARK + "\n\n" + consensus
+        self.res.store.set_notes(self.session_id, (base + "\n\n" + section) if base else section)
+        # 2) tasks：Accepted 决策 → 待办（去重）
+        tasks = list(self.res.store.get_tasks(self.session_id) or [])
+        existing = {t.get("content") for t in tasks}
+        added = 0
+        for d in s.decisions:
+            if d.status != ACCEPTED:
+                continue
+            content = (d.title + ("：" + d.current_choice if d.current_choice else "")).strip()
+            if content and content not in existing:
+                tasks.append({"content": content, "status": "pending"})
+                existing.add(content)
+                added += 1
+        if added:
+            self.res.store.set_tasks(self.session_id, tasks)
+        return {"ok": True, "notes_updated": True, "tasks_added": added}
+
     # ---- 自主 / crazy 模式（无人值守外层目标循环）----------------------------
 
     def set_crazy_mode(self, on: bool) -> bool:

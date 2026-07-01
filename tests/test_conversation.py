@@ -1387,6 +1387,7 @@ def test_design_review_end_to_end_wiring(tmp: Path):
     import agentcore.bridge.conversation as convmod
     api = _api(tmp)
     conv = api.active
+    conv._ensure_session("x")                                 # 落库，拿到 session_id（apply 要写 notes/tasks）
     conv.res.config.agent.design_review = True                # 开 opt-in 开关
     orig = convmod.build_provider
     convmod.build_provider = lambda cfg, model: _ReviewProvider()
@@ -1409,6 +1410,34 @@ def test_design_review_end_to_end_wiring(tmp: Path):
         assert conv.can_start_coding() is False               # 还没签字
         r3 = conv.sign_off_design_review()
         assert r3["can_start"] is True and conv.can_start_coding() is True
+        # 落回规划/任务：共识写入 notes（不破坏原文）、Accepted 决策成待办
+        conv.res.store.set_notes(conv.session_id, "原方案正文")
+        ap = conv.apply_review_to_plan()
+        assert ap["ok"] and ap["tasks_added"] >= 1
+        notes = conv.get_notes()
+        assert "原方案正文" in notes and conv._REVIEW_SECTION_MARK in notes   # 原文保留 + 追加共识段
+        tasks = conv.res.store.get_tasks(conv.session_id)
+        assert any(t["status"] == "pending" and "SQLite" in t["content"] for t in tasks)  # 采纳项进待办
+        n1 = len(tasks)
+        conv.apply_review_to_plan()                                    # 幂等：再应用不重复
+        assert len(conv.res.store.get_tasks(conv.session_id)) == n1
+        assert conv.get_notes().count(conv._REVIEW_SECTION_MARK) == 1
+    finally:
+        convmod.build_provider = orig
+
+
+def test_apply_review_to_plan_blocked_before_signoff(tmp: Path):
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv.res.config.agent.design_review = True
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _ReviewProvider()
+    try:
+        conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
+        conv.run_design_review()
+        r = conv.apply_review_to_plan()          # 有 NeedUser 未拍板 → gate 未放行 → 拒绝落回
+        assert r["ok"] is False and "未放行" in r["error"]
     finally:
         convmod.build_provider = orig
 

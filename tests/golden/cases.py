@@ -192,4 +192,12 @@ CASES = [
     {"id": "stop-continue-new-blocking", "kind": "review_stop", "max_rounds": 9,
      "rounds": [[{"id": "d1", "blocking": ["q1"]}], [{"id": "d1", "blocking": ["q1", "q2"]}]],
      "expect": "continue"},                                                    # 仍有新增阻塞 → 继续评
+
+    # ---- ADR 0019 收敛后升级：Open→NeedUser（不留死状态），四态不动 --------------
+    {"id": "escalate-open-to-needuser", "kind": "escalate",
+     "decisions": [{"id": "a", "status": "Open"},
+                   {"id": "b", "status": "Open", "blocking": ["未决"]},
+                   {"id": "c", "status": "Accepted"}, {"id": "d", "status": "Rejected"},
+                   {"id": "e", "status": "Deferred"}, {"id": "f", "status": "NeedUser"}],
+     "expect": ["NeedUser", "NeedUser", "Accepted", "Rejected", "Deferred", "NeedUser"]},
 ]

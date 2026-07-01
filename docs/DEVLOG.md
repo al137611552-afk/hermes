@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-07-01 — 架构评审两处补齐：收敛后未完成项 + 采纳建议落回规划/任务
+
+用户两问：① max_rounds 收敛后的未完成项怎么办？② 评审通过采纳的建议没回写到规划/任务清单。
+
+- **① 收敛后未完成项（修一个真 bug）**：`should_stop` 到 max_rounds 会带着未决项停。原先仍是 `Open` 的决策
+  `is_blocking` 为真**锁死 gate**，但前端只把 NeedUser/带 blocking 的当"待拍板"→ **Open 项没有拍板入口、用户无从推进**（死状态）。
+  修：`run_review` 收敛后调 `escalate_unresolved`——凡仍是 Open 的一律升级 `NeedUser`（保留 blocking/choice），
+  前端必给拍板控件；gate 依旧**不自动放行**（守 ADR 0014，只是给出操作入口，不降低门槛）。
+- **② 采纳建议落回（补一刀 write-back）**：`apply_review_to_plan()`（仅 gate 放行后可用）——
+  **notes**：追加/替换「架构评审共识」段（四态共识文档），**不动用户原方案正文**（非破坏、可幂等重复应用）；
+  **tasks**：Accepted 决策补成待办（`标题：定稿选择`，去重）。Rejected/Deferred 不进任务。前端 gate 亮后出「应用到规划 / 任务」按钮。
+  刻意**用户显式触发**、不 model 重写用户原文（避免静默改稿；model 智能重写留作可选项，未做）。
+- **改动**：design_review.py `escalate_unresolved` + run_review 收敛调用；conversation.py `apply_review_to_plan` + `_REVIEW_SECTION_MARK`；
+  api.py `apply_review_to_plan` passthrough；app.js「应用到规划/任务」按钮 + handler（成功后 refreshTasks）；style.css `.rv-apply`。
+- **自检**：design_review **23/23**（+2 escalate）；conversation **86/86**（+apply 落回幂等 + 未签字拒绝落回）；
+  Golden 加 `escalate` kind + 1 case（决策逻辑变更过回归门）；前端 33/33；Python 全量全绿。
+- **验证状态**：纯逻辑 headless 已验；**面板拍板入口 + 落回后 notes/任务清单实际变化 = 需 Windows 真机**；**不定版**。
+
+### Windows 验证补充（本次两点）
+- 评审收敛后若有未定项：面板里它们应显示为 NeedUser、**都带拍板控件**（不再有点不动的 Open 卡片）。
+- gate 放行（未决清零+签字）后点「应用到规划 / 任务」：任务清单应新增采纳项待办；工作笔记末尾出现「架构评审共识」段、**原方案正文仍在**；再点一次不重复。
+
+---
+
 ## 2026-07-01 — 修：架构评审「按钮一直闪、面板不出」（拆成两阶段）
 
 - **症状**：点「架构评审」按钮，按钮一直转、右侧不出面板、像卡死。

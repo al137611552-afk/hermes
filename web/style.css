@@ -818,7 +818,7 @@ body.plan-on .composer::before {
 .rv-gate.ok .rv-start { background: #2f9e5f; color: #fff; }
 .rv-gate.blocked .rv-start { background: var(--panel-2); color: var(--muted); cursor: not-allowed; }
 .rv-reason { color: var(--muted); font-size: .78rem; }
-.rv-sign { display: flex; align-items: center; gap: 8px; padding: 6px 2px 2px; }
+.rv-sign, .rv-apply { display: flex; align-items: center; gap: 8px; padding: 6px 2px 2px; }
 .rv-sign.signed { color: #6fcf97; font-weight: 600; }
 .rv-hint { color: var(--muted); font-size: .76rem; }
 /* 四态分区：组头 + 左色条区分状态 */

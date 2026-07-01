@@ -161,12 +161,23 @@ def _check_review_stop(c):
     return got == c["expect"], got
 
 
+def _check_escalate(c):
+    # ADR 0019：评审收敛后仍是 Open 的决策一律升级 NeedUser（不留无操作入口的死状态），四态不动。
+    from agentcore.agent.design_review import Decision, escalate_unresolved
+    ds = [Decision(id=d["id"], title=d["id"], status=d.get("status", "Open"),
+                   blocking=list(d.get("blocking", []))) for d in c["decisions"]]
+    out = {d.id: d.status for d in escalate_unresolved(ds)}
+    got = [out[d["id"]] for d in c["decisions"]]
+    return got == c["expect"], got
+
+
 _DISPATCH = {
     "need": _check_need, "evaluate": _check_evaluate, "classify": _check_classify,
     "retry": _check_retry, "deadend": _check_deadend, "learn": _check_learn,
     "research_judge": _check_research_judge, "grounding": _check_grounding,
     "switch": _check_switch, "novelty": _check_novelty,
     "consensus_gate": _check_consensus_gate, "review_stop": _check_review_stop,
+    "escalate": _check_escalate,
 }
 
 
