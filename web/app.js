@@ -1475,7 +1475,12 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
       const r = await window.pywebview.api.can_start_coding();
       if (!r || !r.can_start) { showToast("尚未满足开工条件：未决清零并签字后再点"); return; }
       // 终态动作：把采纳项落回规划/任务（幂等）+ 退出规划模式，放行编码
-      const ap = await window.pywebview.api.apply_review_to_plan();
+      const prev = t.textContent;                       // 同样先给"重排中"态，主模型重排耗时别让按钮假死
+      t.disabled = true; t.textContent = "主模型重排待办中…";
+      showToast("主模型正在按评审共识重排待办清单…");
+      let ap;
+      try { ap = await window.pywebview.api.apply_review_to_plan(); }
+      finally { t.disabled = false; t.textContent = prev; }
       const v = activeView();
       try {
         const pm = await window.pywebview.api.set_plan_mode(false);
@@ -1494,11 +1499,18 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
       return;
     }
     if (act === "apply") {
-      const r = await window.pywebview.api.apply_review_to_plan();
-      if (r && r.ok) {
-        showToast(`已落回：采纳项 +${r.tasks_added || 0} 条待办，共识已写入工作笔记`);
-        refreshTasks();   // 刷新任务清单反映新待办
-      } else { showToast(r && r.error ? r.error : "应用失败"); }
+      const prev = t.textContent;                       // 重排要调主模型、耗时，给按钮态提示别让用户干等
+      t.disabled = true; t.textContent = "主模型重排待办中…";
+      showToast("主模型正在按评审共识重排待办清单…");
+      try {
+        const r = await window.pywebview.api.apply_review_to_plan();
+        if (r && r.ok) {
+          showToast(r.replanned
+            ? `✅ 已按评审共识重排待办（${r.tasks_added || 0} 条）、共识写入工作笔记`
+            : `已落回：采纳项 +${r.tasks_added || 0} 条待办，共识已写入工作笔记`);
+          refreshTasks();   // 刷新任务清单反映新待办
+        } else { showToast(r && r.error ? r.error : "应用失败"); }
+      } finally { t.disabled = false; t.textContent = prev; }
       return;
     }
     if (act === "resolve") {

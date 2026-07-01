@@ -1085,7 +1085,7 @@ class Conversation:
             return None
         done_note = ("\n已完成（不必再列）：\n" + "\n".join("- " + t.get("content", "") for t in done)) if done else ""
         prompt = (self._REPLAN_PROMPT + "原方案：\n" + plan_text + "\n\n评审共识：\n" + consensus + done_note)
-        raw = self._oneshot_text(provider, prompt, max_tokens=2048)
+        raw = self._oneshot_text(provider, prompt)   # 全额预算：大清单别被 max_tokens 截断成半截 JSON→退化不重排
         start, end = raw.find("["), raw.rfind("]")
         if start < 0 or end <= start:
             return None

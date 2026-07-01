@@ -514,6 +514,8 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
 .workspace-panel {
   flex: 0 0 300px; display: flex; flex-direction: column;
   background: var(--bg-deep); border-left: 1px solid var(--border); min-width: 0;
+  /* 高度锁在视口内、内部溢出各子区自己滚，别让某个子区（如评审栏）撑高整页 */
+  min-height: 0; overflow: hidden;
 }
 .workspace-panel.collapsed { display: none; }
 .ws-header {
@@ -798,7 +800,11 @@ body.plan-on .composer::before {
 /* ── 评审面板（ADR 0019）：四态共识 + 开工 gate（绝无百分比）─────────
    WebView2 滚动坑规避：缩进只用 padding（不用 margin），不重构 hr/table，
    面板自身不再设 overflow（随工作区面板整体滚动）。 */
-.ws-review { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; font-size: .82rem; }
+.ws-review {
+  margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; font-size: .82rem;
+  /* 内容多时自己内部滚，别撑高整栏把页面往下托 */
+  max-height: 45vh; overflow-y: auto; overflow-anchor: none;
+}
 /* 顶部统一「模型 ▾」菜单：主模型 / 委派模型 / 评审模型（execution+architecture）三合一 */
 .model-menu-wrap { position: relative; flex: 0 1 auto; min-width: 0; }
 .model-menu-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 220px;
