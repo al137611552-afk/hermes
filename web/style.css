@@ -1368,6 +1368,8 @@ body.plan-on .composer::before {
   border-radius: var(--radius); color: var(--muted); cursor: pointer;
 }
 .icon-btn:hover { background: var(--hover); border-color: var(--border-strong); color: var(--text); }
+/* 静态图标占位（icons.js 注水）的包裹 span：紧贴、不撑高，svg 尺寸仍由各区域的 `.zone svg` 决定 */
+.ico { display: inline-flex; align-items: center; justify-content: center; }
 /* 图标显示尺寸统一为 15px（Figma 动作图标基准）——顶栏/侧栏/输入区动作按钮一致 */
 .icon-btn svg { width: 15px; height: 15px; }
 /* 顶部设置 / 主题切换按钮：去掉常驻背景框，仅 hover 时淡底高亮暗示可点击 */

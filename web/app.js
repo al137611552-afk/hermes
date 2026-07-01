@@ -221,8 +221,16 @@ function renderMarkdown(el, text) {
 }
 
 // ---- 复制 / 图片预览（对标主流 agent 的易用性） ------------------------
-const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-const QUOTE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>';
+const COPY_ICON = icon("copy", 13);       // 统一走 icons.js 唯一来源（lucide 原矢量）
+const QUOTE_ICON = icon("reply", 13);
+
+// index.html 里的静态图标占位（<span class="ico" data-icon=".." data-sz="..">）在这里统一
+// 注水：全站图标都出自 icons.js 这一个来源，尺寸/线宽/风格 1:1（app.js 在 body 末尾加载，占位已存在）。
+(function hydrateStaticIcons() {
+  document.querySelectorAll("span.ico[data-icon]").forEach((el) => {
+    el.innerHTML = icon(el.dataset.icon, Number(el.dataset.sz) || 15);
+  });
+})();
 
 async function copyText(text, btn) {
   text = text || "";
@@ -283,7 +291,7 @@ function decorateAssistant(bubble, raw) {
   act.appendChild(cp);
   const rg = document.createElement("button");
   rg.className = "msg-copy msg-regen"; rg.type = "button"; rg.title = "重新生成（丢弃此回答及其后对话）";
-  rg.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg><span>重新生成</span>';
+  rg.innerHTML = icon("refresh-cw", 13) + '<span>重新生成</span>';
   rg.addEventListener("click", () => doRegenerate(bubble.closest(".msg")));
   act.appendChild(rg);
   const qt = document.createElement("button");
@@ -670,7 +678,7 @@ function addMessage(v, role, text) {
 function addUserEditBtn(v, wrap, bubble) {
   const btn = document.createElement("button");
   btn.className = "msg-edit"; btn.type = "button"; btn.title = "编辑并重发";
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  btn.innerHTML = icon("pencil", 13);
   btn.addEventListener("click", () => enterEditMode(v, wrap, bubble));
   wrap.appendChild(btn);
   // 引用按钮（悬停出现，在编辑按钮左侧）：把这条用户消息引用到输入框
@@ -3304,10 +3312,7 @@ async function refreshWorkspace() {
 // ---- 检查点（FR-11.6 + P12 自动打点）：列表 + 一键回退（图标按钮，确认）-----
 const wsCheckpoints = document.getElementById("ws-checkpoints");
 // 回拨箭头（history/restore）：语义＝把状态倒回到这个点
-const RESTORE_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  'stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/>' +
-  '<path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l3 2"/></svg>';
+const RESTORE_ICON = icon("history", 13);
 
 async function refreshCheckpoints() {
   if (!window.pywebview) return;

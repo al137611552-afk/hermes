@@ -18,24 +18,17 @@
       <span class="sidebar-brand">Hermes Dev</span>
       <div class="sidebar-actions">
         <button id="new-session" class="icon-btn" title="新建空白会话" aria-label="新建空白会话">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 12h14"/><path d="M12 5v14"/>
-          </svg>
+          <span class="ico" data-icon="plus" data-sz="15"></span>
         </button>
         <button id="open-project" class="icon-btn" title="打开已有项目文件夹（起新会话）"
                 aria-label="打开已有项目文件夹">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>
-          </svg>
+          <span class="ico" data-icon="folder-open" data-sz="15"></span>
         </button>
       </div>
     </div>
     <div class="sidebar-search">
       <span class="search-ico" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <span class="ico" data-icon="search" data-sz="12"></span>
       </span>
       <input id="session-search" class="session-search" type="text" placeholder="搜索会话 / 消息…" />
       <span class="search-kbd">Ctrl K</span>
@@ -54,7 +47,7 @@
         <span id="usage-chip" class="usage-chip" title="本会话累计用量" hidden></span>
         <div class="model-menu-wrap">
           <button id="model-menu-btn" class="model-menu-btn" title="选择主模型 / 委派模型 / 评审模型" aria-haspopup="true" aria-expanded="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0 0 6M12 2a3 3 0 0 1 3 3v1h2a3 3 0 0 1 0 6M9 12a3 3 0 0 0 3 3 3 3 0 0 0 3-3M9 12H7a3 3 0 0 0 0 6h2M15 12h2a3 3 0 0 1 0 6h-2M12 15v4a3 3 0 0 1-3 3M12 15v4a3 3 0 0 0 3 3"/></svg>
+            <span class="ico" data-icon="cpu" data-sz="15"></span>
             <span id="model-menu-label">模型</span>
             <span class="mm-caret">▾</span>
           </button>
@@ -72,7 +65,7 @@
         </div>
         <button id="theme-toggle" class="icon-btn" title="切换明暗主题" aria-label="切换明暗主题"></button>
         <button id="settings-btn" class="icon-btn" title="设置 · API Key" aria-label="设置">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          <span class="ico" data-icon="settings" data-sz="15"></span>
         </button>
       </div>
     </header>
@@ -97,7 +90,7 @@
       <main id="chat" class="chat"></main>
       <div id="chat-index" class="chat-index" title="会话导航：点刻度跳到对应消息"></div>
       <button id="scroll-bottom-btn" class="scroll-bottom-btn" title="回到最新" aria-label="回到最新">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+        <span class="ico" data-icon="arrow-down" data-sz="16"></span>
       </button>
     </div>
 
@@ -107,13 +100,13 @@
       <div id="attachments" class="attachments"></div>
       <div class="composer-row">
         <button id="attach-btn" class="icon-btn attach-btn" title="添加图片 / 文档" aria-label="添加附件">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <span class="ico" data-icon="paperclip" data-sz="15"></span>
         </button>
         <button id="plan-btn" class="icon-btn plan-btn" title="规划模式：只勘察并产出计划，不改文件 / 不执行命令（FR-11.5）" aria-label="规划模式">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 4H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><path d="M9 12h6M9 16h6"/></svg>
+          <span class="ico" data-icon="clipboard-list" data-sz="15"></span>
         </button>
         <button id="review-btn" class="icon-btn review-btn" title="评审：把规划方案拆成关键决策（技术/规划合理性/范围/待确认项），务实⟷严谨两员多维度评审收敛成四态共识，未决清零并签字后才放行编码（ADR 0019）" aria-label="评审">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span class="ico" data-icon="check-square" data-sz="15"></span>
         </button>
         <input id="file-input" type="file" multiple hidden
           accept="image/*,.pdf,.txt,.md,.py,.js,.ts,.json,.yaml,.yml,.html,.css,.csv,.log" />
@@ -131,12 +124,12 @@
     <header class="ws-header">
       <span class="ws-title">工作区</span>
       <span class="ws-actions">
-        <button id="ws-preview-toggle" class="ws-ibtn" title="实时预览：在面板里渲染运行中的 dev server / 页面" aria-label="实时预览"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
-        <button id="ws-refresh" class="ws-ibtn" title="刷新工作区" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
-        <button id="ws-collapse" class="ws-ibtn" title="折叠面板" aria-label="折叠面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+        <button id="ws-preview-toggle" class="ws-ibtn" title="实时预览：在面板里渲染运行中的 dev server / 页面" aria-label="实时预览"><span class="ico" data-icon="eye" data-sz="13"></span></button>
+        <button id="ws-refresh" class="ws-ibtn" title="刷新工作区" aria-label="刷新"><span class="ico" data-icon="refresh-cw" data-sz="13"></span></button>
+        <button id="ws-collapse" class="ws-ibtn" title="折叠面板" aria-label="折叠面板"><span class="ico" data-icon="chevron-right" data-sz="16"></span></button>
       </span>
     </header>
-    <div id="ws-path" class="ws-path" title="当前会话的工作区目录"><svg class="ws-path-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span id="ws-path-text" class="ws-path-text"></span></div>
+    <div id="ws-path" class="ws-path" title="当前会话的工作区目录"><span class="ico" data-icon="folder" data-sz="14"></span><span id="ws-path-text" class="ws-path-text"></span></div>
     <div id="ws-tabs" class="ws-tabs"></div>
     <div class="ws-tabpanels">
       <div id="ws-tab-changes" class="ws-tabpanel" data-tab="changes">
@@ -156,7 +149,7 @@
       </div>
     </div>
   </aside>
-  <button id="ws-reopen" class="ws-reopen" title="展开工作区" aria-label="展开工作区" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+  <button id="ws-reopen" class="ws-reopen" title="展开工作区" aria-label="展开工作区" hidden><span class="ico" data-icon="chevron-left" data-sz="16"></span></button>
 
   <div id="cc-popover" class="cc-popover" hidden></div>
 
@@ -165,7 +158,7 @@
       <header class="settings-head">
         <span class="settings-title">设置</span>
         <button id="settings-close" class="settings-x" title="关闭" aria-label="关闭">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <span class="ico" data-icon="x" data-sz="15"></span>
         </button>
       </header>
       <div class="settings-body">
@@ -180,7 +173,7 @@
       <header class="settings-head">
         <span class="settings-title">键盘快捷键</span>
         <button id="shortcuts-close" class="settings-x" title="关闭" aria-label="关闭">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <span class="ico" data-icon="x" data-sz="15"></span>
         </button>
       </header>
       <div class="settings-body shortcuts-body" id="shortcuts-body"></div>
