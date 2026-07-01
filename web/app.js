@@ -1354,6 +1354,15 @@ function renderDecisionCard(d) {
   return html + `</div>`;
 }
 
+// 点评审的瞬间先把面板亮出来（拆解还没回来），避免"点了 1 分钟没反应"的观感
+function showReviewSkeleton(msg) {
+  const el = reviewPanelEl();
+  if (!el) return;
+  el.hidden = false;
+  el.innerHTML = `<div class="rv-head"><span class="rv-title">架构评审</span></div>` +
+    `<div class="rv-running">⏳ ${escapeHtml(msg || "正在拆解方案…")}</div>`;
+}
+
 function renderReviewPanel(state, opts) {
   const el = reviewPanelEl();
   if (!el) return;
@@ -1368,7 +1377,6 @@ function renderReviewPanel(state, opts) {
     `<span class="rv-actions">` +
     `<button class="rv-btn" data-rv="rerun" title="对已拆解的决策重新跑一轮评审">↻</button>` +
     `<button class="rv-btn" data-rv="close" title="收起面板">✕</button></span></div>`);
-  parts.push(`<div class="rv-models" data-rv-models></div>`);   // 评审模型选择器（异步填充）
   if (running) parts.push(`<div class="rv-running">⏳ 多角色评审进行中…（拆出 ${(state.decisions || []).length} 项决策，正在收敛）</div>`);
   parts.push(`<div class="rv-gate ${lbl.enabled ? "ok" : "blocked"}">` +
     `<button class="rv-start" data-rv="start-coding"${lbl.enabled ? "" : " disabled"}>${escapeHtml(lbl.text)}</button>` +
@@ -1393,25 +1401,23 @@ function renderReviewPanel(state, opts) {
   });
   if (state.stop_reason) parts.push(`<div class="rv-stop">收敛于：${escapeHtml(state.stop_reason)}</div>`);
   el.innerHTML = parts.join("");
-  fillReviewerModels();   // 异步填充评审模型下拉（每角色一个，选项=已配置档名，"跟随主模型"=空）
 }
 
 async function fillReviewerModels() {
-  const box = document.querySelector("[data-rv-models]");
+  const box = document.getElementById("mm-review-models");
   if (!box || !window.pywebview) return;
   let m;
   try { m = await window.pywebview.api.get_design_review_models(); } catch (e) { return; }
-  const roleLabel = { execution: "Execution（压范围）", architecture: "Architecture（拉天花板）" };
+  const roleLabel = { execution: "Execution · 压范围", architecture: "Architecture · 拉天花板" };
   const sel = (role) => {
     const cur = (m.current || {})[role] || "";
     const opts = [`<option value=""${cur ? "" : " selected"}>跟随主模型（${escapeHtml(m.active_model || "")}）</option>`]
       .concat((m.available || []).map((p) =>
         `<option value="${escapeHtml(p)}"${p === cur ? " selected" : ""}>${escapeHtml(p)}</option>`));
-    return `<label class="rv-model-row"><span>${roleLabel[role] || role}</span>` +
+    return `<label class="mm-row"><span>${roleLabel[role] || role}</span>` +
       `<select class="rv-model-sel" data-role="${role}">${opts.join("")}</select></label>`;
   };
-  box.innerHTML = `<div class="rv-models-h">评审模型（异构可降低两个评审员的错误相关性）</div>` +
-    (m.reviewers || []).map(sel).join("");
+  box.innerHTML = (m.reviewers || []).map(sel).join("");
   box.querySelectorAll(".rv-model-sel").forEach((s) => {
     s.addEventListener("change", async () => {
       await window.pywebview.api.set_design_review_model(s.getAttribute("data-role"), s.value || null);
@@ -1431,17 +1437,23 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
   if (!v.planMode) { showToast("先开规划模式产出方案，再发起架构评审"); return; }
   showToast("正在拆解方案…");
   reviewBtn.classList.add("busy");
+  showReviewSkeleton("正在拆解方案…（把方案拆成架构决策）");   // 立刻亮面板，别让用户以为点了没反应
   try {
-    // 第一阶段：拆解（一次模型调用）→ 立刻把面板亮出来，决策可见
+    // 第一阶段：拆解（一次模型调用）→ 面板已亮，回来后填决策
     const st = await window.pywebview.api.start_design_review();
-    if (!st || !st.ok) { showToast(st && st.error ? st.error : "评审未能开始"); return; }
+    if (!st || !st.ok) {
+      if (st && st.raw) console.log("[design_review] 拆解原始输出：", st.raw);   // 解析失败时在 DevTools 里可查
+      renderReviewPanel(null);                                 // 收起骨架面板
+      showToast(st && st.error ? st.error : "评审未能开始");
+      return;
+    }
     renderReviewPanel(st, { running: true });
     showToast(`已拆出 ${(st.decisions || []).length} 项决策，多角色评审中…`);
     // 第二阶段：跑评审（最多 3 轮×2 角色，耗时较长）→ 回填共识
     const st2 = await window.pywebview.api.run_design_review();
     renderReviewPanel(st2 && st2.ok ? st2 : st);
     if (!st2 || !st2.ok) showToast(st2 && st2.error ? st2.error : "评审过程出错（决策已保留，可点 ↻ 重试）");
-  } catch (e) { showToast("评审失败：" + (e && e.message ? e.message : e)); } finally { reviewBtn.classList.remove("busy"); }
+  } catch (e) { renderReviewPanel(null); showToast("评审失败：" + (e && e.message ? e.message : e)); } finally { reviewBtn.classList.remove("busy"); }
 });
 
 (function bindReviewPanel() {
@@ -2332,7 +2344,26 @@ document.getElementById("open-project").addEventListener("click", async () => {
 
 modelSelect.addEventListener("change", async () => {
   await window.pywebview.api.set_active_model(modelSelect.value);
+  updateModelMenuLabel();
+  fillReviewerModels();   // 主模型变了→评审「跟随主模型」项文案跟着更新
 });
+
+// 顶部「模型 ▾」弹层：开合 + 点击外部/Esc 关闭
+(function bindModelMenu() {
+  const btn = document.getElementById("model-menu-btn");
+  const menu = document.getElementById("model-menu");
+  if (!btn || !menu) return;
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  const toggle = () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
+  menu.addEventListener("click", (e) => e.stopPropagation());   // 菜单内点击不外泄
+  document.addEventListener("click", () => { if (!menu.hidden) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) close(); });
+})();
 
 subagentSelect.addEventListener("change", async () => {
   await window.pywebview.api.set_subagent_model(subagentSelect.value);
@@ -2968,6 +2999,14 @@ async function refreshModelDropdowns() {
   };
   fill(modelSelect, active, false);
   fill(subagentSelect, subagent, true);
+  updateModelMenuLabel();
+  fillReviewerModels();   // 顶部菜单里的评审模型下拉一并刷新（异构可选）
+}
+
+// 顶部「模型 ▾」按钮上显示当前主模型名
+function updateModelMenuLabel() {
+  const lbl = document.getElementById("model-menu-label");
+  if (lbl && modelSelect) lbl.textContent = modelSelect.value || "模型";
 }
 
 // ---- 会话导航索引（右缘迷你刻度条，按用户消息跳转） --------------------

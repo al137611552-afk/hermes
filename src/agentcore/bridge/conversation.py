@@ -878,11 +878,13 @@ class Conversation:
 
     # ---- ADR 0019：规划模式方案评审（Architecture Review Mode）------------------
 
+    # 刻意精简：只要 id/title/current_choice/status 四个短字段、限条数。拆解是唯一挡在面板前的串行调用，
+    # 输出越短越快（延迟≈生成 token 数）；备选/理由对 gate 与四态判定非必需，reviewer 靠 title+choice 也能评。
     _DECOMPOSE_PROMPT = (
-        "把下面这份方案拆成「架构决策（Decision）」列表，仅输出 JSON 数组，每个决策一项：\n"
-        '[{"id":"短标识","title":"这个决策在定什么","current_choice":"当前选择",'
-        '"alternatives":[{"choice":"备选","tradeoff":"取舍"}],"rationale":"为什么这么选","status":"Open"}]\n'
-        "只抽真正的方向性/架构取舍（存储/框架/范围/拆分等），琐碎实现细节不算。只输出 JSON，不要解释。\n\n方案：\n"
+        "把下面这份方案拆成「架构决策」列表，只输出 JSON 数组，每项只含这四个短字段（不要 alternatives/rationale）：\n"
+        '[{"id":"短标识","title":"这个决策在定什么（一句话）","current_choice":"当前选择（一句话）","status":"Open"}]\n'
+        "只抽真正的方向性/架构取舍（存储/框架/范围/拆分等），最多约 8 条；琐碎实现细节不算。"
+        "只输出 JSON，不要解释、不要备选、不要理由。\n\n方案：\n"
     )
 
     def _oneshot_text(self, provider, prompt: str, max_tokens: "int | None" = None) -> str:
@@ -925,7 +927,7 @@ class Conversation:
         刻意只做"拆解"这一次模型调用就返回，让前端先把面板亮出来；多角色评审由 `run_design_review`
         续跑（否则 1 次拆解 + 最多 3 轮×2 角色 = 至多 7 次串行模型调用全压在一个调用里，前端看着像卡死）。
         """
-        from ..agent.design_review import DesignReviewSession
+        from ..agent.design_review import DesignReviewSession, diagnose_decisions
         if not self.res.config.agent.design_review:
             return {"ok": False, "error": "design_review 未启用（config.agent.design_review=false）"}
         text = (proposal_text or self.get_notes() or "").strip()
@@ -935,13 +937,19 @@ class Conversation:
             provider = build_provider(self.res.config, self.active_model)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e)}
-        decisions_json = self._oneshot_text(provider, self._DECOMPOSE_PROMPT + text, max_tokens=1536)
+        # 精简 schema（四短字段、≤8 条）后输出很短：1024 足够不截断，又比原 3072 快得多（延迟≈生成 token 数）。
+        decisions_json = self._oneshot_text(provider, self._DECOMPOSE_PROMPT + text, max_tokens=1024)
         # 轮数按同/异构分档：同模型（无异构映射）容易快速收敛，封顶 2 轮省调用；配了异构才用满配置轮数。
         cfg_rounds = self.res.config.agent.design_review_max_rounds
         rounds = cfg_rounds if (self.res.config.agent.design_review_models or {}) else min(cfg_rounds, 2)
         session = DesignReviewSession.from_proposal(decisions_json, max_rounds=rounds)
         if not session.decisions:
-            return {"ok": False, "error": "未能从方案抽出决策（模型输出非预期）",
+            why = diagnose_decisions(decisions_json)
+            if why == "empty":   # 合法空数组：方案没有架构级取舍，多是纯执行清单——不是报错
+                return {"ok": False, "no_decisions": True,
+                        "error": "这份方案没有需要评审的「架构级决策」（方向/存储/框架/拆分等取舍）——"
+                                 "更像一份执行清单，可直接开始编码，无需架构评审。"}
+            return {"ok": False, "error": "未能从方案抽出决策（模型没吐出预期 JSON，或被截断，可点 ↻ 重试）",
                     "raw": decisions_json[:500]}
         self._review_session = session
         return self._review_state(ok=True)

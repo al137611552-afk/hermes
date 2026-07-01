@@ -210,6 +210,20 @@ def parse_decisions(text: str) -> list:
     return [_coerce_decision(o) for o in data if isinstance(o, dict)]
 
 
+def diagnose_decisions(text: str) -> str:
+    """空结果归因（拆解为何没产出决策），供上层给出诚实提示：
+    'ok'    抠到至少一条决策；
+    'empty' 抠到合法 JSON 数组但为空 —— 方案没有架构级取舍（多为纯执行清单），并非报错；
+    'nojson' 根本没抠到 JSON（模型吐了大白话，或被 max_tokens 截断没闭合）。
+    """
+    data = _first_json(text, "[", "]")
+    if isinstance(data, list):
+        return "ok" if any(isinstance(o, dict) for o in data) else "empty"
+    if isinstance(_first_json(text, "{", "}"), dict):
+        return "ok"
+    return "nojson"
+
+
 def apply_review(decisions, review_text: str) -> list:
     """把一轮 reviewer 的 JSON 反馈合并进决策集：按 id 改 status、追加 blocking、解决 blocking。
 

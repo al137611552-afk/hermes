@@ -1451,6 +1451,31 @@ def test_design_review_disabled_returns_error(tmp: Path):
     assert r["ok"] is False and "design_review" in r["error"]
 
 
+class _EmptyDecomposeProvider:
+    """假 provider：拆解时吐合法空数组（方案无架构级取舍，纯执行清单）。"""
+    def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
+        from agentcore.providers import StreamEvent
+        yield StreamEvent("text", "这份清单没有架构级取舍：[]")
+        yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+
+
+def test_start_design_review_empty_is_no_decisions_not_error(tmp: Path):
+    """纯执行清单拆不出决策 → no_decisions 诚实提示，而非"模型输出非预期"。"""
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv.res.config.agent.design_review = True
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _EmptyDecomposeProvider()
+    try:
+        r = conv.start_design_review("方案：1. 建表 2. 写接口 3. 加测试")
+        assert r["ok"] is False and r.get("no_decisions") is True
+        assert "架构级决策" in r["error"] and "非预期" not in r["error"]
+        assert "raw" not in r                                     # 空数组不是解析失败，不回原文
+    finally:
+        convmod.build_provider = orig
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

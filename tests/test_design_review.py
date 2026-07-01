@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agentcore.agent.design_review import (  # noqa: E402
     ACCEPTED, DEFERRED, NEEDUSER, OPEN, REJECTED, Decision, DesignReviewSession,
     apply_review, build_review_prompt, can_start_coding, count_blocking,
-    escalate_unresolved, gate_status,
+    diagnose_decisions, escalate_unresolved, gate_status,
     make_review_fn, parse_decisions, render_consensus, round_snapshot, run_review,
     should_stop,
 )
@@ -97,6 +97,18 @@ def test_parse_decisions_tolerates_wrapping_and_bad_status():
     assert len(ds) == 1 and ds[0].id == "d1" and ds[0].current_choice == "SQLite"
     assert ds[0].status == OPEN                  # 非法 status → Open
     assert ds[0].blocking == ["还没定"]           # str blocking → 单元素列表
+
+
+def test_diagnose_decisions_distinguishes_empty_from_nojson():
+    # 合法但空数组 → 'empty'（方案无架构级取舍，纯执行清单，不该报"输出非预期"）
+    assert diagnose_decisions("这方案没啥架构分歧：[]") == "empty"
+    # 抠到至少一条 → 'ok'
+    assert diagnose_decisions('前言 [{"id":"d1","title":"存储"}] 收尾') == "ok"
+    # 单对象也算 ok
+    assert diagnose_decisions('{"id":"d1","title":"存储"}') == "ok"
+    # 大白话/截断没闭合，抠不到 JSON → 'nojson'
+    assert diagnose_decisions("我觉得这个方案挺好的，可以直接开工。") == "nojson"
+    assert diagnose_decisions('[{"id":"d1","title":"存储"') == "nojson"   # 截断未闭合
 
 
 def test_apply_review_changes_status_and_blocking():

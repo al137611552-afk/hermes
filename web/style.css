@@ -799,12 +799,26 @@ body.plan-on .composer::before {
    WebView2 滚动坑规避：缩进只用 padding（不用 margin），不重构 hr/table，
    面板自身不再设 overflow（随工作区面板整体滚动）。 */
 .ws-review { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; font-size: .82rem; }
-.rv-models { padding: 4px 2px 6px; border-bottom: 1px dashed var(--border); margin-bottom: 6px; }
-.rv-models-h { color: var(--muted); font-size: .74rem; padding-bottom: 4px; }
-.rv-model-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: .78rem; }
-.rv-model-row > span { flex: none; width: 128px; color: var(--text); }
-.rv-model-sel { flex: 1; min-width: 0; background: var(--bg-deep); color: var(--text);
-  border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-size: .76rem; }
+/* 顶部统一「模型 ▾」菜单：主模型 / 委派模型 / 评审模型（execution+architecture）三合一 */
+.model-menu-wrap { position: relative; flex: 0 1 auto; min-width: 0; }
+.model-menu-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 220px;
+  background: var(--bg-deep); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 8px; cursor: pointer; font-size: .82rem; }
+.model-menu-btn:hover { border-color: var(--accent); }
+.model-menu-btn svg { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.model-menu-btn #model-menu-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.model-menu-btn .mm-caret { flex: none; color: var(--muted); font-size: .7rem; }
+.model-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; width: 300px;
+  background: var(--bg-panel, var(--bg-deep)); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .35); padding: 8px; }
+.mm-sec { padding: 4px 2px; }
+.mm-sec + .mm-sec { border-top: 1px dashed var(--border); margin-top: 4px; }
+.mm-sec-h { color: var(--muted); font-size: .74rem; padding: 2px 2px 6px; }
+.mm-hint { color: var(--muted); font-weight: 400; font-size: .68rem; }
+.mm-row { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: .78rem; }
+.mm-row > span { flex: none; width: 116px; color: var(--text); }
+.mm-row select, .rv-model-sel { flex: 1; min-width: 0; background: var(--bg-deep); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: .76rem; }
 .rv-running { padding: 5px 8px; margin-bottom: 6px; border-radius: 6px; font-size: .8rem;
   color: #e8c87a; background: rgba(180, 142, 60, .14); border: 1px solid rgba(180, 142, 60, .35); }
 .rv-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 6px; }
