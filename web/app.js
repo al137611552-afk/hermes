@@ -3230,10 +3230,14 @@ function hideTickLabel() {
   if (ciLabelEl) ciLabelEl.classList.remove("show");
 }
 
-// 顶部标题：显示当前项目名（打开的真实项目用文件夹名；空白会话回退 Hermes Dev）
+// 顶部标题：显示当前项目名（真实项目用文件夹名；空白会话用会话标题）。
+// 品牌名「Hermes Dev」已归左侧栏，顶栏不再回退到品牌名（避免重复）；无项目时显示占位。
 function setTopTitle(label) {
   const el = document.getElementById("app-title");
-  if (el) el.textContent = label || "Hermes Dev";
+  if (!el) return;
+  const name = (label || "").trim();
+  el.textContent = name || "未打开项目";
+  el.classList.toggle("is-placeholder", !name);
 }
 
 // ---- 右侧工作区文件预览面板（只读） ------------------------------------
