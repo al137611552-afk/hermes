@@ -1374,9 +1374,9 @@ class _ReviewProvider:
         elif "拆成" in prompt:                                 # 拆方案 → Decision 列表
             txt = '[{"id":"db","title":"数据库","current_choice":"SQLite","status":"Open"},' \
                   '{"id":"idx","title":"全文检索","current_choice":"先不做","status":"Open"}]'
-        elif "Execution" in prompt:                            # Execution 评审
+        elif "务实评审" in prompt:                              # 务实评审员
             txt = '[{"id":"idx","status":"Accepted"}]'
-        elif "Architecture" in prompt:                         # Architecture 把 db 升级待拍板
+        elif "严谨评审" in prompt:                              # 严谨评审员：把 db 升级待拍板
             txt = '[{"id":"db","status":"NeedUser","add_blocking":["SQLite vs DuckDB 需拍板"]}]'
         else:
             txt = "[]"
@@ -1459,6 +1459,42 @@ class _EmptyDecomposeProvider:
         yield StreamEvent("done", meta={"stop_reason": "end_turn"})
 
 
+class _FlakyDecomposeProvider:
+    """假 provider：第一次拆解吐大白话(nojson)，收紧重试(strict)时才吐合法 JSON。"""
+    def __init__(self):
+        self.decompose_calls = 0
+    def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
+        from agentcore.providers import StreamEvent
+        prompt = str(messages[0].content)
+        if "拆成" in prompt:
+            self.decompose_calls += 1
+            if self.decompose_calls == 1:
+                txt = "好的，这个方案我理解了，主要有几个技术选型……"   # 没有 JSON
+            else:
+                txt = '[{"id":"fw","title":"桌面框架","current_choice":"Tauri","status":"Open"}]'
+        else:
+            txt = "[]"
+        yield StreamEvent("text", txt)
+        yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+
+
+def test_start_design_review_retries_once_on_nojson(tmp: Path):
+    """模型第一次没吐 JSON → 收紧措辞重试一次即成功（不误报失败）。"""
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv.res.config.agent.design_review = True
+    prov = _FlakyDecomposeProvider()
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: prov
+    try:
+        r = conv.start_design_review("方案：桌面框架用 Tauri……")
+        assert r["ok"] is True and len(r["decisions"]) == 1
+        assert prov.decompose_calls == 2                          # 确有一次重试
+    finally:
+        convmod.build_provider = orig
+
+
 def test_start_design_review_empty_is_no_decisions_not_error(tmp: Path):
     """纯执行清单拆不出决策 → no_decisions 诚实提示，而非"模型输出非预期"。"""
     import agentcore.bridge.conversation as convmod
@@ -1470,7 +1506,7 @@ def test_start_design_review_empty_is_no_decisions_not_error(tmp: Path):
     try:
         r = conv.start_design_review("方案：1. 建表 2. 写接口 3. 加测试")
         assert r["ok"] is False and r.get("no_decisions") is True
-        assert "架构级决策" in r["error"] and "非预期" not in r["error"]
+        assert "关键决策" in r["error"] and "非预期" not in r["error"]
         assert "raw" not in r                                     # 空数组不是解析失败，不回原文
     finally:
         convmod.build_provider = orig

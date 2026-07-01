@@ -876,15 +876,20 @@ class Conversation:
         self.plan_mode = bool(on)
         return self.plan_mode
 
-    # ---- ADR 0019：规划模式方案评审（Architecture Review Mode）------------------
+    # ---- ADR 0019：规划模式方案评审（Review Mode）------------------
 
-    # 刻意精简：只要 id/title/current_choice/status 四个短字段、限条数。拆解是唯一挡在面板前的串行调用，
-    # 输出越短越快（延迟≈生成 token 数）；备选/理由对 gate 与四态判定非必需，reviewer 靠 title+choice 也能评。
+    # 刻意精简字段（去 alternatives/rationale）保持输出短、拆解快（延迟≈生成 token 数）；但抽取范围不止技术，
+    # 也覆盖范围/阶段取舍与「待用户确认」的开放问题——后者把待定点写进 blocking，会显示为未决、锁住 gate 待拍板。
     _DECOMPOSE_PROMPT = (
-        "把下面这份方案拆成「架构决策」列表，只输出 JSON 数组，每项只含这四个短字段（不要 alternatives/rationale）：\n"
-        '[{"id":"短标识","title":"这个决策在定什么（一句话）","current_choice":"当前选择（一句话）","status":"Open"}]\n'
-        "只抽真正的方向性/架构取舍（存储/框架/范围/拆分等），最多约 8 条；琐碎实现细节不算。"
-        "只输出 JSON，不要解释、不要备选、不要理由。\n\n方案：\n"
+        "把下面这份方案拆成「关键决策」列表，只输出 JSON 数组，每项只含这几个短字段（不要 alternatives/rationale）：\n"
+        '[{"id":"短标识","title":"这个决策在定什么（一句话）","current_choice":"当前选择或倾向（一句话）",'
+        '"status":"Open","blocking":["待确认或有争议的点；没有就省略该字段"]}]\n'
+        "要抽的不止技术选型，还包括：\n"
+        "· 技术方向取舍（框架/存储/AI 服务/推送机制等）；\n"
+        "· 范围与阶段划分（MVP 必做 vs 增强、砍哪些、先后顺序）；\n"
+        "· 方案里明确「待你确认」的开放问题（默认值、风格方向、是否进入开发等）——current_choice 填当前倾向，把待定点写进 blocking。\n"
+        "最多约 10 条，每条一句话，琐碎实现细节不算。\n"
+        "无论方案多长，都只输出这一个 JSON 数组，不要 markdown 表格、不要代码围栏、不要任何解释。\n\n方案：\n"
     )
 
     def _oneshot_text(self, provider, prompt: str, max_tokens: "int | None" = None) -> str:
@@ -937,18 +942,24 @@ class Conversation:
             provider = build_provider(self.res.config, self.active_model)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e)}
-        # 精简 schema（四短字段、≤8 条）后输出很短：1024 足够不截断，又比原 3072 快得多（延迟≈生成 token 数）。
-        decisions_json = self._oneshot_text(provider, self._DECOMPOSE_PROMPT + text, max_tokens=1024)
         # 轮数按同/异构分档：同模型（无异构映射）容易快速收敛，封顶 2 轮省调用；配了异构才用满配置轮数。
         cfg_rounds = self.res.config.agent.design_review_max_rounds
         rounds = cfg_rounds if (self.res.config.agent.design_review_models or {}) else min(cfg_rounds, 2)
+        # 2048：精简 schema 下 ≤10 条决策够写完不截断（长方案曾因 1024 截断致数组不闭合、解析归零）；仍比旧 3072 省。
+        prompt = self._DECOMPOSE_PROMPT + text
+        decisions_json = self._oneshot_text(provider, prompt, max_tokens=2048)
         session = DesignReviewSession.from_proposal(decisions_json, max_rounds=rounds)
+        # 模型被大白话/markdown 带跑、没吐出 JSON 数组 → 收紧措辞重试一次（只在失败时多花一次调用）。
+        if not session.decisions and diagnose_decisions(decisions_json) == "nojson":
+            strict = "只输出 JSON 数组本身：第一个字符必须是 [，最后一个字符必须是 ]，中间不得有任何其他文字。\n\n" + prompt
+            decisions_json = self._oneshot_text(provider, strict, max_tokens=2048)
+            session = DesignReviewSession.from_proposal(decisions_json, max_rounds=rounds)
         if not session.decisions:
             why = diagnose_decisions(decisions_json)
-            if why == "empty":   # 合法空数组：方案没有架构级取舍，多是纯执行清单——不是报错
+            if why == "empty":   # 合法空数组：方案确实没有方向/范围/待确认类决策——多是纯执行清单，不是报错
                 return {"ok": False, "no_decisions": True,
-                        "error": "这份方案没有需要评审的「架构级决策」（方向/存储/框架/拆分等取舍）——"
-                                 "更像一份执行清单，可直接开始编码，无需架构评审。"}
+                        "error": "这份方案没有需要评审的「关键决策」（技术方向 / 范围阶段 / 待确认的开放问题）——"
+                                 "更像一份执行清单，可直接开始编码，无需评审。"}
             return {"ok": False, "error": "未能从方案抽出决策（模型没吐出预期 JSON，或被截断，可点 ↻ 重试）",
                     "raw": decisions_json[:500]}
         self._review_session = session
@@ -984,12 +995,12 @@ class Conversation:
         """开工 gate：未决阻塞==0 且已签字。"""
         return bool(self._review_session and self._review_session.can_start())
 
-    _REVIEW_SECTION_MARK = "## 架构评审共识（Architecture Review）"
+    _REVIEW_SECTION_MARK = "## 评审共识（Review）"
 
     def apply_review_to_plan(self) -> dict:
         """把评审定稿落回**规划(notes)** + **任务清单(tasks)**。仅在 gate 放行（未决清零+签字）后可用。
 
-        - notes：追加/替换「架构评审共识」段（四态共识文档），**不动用户原方案正文**（非破坏，可反复应用幂等）。
+        - notes：追加/替换「评审共识」段（四态共识文档），**不动用户原方案正文**（非破坏，可反复应用幂等）。
         - tasks：把 Accepted 决策补成待办（content=`标题：定稿选择`），已存在的跳过不重复。
         Rejected/Deferred 不进任务；NeedUser 此刻应已清零（gate 放行的前提）。
         """

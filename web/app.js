@@ -1330,7 +1330,7 @@ planBtn.addEventListener("click", async () => {
   updateComposerButtons();
 });
 
-// ---- 架构评审面板（ADR 0019 Architecture Review Mode）-------------------
+// ---- 评审面板（ADR 0019 方案评审）-------------------
 // 纯逻辑（reviewGateLabel / decisionsByStatus / decisionNeedsUser / REVIEW_*）在 pure.js，
 // 这里只做 DOM 渲染与 api 调用。gate 永不显示百分比（守 ADR 0014/0019）。
 const reviewBtn = document.getElementById("review-btn");
@@ -1359,7 +1359,7 @@ function showReviewSkeleton(msg) {
   const el = reviewPanelEl();
   if (!el) return;
   el.hidden = false;
-  el.innerHTML = `<div class="rv-head"><span class="rv-title">架构评审</span></div>` +
+  el.innerHTML = `<div class="rv-head"><span class="rv-title">评审</span></div>` +
     `<div class="rv-running">⏳ ${escapeHtml(msg || "正在拆解方案…")}</div>`;
 }
 
@@ -1373,7 +1373,7 @@ function renderReviewPanel(state, opts) {
   const lbl = reviewGateLabel(gate);          // {enabled, text}
   const groups = decisionsByStatus(state.decisions || []);
   const parts = [];
-  parts.push(`<div class="rv-head"><span class="rv-title">架构评审</span>` +
+  parts.push(`<div class="rv-head"><span class="rv-title">评审</span>` +
     `<span class="rv-actions">` +
     `<button class="rv-btn" data-rv="rerun" title="对已拆解的决策重新跑一轮评审">↻</button>` +
     `<button class="rv-btn" data-rv="close" title="收起面板">✕</button></span></div>`);
@@ -1408,7 +1408,7 @@ async function fillReviewerModels() {
   if (!box || !window.pywebview) return;
   let m;
   try { m = await window.pywebview.api.get_design_review_models(); } catch (e) { return; }
-  const roleLabel = { execution: "Execution · 压范围", architecture: "Architecture · 拉天花板" };
+  const roleLabel = { execution: "务实 · 合理性/可交付", architecture: "严谨 · 技术/风险" };
   const sel = (role) => {
     const cur = (m.current || {})[role] || "";
     const opts = [`<option value=""${cur ? "" : " selected"}>跟随主模型（${escapeHtml(m.active_model || "")}）</option>`]
@@ -1434,10 +1434,10 @@ async function refreshReview() {
 if (reviewBtn) reviewBtn.addEventListener("click", async () => {
   const v = activeView();
   if (!v || !window.pywebview) return;
-  if (!v.planMode) { showToast("先开规划模式产出方案，再发起架构评审"); return; }
+  if (!v.planMode) { showToast("先开规划模式产出方案，再发起评审"); return; }
   showToast("正在拆解方案…");
   reviewBtn.classList.add("busy");
-  showReviewSkeleton("正在拆解方案…（把方案拆成架构决策）");   // 立刻亮面板，别让用户以为点了没反应
+  showReviewSkeleton("正在拆解方案…（把方案拆成关键决策）");   // 立刻亮面板，别让用户以为点了没反应
   try {
     // 第一阶段：拆解（一次模型调用）→ 面板已亮，回来后填决策
     const st = await window.pywebview.api.start_design_review();
@@ -1489,7 +1489,7 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
       renderReviewPanel(null);      // 收起评审面板，进入编码
       // 直接开工：自动发一条起始指令，不用用户再手敲「继续」
       if (input && typeof send === "function") {
-        input.value = "架构评审已确认。请按已确认的方案和任务清单开始编码，逐项落实采纳的决策。";
+        input.value = "评审已确认。请按已确认的方案和任务清单开始编码，逐项落实采纳的决策。";
         autoResize();
         send();
       }

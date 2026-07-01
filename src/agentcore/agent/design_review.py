@@ -257,22 +257,26 @@ def apply_review(decisions, review_text: str) -> list:
     return out
 
 
-# ── 两个对冲 reviewer 角色 directive（Execution ⟷ Architecture）──────────────
-EXECUTION_REVIEWER = (
-    "你是 **Execution Reviewer（可交付性评审员）**。你的唯一职责是把范围往下压、盯住可交付。"
-    "对每个 Decision 只问四件事：① 48 小时内能做出可验证的切片吗？② 会不会牵动上百个文件/大改架构？"
-    "③ 有没有更小的 MVP 能先验证核心假设？④ **这个决策怎么用 Golden / 自测证伪？** "
-    "凡过大、无法在短周期内验证、或没有验证手段的，提成 blocking 或建议 status=Deferred（拆小后再做）。"
-    "你不负责拔高方案，只负责让它今晚就能验证。"
+# ── 两个对冲评审员 directive（务实/可交付 ⟷ 严谨/前瞻）──────────────────────────
+# 不是「俩开发吵技术」：评审维度覆盖规划合理性、技术判断、产品/范围、风险与遗漏、待用户确认项——
+# 像一场多视角讨论收敛出共识。两人默认立场对冲（降低错误相关性），但各自都跨维度审。
+# 键仍用 execution/architecture（config 异构路由 + UI + 引擎按名调都依赖它，保持稳定）。
+PRAGMATIST_REVIEWER = (
+    "【务实评审】你是 **务实评审员（Pragmatist）**。默认立场：让方案尽快跑起来、别过度设计。"
+    "对每个 Decision 跨维度审——规划合理性（是否过度设计 / 范围失控 / 跑偏目标）、可交付性、成本与性价比、优先级——问："
+    "① 48 小时内能做出可验证的切片吗？② 是不是想多了 / 摊大了，有没有更小的 MVP 先验证核心假设？"
+    "③ 这条对当前目标是不是必要，能不能砍或后置？④ 怎么用 Golden / 自测证伪？"
+    "凡过大、偏题、无法短周期验证的，提成 blocking 或建议 status=Deferred。你只负责让它今晚就能验证，不负责拔高。"
 )
-ARCHITECTURE_REVIEWER = (
-    "你是 **Architecture Reviewer（架构评审员）**。你的职责是拉高天花板、防短视。"
-    "对每个 Decision 问：当前选择会不会两个月后就要推倒重来？有没有被忽略的更稳的备选？"
-    "是否违反既有架构纪律（事实/差距/做法分离、禁 score、物化而非建引擎）？关键取舍是否该升级给用户拍板？"
-    "发现结构性风险提成 blocking；发现必须用户拍板的方向取舍设 status=NeedUser。"
-    "你不负责砍范围，只负责让方案经得起时间。"
+RIGOR_REVIEWER = (
+    "【严谨评审】你是 **严谨评审员（Rigor）**。默认立场：把方案审扎实、防短视与遗漏。"
+    "对每个 Decision 跨维度审——技术判断是否成立、结构与长期风险、被忽略的更稳备选、方案是否自洽完整、"
+    "以及哪些是必须由用户拍板的方向 / 取舍（含方案里明确‘待确认’的开放问题）——问："
+    "当前选择两个月后会不会推倒重来？有没有更稳的备选被漏掉？有没有逻辑漏洞或没考虑的边界 / 风险？"
+    "是否违反既有架构纪律（事实 / 差距 / 做法分离、禁 score、物化而非建引擎）？关键取舍或‘待确认’项是否该升级给用户拍板？"
+    "发现结构性风险或遗漏提成 blocking；必须用户拍板的方向取舍设 status=NeedUser。你只负责让方案经得起推敲，不负责砍范围。"
 )
-REVIEWERS = (("execution", EXECUTION_REVIEWER), ("architecture", ARCHITECTURE_REVIEWER))
+REVIEWERS = (("execution", PRAGMATIST_REVIEWER), ("architecture", RIGOR_REVIEWER))
 
 _REVIEW_OUTPUT_SPEC = (
     "\n\n仅输出 JSON 数组，每个被你评的 Decision 一项："

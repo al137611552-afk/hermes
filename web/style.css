@@ -791,11 +791,11 @@ body.plan-on .composer::before {
   color: #e8c87a; background: rgba(180, 142, 60, .14);
   border: 1px solid rgba(180, 142, 60, .35); border-radius: var(--radius-md, 8px);
 }
-/* 架构评审按钮：发起时高亮转动（与 plan-btn 同风格，绿调区分） */
+/* 评审按钮：发起时高亮转动（与 plan-btn 同风格，绿调区分） */
 .review-btn.busy { color: #6fcf97; border-color: #3f8f5f; animation: rv-pulse 1.1s ease-in-out infinite; }
 @keyframes rv-pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
 
-/* ── 架构评审面板（ADR 0019）：四态共识 + 开工 gate（绝无百分比）─────────
+/* ── 评审面板（ADR 0019）：四态共识 + 开工 gate（绝无百分比）─────────
    WebView2 滚动坑规避：缩进只用 padding（不用 margin），不重构 hr/table，
    面板自身不再设 overflow（随工作区面板整体滚动）。 */
 .ws-review { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; font-size: .82rem; }
