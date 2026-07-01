@@ -3121,7 +3121,10 @@ async function addCustomProvider() {
 
 settingsBtn.addEventListener("click", openSettings);
 settingsClose.addEventListener("click", closeSettings);
-settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) closeSettings(); });
+// 设置面板是表单密集面板：不再点面板外遮罩就关闭（易误触丢失半填的配置），只留 ✕ 与 Esc 主动关闭
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && settingsOverlay && !settingsOverlay.hidden) { e.preventDefault(); closeSettings(); }
+});
 
 // 首次启动：所有 key 都未配置时自动打开设置引导
 async function maybePromptKeySetup() {
