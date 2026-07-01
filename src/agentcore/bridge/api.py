@@ -744,16 +744,6 @@ class Api:
             return {"ok": False, "error": f"写入失败：{e}"}
         return {"ok": True, "path": str(p)}
 
-    def set_window_title(self, title: str) -> dict:
-        """把原生窗口标题栏改成当前项目名（顶栏已显示品牌，标题栏只留项目名，去掉冗余的「Hermes Dev」）。
-        title 为空时回落到「Hermes Dev」，保证任务栏/Alt-Tab 仍能认出应用。前端在 setTopTitle 里调用。"""
-        try:
-            if self._window is not None:
-                self._window.set_title((title or "").strip() or "Hermes Dev")
-        except Exception:  # noqa: BLE001  标题栏是纯装饰，失败不影响功能
-            return {"ok": False}
-        return {"ok": True}
-
     def pick_directory(self) -> dict:
         """弹系统选文件夹对话框，只返回选中的路径（不起会话）——给 MCP/配置等处填目录用。"""
         try:

@@ -3243,8 +3243,7 @@ function setTopTitle(label) {
   const name = (label || "").trim();
   el.textContent = name || "未打开项目";
   el.classList.toggle("is-placeholder", !name);
-  // 让原生窗口标题栏跟随项目名（去掉冗余的「Hermes Dev」）；空时后端回落到品牌名保住任务栏辨识度
-  try { window.pywebview && window.pywebview.api.set_window_title(name); } catch (e) {}
+  // 注：系统标题栏固定「Hermes」（见 app.py），不随项目名变；项目名只在此应用内顶栏体现
 }
 
 // ---- 右侧工作区文件预览面板（只读） ------------------------------------

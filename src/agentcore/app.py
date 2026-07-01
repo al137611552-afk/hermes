@@ -33,7 +33,7 @@ def main() -> None:
     index = bundled("web", "index.html")  # 前端是只读捆绑资源（打包后在 exe 内）
 
     window = webview.create_window(
-        title="Hermes Dev",
+        title="Hermes",  # 系统标题栏固定「Hermes」，不随项目变（项目名只在应用内顶栏显示）
         url=str(index),
         js_api=api,
         width=1100,
