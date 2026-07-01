@@ -89,6 +89,7 @@ class OpenAIProvider(BaseProvider):
         messages: list[Message],
         system: str | None = None,
         tools: list[dict] | None = None,
+        max_tokens: int | None = None,
     ) -> Iterator[StreamEvent]:
         api_messages = []
         if system:
@@ -98,7 +99,7 @@ class OpenAIProvider(BaseProvider):
         kwargs = {
             "model": self.model,
             "messages": api_messages,
-            "max_tokens": self.max_tokens,
+            "max_tokens": max_tokens or self.max_tokens,
             "stream": True,
         }
         if self.temperature is not None:

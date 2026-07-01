@@ -885,10 +885,11 @@ class Conversation:
         "只抽真正的方向性/架构取舍（存储/框架/范围/拆分等），琐碎实现细节不算。只输出 JSON，不要解释。\n\n方案：\n"
     )
 
-    def _oneshot_text(self, provider, prompt: str) -> str:
-        """一次性只读补全（无 system/无 tools），同 judge 范式。"""
+    def _oneshot_text(self, provider, prompt: str, max_tokens: "int | None" = None) -> str:
+        """一次性只读补全（无 system/无 tools），同 judge 范式。max_tokens 限输出长度（提速）。"""
         out = []
-        for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
+        for ev in provider.stream_chat([Message("user", prompt)], system=None,
+                                       tools=[], max_tokens=max_tokens):
             if getattr(ev, "type", None) == "text":
                 out.append(ev.text)
         return "".join(out)
@@ -934,9 +935,11 @@ class Conversation:
             provider = build_provider(self.res.config, self.active_model)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e)}
-        decisions_json = self._oneshot_text(provider, self._DECOMPOSE_PROMPT + text)
-        session = DesignReviewSession.from_proposal(
-            decisions_json, max_rounds=self.res.config.agent.design_review_max_rounds)
+        decisions_json = self._oneshot_text(provider, self._DECOMPOSE_PROMPT + text, max_tokens=1536)
+        # 轮数按同/异构分档：同模型（无异构映射）容易快速收敛，封顶 2 轮省调用；配了异构才用满配置轮数。
+        cfg_rounds = self.res.config.agent.design_review_max_rounds
+        rounds = cfg_rounds if (self.res.config.agent.design_review_models or {}) else min(cfg_rounds, 2)
+        session = DesignReviewSession.from_proposal(decisions_json, max_rounds=rounds)
         if not session.decisions:
             return {"ok": False, "error": "未能从方案抽出决策（模型输出非预期）",
                     "raw": decisions_json[:500]}
@@ -996,21 +999,59 @@ class Conversation:
         base = (self.get_notes() or "").split(self._REVIEW_SECTION_MARK)[0].rstrip()
         section = self._REVIEW_SECTION_MARK + "\n\n" + consensus
         self.res.store.set_notes(self.session_id, (base + "\n\n" + section) if base else section)
-        # 2) tasks：Accepted 决策 → 待办（去重）
-        tasks = list(self.res.store.get_tasks(self.session_id) or [])
-        existing = {t.get("content") for t in tasks}
-        added = 0
-        for d in s.decisions:
-            if d.status != ACCEPTED:
-                continue
-            content = (d.title + ("：" + d.current_choice if d.current_choice else "")).strip()
-            if content and content not in existing:
-                tasks.append({"content": content, "status": "pending"})
-                existing.add(content)
-                added += 1
-        if added:
-            self.res.store.set_tasks(self.session_id, tasks)
-        return {"ok": True, "notes_updated": True, "tasks_added": added}
+        # 2) tasks：**参考评审共识重排整份待办**（而非在旧清单尾部追加）。
+        #    已完成项保留在前（既成事实不动），未完成部分交主模型据 采纳/否决/后置 重新拆解+排序。
+        old = list(self.res.store.get_tasks(self.session_id) or [])
+        done = [t for t in old if t.get("status") == "completed"]
+        new_pending = self._replan_tasks_from_review(base, consensus, done)
+        if new_pending is None:                      # 模型没给出可用清单 → 退化为老的"补采纳项"，不丢原清单
+            existing = {t.get("content") for t in old}
+            added = 0
+            for d in s.decisions:
+                if d.status != ACCEPTED:
+                    continue
+                c = (d.title + ("：" + d.current_choice if d.current_choice else "")).strip()
+                if c and c not in existing:
+                    old.append({"content": c, "status": "pending"}); existing.add(c); added += 1
+            if added:
+                self.res.store.set_tasks(self.session_id, old)
+            return {"ok": True, "notes_updated": True, "tasks_added": added, "replanned": False}
+        tasks = done + new_pending
+        self.res.store.set_tasks(self.session_id, tasks)
+        return {"ok": True, "notes_updated": True, "tasks_added": len(new_pending), "replanned": True}
+
+    _REPLAN_PROMPT = (
+        "你在把一份已通过多角色评审的方案，落成一份**重新排序的可执行任务清单**。\n"
+        "依据评审共识：采纳(Accepted)项要纳入并按依赖/优先级排序；否决(Rejected)项不要进清单；"
+        "后置(Deferred)项放到末尾并在标题前加「[后置] 」。合并重复、粒度均匀、每项是一个可动手的步骤。\n"
+        '仅输出 JSON 数组，每项 {"content":"任务描述"}，按执行先后排列，不要解释。\n\n'
+    )
+
+    def _replan_tasks_from_review(self, plan_text: str, consensus: str,
+                                  done: list) -> "list | None":
+        """据 原方案 + 四态共识 让主模型产出重排后的待办清单（pending）。失败/空→None（调用方退化处理）。"""
+        import json
+        try:
+            provider = build_provider(self.res.config, self.active_model)
+        except Exception:  # noqa: BLE001
+            return None
+        done_note = ("\n已完成（不必再列）：\n" + "\n".join("- " + t.get("content", "") for t in done)) if done else ""
+        prompt = (self._REPLAN_PROMPT + "原方案：\n" + plan_text + "\n\n评审共识：\n" + consensus + done_note)
+        raw = self._oneshot_text(provider, prompt, max_tokens=2048)
+        start, end = raw.find("["), raw.rfind("]")
+        if start < 0 or end <= start:
+            return None
+        try:
+            arr = json.loads(raw[start:end + 1])
+        except Exception:  # noqa: BLE001
+            return None
+        out = []
+        for it in arr if isinstance(arr, list) else []:
+            c = (it.get("content") if isinstance(it, dict) else str(it)) or ""
+            c = c.strip()
+            if c:
+                out.append({"content": c, "status": "pending"})
+        return out or None
 
     # ---- 自主 / crazy 模式（无人值守外层目标循环）----------------------------
 

@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-07-01 — 架构评审提效 + 异构选模型 + 真重排清单 + 开始编码直接开工
+
+四件事一起上：
+
+- **提效（大头是"限输出"）**：评审调用原来没设 max_tokens、每次可生成上万 token。
+  ① `stream_chat` 加可选 `max_tokens`（base + openai/anthropic 两 provider）；评审调用限 `REVIEW_MAX_TOKENS=1024`、拆解 1536、重排 2048。
+  ② `run_review` 一轮内两角色**并行**（ThreadPoolExecutor，各带 `REVIEW_TIMEOUT_S=90` 超时，故障/超时→空评审跳过）——异构时两端点真同时跑，一轮 ≈ max 而非 sum。
+  ③ 轮数按同/异构分档：无异构映射（同模型）封顶 2 轮，配了异构才用满配置轮数。
+- **异构在 UI 选模型**：api `get_design_review_models`（角色/可用档/当前映射）+ `set_design_review_model`（写内存 + `persist_design_review_models` 回 config.yaml inline flow）；
+  评审面板顶部两个下拉（Execution/Architecture，选项=已配置档名，"跟随主模型"=空），改完提示"下次评审/↻ 重跑生效"。
+- **真按建议重排清单**：`apply_review_to_plan` 不再只在旧清单尾部追加——`_replan_tasks_from_review` 让主模型据 原方案+四态共识
+  产出**重排后的整份待办**（采纳纳入排序、否决排除、后置置末加「[后置]」），保留已完成项在前；模型没给可用清单则退化为老的"补采纳项"（`replanned` 标记）。
+- **开始编码直接开工**：点「开始编码」除了落回+退出规划模式，现在**自动发一条起始指令**（复用 `send()`）并收起面板，不用再手敲「继续」。
+- **自检**：design_review **26/26**（+并行有序/超时/限输出 3 项）；conversation 86/86（重排+幂等）；前端 33/33；Python 全量全绿。provider max_tokens 默认 None=沿用档上限，不影响既有调用。
+- **验证状态**：**真机验：评审明显变快（尤其配异构后）；面板能选评审模型且写回 config.yaml；应用后任务清单是重排非追加；开始编码后直接进入编码不用再输入 = 需 Windows**；**不定版**。
+
+---
+
 ## 2026-07-01 — 架构评审：「开始编码」按钮落地 + 默认开启
 
 用户两问：③「开始编码」点了没反应；④ 为何 design_review 默认关、能否默认开。

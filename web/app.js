@@ -1368,6 +1368,7 @@ function renderReviewPanel(state, opts) {
     `<span class="rv-actions">` +
     `<button class="rv-btn" data-rv="rerun" title="对已拆解的决策重新跑一轮评审">↻</button>` +
     `<button class="rv-btn" data-rv="close" title="收起面板">✕</button></span></div>`);
+  parts.push(`<div class="rv-models" data-rv-models></div>`);   // 评审模型选择器（异步填充）
   if (running) parts.push(`<div class="rv-running">⏳ 多角色评审进行中…（拆出 ${(state.decisions || []).length} 项决策，正在收敛）</div>`);
   parts.push(`<div class="rv-gate ${lbl.enabled ? "ok" : "blocked"}">` +
     `<button class="rv-start" data-rv="start-coding"${lbl.enabled ? "" : " disabled"}>${escapeHtml(lbl.text)}</button>` +
@@ -1392,6 +1393,31 @@ function renderReviewPanel(state, opts) {
   });
   if (state.stop_reason) parts.push(`<div class="rv-stop">收敛于：${escapeHtml(state.stop_reason)}</div>`);
   el.innerHTML = parts.join("");
+  fillReviewerModels();   // 异步填充评审模型下拉（每角色一个，选项=已配置档名，"跟随主模型"=空）
+}
+
+async function fillReviewerModels() {
+  const box = document.querySelector("[data-rv-models]");
+  if (!box || !window.pywebview) return;
+  let m;
+  try { m = await window.pywebview.api.get_design_review_models(); } catch (e) { return; }
+  const roleLabel = { execution: "Execution（压范围）", architecture: "Architecture（拉天花板）" };
+  const sel = (role) => {
+    const cur = (m.current || {})[role] || "";
+    const opts = [`<option value=""${cur ? "" : " selected"}>跟随主模型（${escapeHtml(m.active_model || "")}）</option>`]
+      .concat((m.available || []).map((p) =>
+        `<option value="${escapeHtml(p)}"${p === cur ? " selected" : ""}>${escapeHtml(p)}</option>`));
+    return `<label class="rv-model-row"><span>${roleLabel[role] || role}</span>` +
+      `<select class="rv-model-sel" data-role="${role}">${opts.join("")}</select></label>`;
+  };
+  box.innerHTML = `<div class="rv-models-h">评审模型（异构可降低两个评审员的错误相关性）</div>` +
+    (m.reviewers || []).map(sel).join("");
+  box.querySelectorAll(".rv-model-sel").forEach((s) => {
+    s.addEventListener("change", async () => {
+      await window.pywebview.api.set_design_review_model(s.getAttribute("data-role"), s.value || null);
+      showToast(s.value ? "已设评审模型：" + s.value + "（下次评审生效，可点 ↻ 重跑）" : "已改回跟随主模型");
+    });
+  });
 }
 
 async function refreshReview() {
@@ -1446,8 +1472,15 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
         if (v) v.planMode = !!(pm && pm.plan_mode);
         updateComposerButtons();
       } catch (e) { /* 退出规划模式失败不阻断提示 */ }
-      if (ap && ap.ok) { refreshTasks(); showToast(`✅ 采纳项已落回（+${ap.tasks_added || 0} 待办）、已退出规划模式，可以开始编码`); }
-      else showToast("✅ 已退出规划模式，可以开始编码");
+      if (ap && ap.ok) { refreshTasks(); showToast(`✅ 采纳项已落回（${ap.replanned ? "已重排清单" : "+" + (ap.tasks_added || 0) + " 待办"}）、退出规划模式，开始编码`); }
+      else showToast("✅ 已退出规划模式，开始编码");
+      renderReviewPanel(null);      // 收起评审面板，进入编码
+      // 直接开工：自动发一条起始指令，不用用户再手敲「继续」
+      if (input && typeof send === "function") {
+        input.value = "架构评审已确认。请按已确认的方案和任务清单开始编码，逐项落实采纳的决策。";
+        autoResize();
+        send();
+      }
       return;
     }
     if (act === "apply") {

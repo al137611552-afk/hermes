@@ -1366,10 +1366,12 @@ def test_run_autonomous_replan_off_continues_plainly(tmp: Path):
 
 class _ReviewProvider:
     """假 provider：拆方案时吐 Decision JSON；扮 reviewer 时按角色吐评审 JSON（不碰网络）。"""
-    def stream_chat(self, messages, system=None, tools=None):
+    def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
         from agentcore.providers import StreamEvent
         prompt = str(messages[0].content)
-        if "拆成" in prompt:                                   # 拆方案 → Decision 列表
+        if "重新排序" in prompt or "落成一份" in prompt:        # 重排任务清单 → 任务数组
+            txt = '[{"content":"建 SQLite schema"},{"content":"接会话存取"}]'
+        elif "拆成" in prompt:                                 # 拆方案 → Decision 列表
             txt = '[{"id":"db","title":"数据库","current_choice":"SQLite","status":"Open"},' \
                   '{"id":"idx","title":"全文检索","current_choice":"先不做","status":"Open"}]'
         elif "Execution" in prompt:                            # Execution 评审
@@ -1413,7 +1415,7 @@ def test_design_review_end_to_end_wiring(tmp: Path):
         # 落回规划/任务：共识写入 notes（不破坏原文）、Accepted 决策成待办
         conv.res.store.set_notes(conv.session_id, "原方案正文")
         ap = conv.apply_review_to_plan()
-        assert ap["ok"] and ap["tasks_added"] >= 1
+        assert ap["ok"] and ap["tasks_added"] >= 1 and ap["replanned"] is True   # 模型重排整份清单
         notes = conv.get_notes()
         assert "原方案正文" in notes and conv._REVIEW_SECTION_MARK in notes   # 原文保留 + 追加共识段
         tasks = conv.res.store.get_tasks(conv.session_id)

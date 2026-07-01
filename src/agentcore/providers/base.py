@@ -131,6 +131,7 @@ class BaseProvider(ABC):
         messages: list[Message],
         system: str | None = None,
         tools: list[dict] | None = None,
+        max_tokens: int | None = None,
     ) -> Iterator[StreamEvent]:
         """流式返回一轮模型输出。
 

@@ -776,6 +776,19 @@ def persist_model_selection(active: "str | None" = None,
     path.write_text(text, encoding="utf-8")
 
 
+def persist_design_review_models(mapping: dict, path: "Path | None" = None) -> None:
+    """把评审异构模型映射写回 config.yaml 的 `design_review_models:` 行（inline flow，保留其余注释）。"""
+    path = path or (APP_DIR / "config.yaml")
+    if not path.exists():
+        return
+    clean = {k: v for k, v in (mapping or {}).items() if v}
+    flow = "{" + ", ".join(f'{k}: "{v}"' for k, v in clean.items()) + "}" if clean else "{}"
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"(?m)^(\s*)design_review_models:.*$", rf"\g<1>design_review_models: {flow}",
+                  text, count=1)
+    path.write_text(text, encoding="utf-8")
+
+
 # ---- API key 配置（产品化：设置面板填 key 写回 .env，不把真实 key 内置进包）----------
 
 def collect_key_requirements(models) -> "list[dict]":

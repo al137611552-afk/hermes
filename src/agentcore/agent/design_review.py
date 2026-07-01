@@ -284,6 +284,26 @@ def build_review_prompt(role_directive: str, decisions) -> str:
     return role_directive + "\n\n" + "\n".join(body) + _REVIEW_OUTPUT_SPEC
 
 
+REVIEW_MAX_TOKENS = 1024          # 评审/角色输出上限：只需一小段紧凑 JSON，别让它长篇（提速大头）
+REVIEW_TIMEOUT_S = 90             # 单个角色单次调用超时（秒）：慢/卡的调用不无限等，超时按空评审跳过
+
+
+def _run_reviewers_parallel(review_fn, prompts, timeout: int = REVIEW_TIMEOUT_S) -> list:
+    """并发跑一轮的多个角色评审，各自带超时；返回与 prompts 同序的评审文本（故障/超时→"[]"）。"""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FTimeout
+    if not prompts:
+        return []
+    with ThreadPoolExecutor(max_workers=len(prompts)) as ex:
+        futs = [ex.submit(review_fn, name, prompt) for name, prompt in prompts]
+        outs = []
+        for f in futs:
+            try:
+                outs.append(f.result(timeout=timeout))
+            except (FTimeout, Exception):   # noqa: BLE001 — 超时/故障：这一脑子当没意见，不中断评审
+                outs.append("[]")
+        return outs
+
+
 def escalate_unresolved(decisions) -> list:
     """评审收敛后，凡还没收敛到共识四态的（Open）决策一律升级为 NeedUser（交用户拍板）。
 
@@ -315,11 +335,11 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -
         stop, stop_reason = should_stop(rounds, max_rounds)
         if stop:
             break
-        for name, directive in reviewers:
-            try:
-                out = review_fn(name, build_review_prompt(directive, cur))
-            except Exception:
-                continue                # 评审员故障 → 跳过这一脑子，不中断评审
+        # 一轮内两个角色**并行**：都审同一份轮初快照（更像独立双审），各自超时/故障→空评审跳过。
+        # 异构时两角色打不同端点 → 真同时跑，一轮耗时 ≈ max 而非 sum。
+        prompts = [(name, build_review_prompt(directive, cur)) for name, directive in reviewers]
+        outs = _run_reviewers_parallel(review_fn, prompts)
+        for out in outs:                # 顺序合并两份评审到同一快照（apply 只改 status/blocking）
             cur = apply_review(cur, out)
         rounds.append(round_snapshot(cur))
     cur = escalate_unresolved(cur)          # 收敛后仍未定的 Open → NeedUser（交用户拍板，不留死状态）
@@ -347,7 +367,8 @@ def make_review_fn(provider_for):
         if provider is None:
             return "[]"                        # 没配该角色的模型 → 无意见，不阻断评审
         out = []
-        for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
+        for ev in provider.stream_chat([Message("user", prompt)], system=None,
+                                       tools=[], max_tokens=REVIEW_MAX_TOKENS):
             if getattr(ev, "type", None) == "text":
                 out.append(ev.text)
         return "".join(out)

@@ -172,6 +172,40 @@ def test_run_review_leftover_open_becomes_needuser_actionable():
     assert res["gate"]["can_start"] is False                     # 依旧不自动放行（守 ADR 0014）
 
 
+def test_run_reviewers_parallel_preserves_order_and_isolates_failures():
+    from agentcore.agent.design_review import _run_reviewers_parallel
+
+    def rf(name, prompt):
+        if name == "boom":
+            raise RuntimeError("x")
+        return name.upper()
+    outs = _run_reviewers_parallel(rf, [("a", "p"), ("boom", "p"), ("b", "p")])
+    assert outs == ["A", "[]", "B"]                 # 同序返回；中间故障→"[]" 不影响其它
+
+
+def test_run_reviewers_parallel_timeout_yields_empty():
+    import time
+    from agentcore.agent.design_review import _run_reviewers_parallel
+
+    def slow(name, prompt):
+        time.sleep(0.3)
+        return "late"
+    outs = _run_reviewers_parallel(slow, [("a", "p")], timeout=0.05)
+    assert outs == ["[]"]                            # 超时按空评审跳过，不无限等
+
+
+def test_make_review_fn_bounds_output_tokens():
+    seen = {}
+
+    class P:
+        def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
+            seen["mt"] = max_tokens
+            yield _FakeEv("[]")
+    from agentcore.agent.design_review import REVIEW_MAX_TOKENS
+    make_review_fn(lambda name: P())("execution", "prompt")
+    assert seen["mt"] == REVIEW_MAX_TOKENS           # 评审调用限了输出长度（提速）
+
+
 def test_run_review_survives_reviewer_exception():
     def boom(name, prompt):
         raise RuntimeError("评审员炸了")
@@ -195,7 +229,7 @@ class _FakeProvider:
     def __init__(self, reply):
         self.reply, self.seen = reply, []
 
-    def stream_chat(self, messages, system=None, tools=None):
+    def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
         self.seen.append(messages[0].content)
         yield _FakeEv(self.reply)
 

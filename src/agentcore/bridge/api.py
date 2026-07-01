@@ -963,6 +963,32 @@ class Api:
         """把评审定稿落回规划(notes)+任务清单(tasks)；仅 gate 放行后可用。"""
         return self.active.apply_review_to_plan()
 
+    def get_design_review_models(self) -> dict:
+        """评审模型选择：两个角色名、可用模型档名、当前映射（空=跟随主模型）。供 UI 下拉。"""
+        cfg = self.res.config
+        return {"reviewers": ["execution", "architecture"],
+                "available": list(cfg.models.keys()),
+                "active_model": cfg.active_model,
+                "current": dict(cfg.agent.design_review_models or {})}
+
+    def set_design_review_model(self, reviewer: str, profile: "str | None") -> dict:
+        """给某评审角色选模型（profile 空/None=跟随主模型），写回内存 + config.yaml。"""
+        from ..config import persist_design_review_models
+        cfg = self.res.config
+        if reviewer not in ("execution", "architecture"):
+            return {"ok": False, "error": "未知角色"}
+        m = dict(cfg.agent.design_review_models or {})
+        if profile and profile in cfg.models:
+            m[reviewer] = profile
+        else:
+            m.pop(reviewer, None)                 # 空或非法档名 → 该角色跟随主模型
+        cfg.agent.design_review_models = m
+        try:
+            persist_design_review_models(m)
+        except Exception:  # noqa: BLE001 — 内存已生效，持久化失败不阻断
+            pass
+        return {"ok": True, "current": m}
+
     def start_autonomous(self, intent: str, max_rounds: int = 0) -> dict:
         """启动当前活动对话的自主/crazy 模式（无人值守外层目标循环）。用现有「停止」即可中止。"""
         return self.active.start_autonomous(intent, max_rounds or None)

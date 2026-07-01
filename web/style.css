@@ -799,6 +799,12 @@ body.plan-on .composer::before {
    WebView2 滚动坑规避：缩进只用 padding（不用 margin），不重构 hr/table，
    面板自身不再设 overflow（随工作区面板整体滚动）。 */
 .ws-review { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; font-size: .82rem; }
+.rv-models { padding: 4px 2px 6px; border-bottom: 1px dashed var(--border); margin-bottom: 6px; }
+.rv-models-h { color: var(--muted); font-size: .74rem; padding-bottom: 4px; }
+.rv-model-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: .78rem; }
+.rv-model-row > span { flex: none; width: 128px; color: var(--text); }
+.rv-model-sel { flex: 1; min-width: 0; background: var(--bg-deep); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-size: .76rem; }
 .rv-running { padding: 5px 8px; margin-bottom: 6px; border-radius: 6px; font-size: .8rem;
   color: #e8c87a; background: rgba(180, 142, 60, .14); border: 1px solid rgba(180, 142, 60, .35); }
 .rv-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 6px; }

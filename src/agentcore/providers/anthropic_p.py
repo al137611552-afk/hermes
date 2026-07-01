@@ -110,11 +110,12 @@ class AnthropicProvider(BaseProvider):
         messages: list[Message],
         system: str | None = None,
         tools: list[dict] | None = None,
+        max_tokens: int | None = None,
     ) -> Iterator[StreamEvent]:
         api_messages = [{"role": m.role, "content": m.content} for m in messages]
         kwargs = {
             "model": self.model,
-            "max_tokens": self.max_tokens,
+            "max_tokens": max_tokens or self.max_tokens,
             "messages": api_messages,
         }
         if system:
