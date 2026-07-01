@@ -1495,6 +1495,19 @@ def test_start_design_review_retries_once_on_nojson(tmp: Path):
         convmod.build_provider = orig
 
 
+def test_start_design_review_falls_back_to_last_assistant_message(tmp: Path):
+    """notes 为空但方案已产在对话里 → 回退取最后一条 assistant 消息，不再误报"没有可评审的方案"。"""
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    conv.res.config.agent.design_review = True
+    conv.history.append(Message("user", "帮我规划一个待办应用"))
+    conv.history.append(Message("assistant", "## 规划：技术栈用 React + IndexedDB，先做 MVP……"))
+    r = conv.start_design_review()                                # 不传 proposal_text、notes 也空
+    assert r["ok"] is True and r.get("ready") is True
+    assert "React" in (conv._pending_review_plan or "")          # 确用了对话里的方案原文
+
+
 class _TruncatedDecomposeProvider:
     """假 provider：拆解时吐没闭合的 JSON 且 stop_reason=max_tokens（超模型上限被截断）。"""
     def stream_chat(self, messages, system=None, tools=None, max_tokens=None):

@@ -945,9 +945,10 @@ class Conversation:
         """
         if not self.res.config.agent.design_review:
             return {"ok": False, "error": "design_review 未启用（config.agent.design_review=false）"}
-        text = (proposal_text or self.get_notes() or "").strip()
+        # 方案来源优先级：显式传入 > 规划 notes > 对话里最后一条 assistant 消息（方案常直接产在对话里）。
+        text = (proposal_text or self.get_notes() or self._last_assistant_text() or "").strip()
         if not text:
-            return {"ok": False, "error": "没有可评审的方案（先在规划模式产出 notes，或传入 proposal_text）"}
+            return {"ok": False, "error": "没有可评审的方案（先产出规划方案，或传入 proposal_text）"}
         self._pending_review_plan = text
         self._review_session = None
         return {"ok": True, "ready": True, "decisions": [],
