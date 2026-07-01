@@ -1701,7 +1701,7 @@ function updateRunningChip() {
   if (!chip) return;
   const n = runningSessions().length;
   chip.hidden = n === 0;
-  chip.textContent = `▶ ${n} 运行中`;
+  chip.textContent = `${n} 运行中`;   // 脉冲点由 CSS .running-chip::before 提供（对齐 Figma）
   if (n === 0) closeCommandCenter();
 }
 function sessionTitle(sid) {
