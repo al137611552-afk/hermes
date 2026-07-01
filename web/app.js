@@ -1398,8 +1398,10 @@ function showReviewSkeleton(msg) {
 function renderReviewPanel(state, opts) {
   const el = reviewPanelEl();
   if (!el) return;
-  if (!state || !state.ok) { el.hidden = true; el.innerHTML = ""; return; }
+  if (!state || !state.ok) { el.hidden = true; el.innerHTML = ""; updateWorkspaceTabs(); return; }
+  const reviewWasHidden = el.hidden;
   el.hidden = false;
+  if (reviewWasHidden) setWorkspaceTab("review"); else updateWorkspaceTabs();  // 评审首次出现→自动切到评审标签
   const running = !!(opts && opts.running);
   const gate = state.gate || {};
   const lbl = reviewGateLabel(gate);          // {enabled, text}
@@ -3181,6 +3183,47 @@ const wsReopen = document.getElementById("ws-reopen");
 let wsCurrentPath = null; // 当前预览的文件，刷新后尽量保持
 let wsRoot = null;        // 当前工作区根；变化（切换会话）时清空预览
 
+// ---- 工作区标签页（改动/文件/预览/评审）：改动/评审「发生才出现」，文件/预览常驻 ----
+// 布局对齐 Figma 重设计：顶部标签条按需渲染，各标签内容仍是原有的树/预览/改动/评审逻辑。
+let wsActiveTab = localStorage.getItem("wsTab") || "files";
+const WS_TAB_LABEL = { changes: "改动", files: "文件", preview: "预览", review: "评审" };
+
+// 采集当前可见性状态喂给 pure.js 的 resolveWorkspaceTabs（DOM→纯逻辑的唯一入口）。
+function wsAvail() {
+  const r = reviewPanelEl();
+  return {
+    hasChanges: !wsChanges.hidden,
+    hasCheckpoints: !wsCheckpoints.hidden,
+    hasReview: !!r && !r.hidden,
+  };
+}
+function wsTabAvailable(key) { return wsTabVisible(key, wsAvail()); }
+
+function setWorkspaceTab(key) {
+  if (!wsTabAvailable(key)) key = "files";
+  wsActiveTab = key;
+  localStorage.setItem("wsTab", key);
+  updateWorkspaceTabs();
+}
+
+function updateWorkspaceTabs() {
+  const strip = document.getElementById("ws-tabs");
+  if (!strip) return;
+  const { tabs, active, showStrip } = resolveWorkspaceTabs(wsAvail(), wsActiveTab);
+  wsActiveTab = active;  // 当前标签消失→纯逻辑已回退到"文件"
+  strip.innerHTML = "";
+  tabs.forEach((key) => {
+    const b = document.createElement("button");
+    b.className = "ws-tab" + (key === wsActiveTab ? " active" : "");
+    b.textContent = WS_TAB_LABEL[key];
+    b.addEventListener("click", () => setWorkspaceTab(key));
+    strip.appendChild(b);
+  });
+  strip.hidden = !showStrip;   // 只剩「文件」时不显示标签条（单标签无需切换）
+  document.querySelectorAll(".ws-tabpanel").forEach(
+    (p) => p.classList.toggle("active", p.dataset.tab === wsActiveTab));
+}
+
 async function refreshWorkspace() {
   if (!window.pywebview || wsPanel.classList.contains("collapsed")) return;
   const res = await window.pywebview.api.get_workspace_tree();
@@ -3192,11 +3235,14 @@ async function refreshWorkspace() {
     wsPreview.innerHTML = '<div class="ws-empty">点击文件预览</div>';
   }
   const wsPath = document.getElementById("ws-path");
-  if (wsPath) { wsPath.textContent = res.root || ""; wsPath.title = res.root || ""; }
+  const wsPathText = document.getElementById("ws-path-text");
+  if (wsPathText) wsPathText.textContent = res.root || "";
+  if (wsPath) { wsPath.title = res.root || ""; wsPath.hidden = !res.root; }
   setTopTitle(res.label);
   wsTree.innerHTML = "";
   (res.tree.children || []).forEach((n) => wsTree.appendChild(renderTreeNode(n)));
   mentionFilesCid = null;  // 工作区可能变了（切换/新文件）→ @ 文件补全缓存失效，下次用时重取
+  updateWorkspaceTabs();   // 先把标签条渲染出来（文件/预览常驻），改动/评审待各自刷新后再补
   refreshChanges();
   refreshCheckpoints();
 }
@@ -3215,7 +3261,7 @@ async function refreshCheckpoints() {
   try { res = await window.pywebview.api.get_checkpoints(); } catch (e) { return; }
   const list = (res && res.checkpoints) || [];
   wsCheckpoints.innerHTML = "";
-  if (!list.length) { wsCheckpoints.hidden = true; return; }   // 无检查点不占位
+  if (!list.length) { wsCheckpoints.hidden = true; updateWorkspaceTabs(); return; }   // 无检查点不占位
   wsCheckpoints.hidden = false;
 
   const cpCollapsed = localStorage.getItem("cpCollapsed") !== "0";  // 默认折叠，不挤压预览区
@@ -3226,9 +3272,12 @@ async function refreshCheckpoints() {
   cpFold.className = "ws-fold";
   cpFold.textContent = cpCollapsed ? "▸" : "▾";
   const cpTtl = document.createElement("span");
-  cpTtl.textContent = `检查点 (${list.length})`;
+  cpTtl.textContent = "检查点";
+  const cpCount = document.createElement("span");
+  cpCount.className = "ws-chg-count"; cpCount.textContent = list.length;
   head.appendChild(cpFold);
   head.appendChild(cpTtl);
+  head.appendChild(cpCount);
   head.addEventListener("click", () => {
     const now = wsCheckpoints.classList.toggle("collapsed");
     localStorage.setItem("cpCollapsed", now ? "1" : "0");
@@ -3265,11 +3314,12 @@ async function refreshCheckpoints() {
     row.appendChild(back);
     wsCheckpoints.appendChild(row);
   });
+  updateWorkspaceTabs();
 }
 
 // ---- 改动评审与回退（FR-9.4a）------------------------------------------
 const wsChanges = document.getElementById("ws-changes");
-const CHANGE_MARK = { added: "＋", modified: "✎", deleted: "🗑" };
+const CHANGE_MARK = { added: "A", modified: "M", deleted: "D" };  // Figma 风格字母徽标（A新增/M修改/D删除）
 
 async function refreshChanges() {
   if (!window.pywebview) return;
@@ -3280,7 +3330,7 @@ async function refreshChanges() {
   // 非 git 工作区沿用内存台账（仅本对话改动）。
   const gitMode = !!(res && res.mode === "git");
   wsChanges.innerHTML = "";
-  if (!changes.length) { wsChanges.hidden = true; return; }
+  if (!changes.length) { wsChanges.hidden = true; updateWorkspaceTabs(); return; }
   wsChanges.hidden = false;
 
   const chgCollapsed = localStorage.getItem("chgCollapsed") !== "0";  // 默认折叠，不挤压预览区
@@ -3291,7 +3341,9 @@ async function refreshChanges() {
   chgFold.className = "ws-fold";
   chgFold.textContent = chgCollapsed ? "▸" : "▾";
   const title = document.createElement("span");
-  title.textContent = gitMode ? `未提交改动·git (${changes.length})` : `改动 (${changes.length})`;
+  title.textContent = gitMode ? "未提交改动·git" : "本轮改动";
+  const count = document.createElement("span");
+  count.className = "ws-chg-count"; count.textContent = changes.length;
   const revertAll = document.createElement("button");
   revertAll.className = "ws-btn";
   revertAll.textContent = "全部回退";
@@ -3313,6 +3365,7 @@ async function refreshChanges() {
   });
   head.appendChild(chgFold);
   head.appendChild(title);
+  head.appendChild(count);
   head.appendChild(revertAll);
   wsChanges.appendChild(head);
 
@@ -3350,10 +3403,12 @@ async function refreshChanges() {
     row.appendChild(undo);
     wsChanges.appendChild(row);
   });
+  updateWorkspaceTabs();
 }
 
 async function previewDiff(path) {
   if (previewRenderOn) { previewRenderOn = false; setPreviewToggleState(); }  // 看 diff 退出实时预览态
+  setWorkspaceTab("preview");   // 点改动文件看 diff→切到预览标签
   const res = await window.pywebview.api.get_file_diff(path);
   wsPreview.innerHTML = "";
   const head = document.createElement("div");
@@ -3409,6 +3464,7 @@ function fileIcon(name) {
 
 async function previewFile(path) {
   if (previewRenderOn) { previewRenderOn = false; setPreviewToggleState(); }  // 点文件退出实时预览态
+  setWorkspaceTab("preview");   // 点文件→切到预览标签看内容
   wsCurrentPath = path;
   wsTree.querySelectorAll(".ws-file").forEach((f) => f.classList.remove("active"));
   const res = await window.pywebview.api.read_workspace_file(path);
@@ -3520,6 +3576,7 @@ function setWorkspaceCollapsed(collapsed) {
 
 document.getElementById("ws-collapse").addEventListener("click", () => setWorkspaceCollapsed(true));
 wsReopen.addEventListener("click", () => setWorkspaceCollapsed(false));
+document.getElementById("ws-refresh").addEventListener("click", () => refreshWorkspace());
 
 // ---- 实时预览面板（UX Tier1-②）：在 ws-preview 里 iframe 渲染运行中的 dev server / 页面 ----
 // 自动对准当前会话后台 dev server 的本地 URL（从进程输出识别）；遇到禁止内嵌的站点（如 Django
@@ -3536,6 +3593,7 @@ function setPreviewToggleState() {
 async function enterLivePreview() {
   previewRenderOn = true;
   setPreviewToggleState();
+  setWorkspaceTab("preview");   // 实时预览→切到预览标签
   let targets = [];
   try {
     const r = await window.pywebview.api.get_preview_urls();

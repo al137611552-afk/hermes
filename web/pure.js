@@ -295,6 +295,23 @@
                    (Array.isArray(d.blocking) && d.blocking.length > 0));
   }
 
+  // 工作区标签页可见性（对齐 Figma 重设计）：改动/评审「发生才出现」，文件/预览常驻。
+  // avail = { hasChanges, hasCheckpoints, hasReview }（都是布尔）。纯逻辑，DOM 只负责喂状态+渲染。
+  const WS_TAB_KEYS = ["changes", "files", "preview", "review"];
+  function wsTabVisible(key, avail) {
+    avail = avail || {};
+    if (key === "changes") return !!(avail.hasChanges || avail.hasCheckpoints);
+    if (key === "review") return !!avail.hasReview;
+    return true; // 文件 / 预览 常驻
+  }
+  // 给定可见性 + 期望激活标签，算出：可见标签序列、实际激活标签（消失则回"文件"）、是否显示标签条。
+  function resolveWorkspaceTabs(avail, wantActive) {
+    const tabs = WS_TAB_KEYS.filter((k) => wsTabVisible(k, avail));
+    let active = wantActive;
+    if (!tabs.includes(active)) active = "files"; // 期望标签不可见→回文件
+    return { tabs, active, showStrip: tabs.length > 1 };
+  }
+
   return {
     summarize, escapeHtml, sessionRowClasses, isBusyState, composerState,
     computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
@@ -304,5 +321,6 @@
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
+    WS_TAB_KEYS, wsTabVisible, resolveWorkspaceTabs,
   };
 });

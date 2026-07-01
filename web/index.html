@@ -120,20 +120,32 @@
     <header class="ws-header">
       <span class="ws-title">工作区</span>
       <span class="ws-actions">
-        <button id="ws-preview-toggle" class="ws-btn" title="实时预览：在面板里渲染运行中的 dev server / 页面" aria-label="实时预览">🖥</button>
-        <button id="ws-collapse" class="ws-btn" title="折叠面板" aria-label="折叠面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg></button>
+        <button id="ws-preview-toggle" class="ws-ibtn" title="实时预览：在面板里渲染运行中的 dev server / 页面" aria-label="实时预览"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button id="ws-refresh" class="ws-ibtn" title="刷新工作区" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+        <button id="ws-collapse" class="ws-ibtn" title="折叠面板" aria-label="折叠面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
       </span>
     </header>
-    <div id="ws-path" class="ws-path" title="当前会话的工作区目录"></div>
-    <div id="ws-changes" class="ws-changes"></div>
-    <div id="ws-checkpoints" class="ws-checkpoints" hidden></div>
-    <div id="ws-review" class="ws-review" hidden></div>
-    <div id="ws-tree" class="ws-tree"></div>
-    <div id="ws-preview" class="ws-preview">
-      <div class="ws-empty">点击文件预览</div>
+    <div id="ws-path" class="ws-path" title="当前会话的工作区目录"><svg class="ws-path-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span id="ws-path-text" class="ws-path-text"></span></div>
+    <div id="ws-tabs" class="ws-tabs"></div>
+    <div class="ws-tabpanels">
+      <div id="ws-tab-changes" class="ws-tabpanel" data-tab="changes">
+        <div id="ws-changes" class="ws-changes"></div>
+        <div id="ws-checkpoints" class="ws-checkpoints" hidden></div>
+      </div>
+      <div id="ws-tab-review" class="ws-tabpanel" data-tab="review">
+        <div id="ws-review" class="ws-review" hidden></div>
+      </div>
+      <div id="ws-tab-files" class="ws-tabpanel" data-tab="files">
+        <div id="ws-tree" class="ws-tree"></div>
+      </div>
+      <div id="ws-tab-preview" class="ws-tabpanel" data-tab="preview">
+        <div id="ws-preview" class="ws-preview">
+          <div class="ws-empty">点击文件预览</div>
+        </div>
+      </div>
     </div>
   </aside>
-  <button id="ws-reopen" class="ws-reopen" title="展开工作区" aria-label="展开工作区" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg></button>
+  <button id="ws-reopen" class="ws-reopen" title="展开工作区" aria-label="展开工作区" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
 
   <div id="cc-popover" class="cc-popover" hidden></div>
 

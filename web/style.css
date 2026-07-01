@@ -519,11 +519,13 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
 }
 .workspace-panel.collapsed { display: none; }
 .ws-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+  height: 44px; padding: 0 8px 0 12px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
 }
-.ws-title { font-weight: 600; font-size: 13px; }
-.ws-actions { display: flex; gap: 4px; }
+.ws-title { font-weight: 600; font-size: 13px; flex: 1; }
+.ws-actions { display: flex; gap: 2px; }
+/* 文字小按钮（回退 / 全部回退 / 预览工具条等），仍沿用方形描边风格 */
 .ws-btn {
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
@@ -531,39 +533,87 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
 }
 .ws-btn:hover { border-color: var(--accent); }
 .ws-btn svg { width: 16px; height: 16px; display: block; }
+/* Figma IconBtn：28px 方钮、无边框、hover 淡底 */
+.ws-ibtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 8px;
+  background: transparent; border: none; color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.ws-ibtn:hover { background: var(--hover-bg, rgba(255,255,255,.05)); color: var(--text); }
+.ws-ibtn.active { color: var(--accent); background: rgba(124,92,255,.12); }
+.ws-ibtn svg { width: 15px; height: 15px; display: block; }
 .ws-reopen {
   position: fixed; right: 12px; top: 60px; z-index: 50;
   display: flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; border-radius: 10px; font-size: 18px;
-  background: var(--panel-2); border: 1px solid var(--border);
-  box-shadow: 0 4px 16px rgba(0,0,0,.35);
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  box-shadow: 0 4px 16px rgba(0,0,0,.35); cursor: pointer;
 }
-.ws-reopen svg { width: 20px; height: 20px; }
+.ws-reopen svg { width: 16px; height: 16px; }
 .ws-reopen[hidden] { display: none; }   /* 否则上面的 display:flex 会盖掉 hidden 属性 */
-.ws-reopen:hover { border-color: var(--accent); }
+.ws-reopen:hover { border-color: var(--accent); color: var(--text); }
 
-/* 文件树（上半）：按内容高、最多占 40%；文件少/空时不再硬占 40% 留一大块黑，让预览上移 */
-.ws-tree { flex: 0 1 auto; max-height: 40%; min-height: 0; overflow: auto; padding: 6px; border-bottom: 1px solid var(--border); }
-.ws-tree:empty { padding: 0; border-bottom: none; }
+/* 路径条：文件夹图标 + 等宽小字 */
+.ws-path {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  padding: 6px 12px; border-bottom: 1px solid var(--border);
+}
+.ws-path-ico { width: 11px; height: 11px; flex: 0 0 auto; color: var(--muted); }
+.ws-path-text {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ws-path[hidden] { display: none; }   /* 无目录不占位（由 JS 置 hidden，避免依赖 :has()） */
+
+/* 标签页栏（改动/文件/预览/评审，条件出现，JS 渲染） */
+.ws-tabs {
+  display: flex; gap: 2px; flex-shrink: 0;
+  padding: 4px 8px 0; border-bottom: 1px solid var(--border);
+}
+.ws-tab {
+  background: transparent; border: none; cursor: pointer;
+  padding: 0 12px 6px; font-size: 12px; font-weight: 500;
+  color: rgba(154,154,168,.75); border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s; margin-bottom: -1px;
+}
+.ws-tab:hover { color: var(--text); }
+.ws-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.ws-tab .ws-tab-dot {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent); margin-left: 5px; vertical-align: middle;
+}
+
+/* 标签页内容区：只显示当前激活的那个 */
+.ws-tabpanels { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.ws-tabpanel { display: none; flex: 1; min-height: 0; overflow: hidden; flex-direction: column; }
+.ws-tabpanel.active { display: flex; }
+
+/* 文件树（文件 tab） */
+.ws-tree { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
 .ws-dir > summary {
-  list-style: none; cursor: pointer; padding: 3px 4px; border-radius: 6px;
-  font-size: 13px; white-space: nowrap; user-select: none;
+  list-style: none; cursor: pointer; padding: 4px 8px; border-radius: 6px;
+  font-size: 12px; white-space: nowrap; user-select: none;
 }
 .ws-dir > summary::-webkit-details-marker { display: none; }
 .ws-dir > summary:hover { background: var(--panel-2); }
-.ws-dir { padding-left: 10px; }
+.ws-dir { padding-left: 12px; }
 .ws-file {
-  display: flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px;
-  border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 12px;
+  border-radius: 6px; cursor: pointer; font-size: 12px; white-space: nowrap;
 }
 .ws-file:hover { background: var(--panel-2); }
-.ws-file.active { background: var(--panel-2); border-left: 2px solid var(--accent); }
-.ws-fname { overflow: hidden; text-overflow: ellipsis; }
+.ws-file.active { background: rgba(124,92,255,.15); }
+.ws-fname {
+  overflow: hidden; text-overflow: ellipsis;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 11px;
+}
 .ws-icon { flex: 0 0 auto; }
 
-/* 预览区（下半） */
+/* 预览区（预览 tab） */
 .ws-preview { flex: 1; overflow: auto; padding: 10px; min-height: 0; }
-.ws-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 24px 8px; }
+.ws-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 24px 8px; }
 
 /* 实时预览面板（UX Tier1-②） */
 .ws-btn.active { border-color: var(--accent); background: var(--accent); color: #fff; }
@@ -875,13 +925,7 @@ body.plan-on .composer::before {
 /* 会话项：选中态更克制清晰 */
 .session-item.active { background: var(--active); }
 
-/* 工作区路径（面板内显示当前会话工作区目录） */
-.ws-path {
-  padding: 5px 10px; font-size: 11.5px; color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl;
-}
-.ws-path:empty { display: none; }
+/* 工作区路径样式已上移到工作区面板区块（.ws-path 用 flex + 文件夹图标） */
 
 /* 任务清单面板（FR-9.1，对话区顶部可折叠条） */
 .task-bar {
@@ -940,31 +984,47 @@ body.plan-on .composer::before {
 .sub-summary:empty { display: none; }
 
 /* 改动评审区（FR-9.4a，工作区面板「改动」列表 + diff 着色） */
-.ws-changes {
-  border-bottom: 1px solid var(--border); font-size: 12px;
-  max-height: 30vh; overflow-y: auto; flex: 0 0 auto;
-}
+.ws-changes { font-size: 12px; flex: 0 0 auto; }
 .ws-changes[hidden] { display: none; }
+/* 分区标题「本轮改动 (n)」/「检查点 (n)」：Figma 弱化灰字 + 计数胶囊 */
 .ws-chg-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 5px 10px; font-weight: 600; color: var(--fg);
-  position: sticky; top: 0; background: var(--panel);
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px 4px; font-size: 12px; font-weight: 500; color: var(--muted);
 }
+.ws-chg-head .ws-chg-count {
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+  background: rgba(124,92,255,.15); color: var(--accent);
+  border-radius: 999px; padding: 0 7px; line-height: 17px;
+}
+.ws-chg-head .ws-btn { margin-left: auto; }
 .ws-chg-row {
-  display: flex; align-items: center; gap: 6px; padding: 2px 10px; cursor: default;
+  display: flex; align-items: center; gap: 8px; margin: 0 6px; padding: 6px 8px;
+  border-radius: 8px; cursor: default;
 }
 .ws-chg-row:hover { background: var(--hover-bg); }
-.ws-chg-mark { flex: 0 0 auto; }
-.ws-chg-row.added .ws-chg-mark { color: #6fcf86; }
+/* A / M / D 字母徽标（Figma 风格） */
+.ws-chg-mark {
+  flex: 0 0 auto; width: 16px; text-align: center;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; font-size: 12px;
+}
+.ws-chg-row.added .ws-chg-mark { color: #6fcf97; }
 .ws-chg-row.modified .ws-chg-mark { color: #d8c860; }
-.ws-chg-row.deleted .ws-chg-mark { color: #e07a7a; }
+.ws-chg-row.deleted .ws-chg-mark { color: #ff8080; }
 .ws-chg-path {
   flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   cursor: pointer; color: var(--fg);
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
 }
 .ws-chg-path:hover { color: var(--accent); text-decoration: underline; }
 .ws-chg-row .ws-btn { opacity: 0; }
 .ws-chg-row:hover .ws-btn { opacity: 1; }
+/* 标签页里的改动/检查点：始终展开、无折叠箭头（折叠交互在独立标签页里已多余） */
+.ws-tabpanel .ws-fold { display: none; }
+.ws-tabpanel .ws-changes.collapsed .ws-chg-row,
+.ws-tabpanel .ws-checkpoints.collapsed .ws-chg-row { display: flex; }
+#ws-tab-changes.active { display: block; overflow-y: auto; }
+/* 评审在独立标签页里：去掉堆叠布局用的上边距/上边框，直接铺满并自身滚动 */
+#ws-tab-review .ws-review { margin-top: 0; border-top: none; padding: 8px 4px; max-height: none; flex: 1; min-height: 0; }
 .session-search {
   width: calc(100% - 16px); margin: 4px 8px 6px; padding: 4px 8px;
   border: 1px solid rgba(128, 128, 128, .3); border-radius: 4px;
