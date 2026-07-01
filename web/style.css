@@ -82,8 +82,13 @@ body.col-resizing iframe { pointer-events: none; }  /* 拖到预览 iframe 上�
   display: flex; align-items: center; gap: 6px;
   padding: 10px 12px; border-bottom: 1px solid var(--border);
 }
+/* 品牌区：logo 徽章 + 字标（字标可删，mark 单独也立得住） */
 .sidebar-brand {
-  flex: 1; font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+  flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
+}
+.brand-logo { flex: 0 0 auto; width: 26px; height: 26px; display: block; }
+.sidebar-wordmark {
+  font-size: 14px; font-weight: 700; letter-spacing: -0.01em;
   color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* 搜索：图标 + 输入 + ⌘/Ctrl K 提示，整体做成一颗胶囊（Figma 风格） */
