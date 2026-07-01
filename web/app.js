@@ -1350,7 +1350,10 @@ function updateComposerButtons() {
   // 运行中只留「停止」：发送按钮隐藏（输入框 Enter 仍可发，消息走 steering 纳入当前任务，对标主流）
   sendBtn.hidden = st.sendHidden;
   sendBtn.disabled = false;
-  sendBtn.textContent = st.sendText;
+  // 发送键改用图标（对齐 Figma）：普通＝纸飞机；规划模式＝清单（配合按钮高亮/顶部提示表达「只产出计划」）
+  sendBtn.innerHTML = icon(st.planActive ? "clipboard-list" : "send", 16);
+  sendBtn.title = st.planActive ? "规划：只产出计划，不改文件/不执行" : "发送";
+  sendBtn.setAttribute("aria-label", sendBtn.title);
   stopBtn.hidden = st.stopHidden;
   // 规划模式按钮高亮 + 顶部提示（FR-11.5）
   planBtn.classList.toggle("active", st.planActive);
@@ -1843,12 +1846,13 @@ sessionSearch.addEventListener("input", () => {
   _msgSearchTimer = setTimeout(runMsgSearch, 200);  // 防抖，避免每键一次查询
 });
 
-// ⑧ 全局快捷键：Ctrl/⌘+N 新会话、Ctrl/⌘+Shift+P 规划模式、Ctrl/⌘+K 聚焦会话搜索
+// ⑧ 全局快捷键：Ctrl/⌘+N 新会话、Ctrl/⌘+Shift+P 规划模式、Ctrl/⌘+Shift+R 发起评审、Ctrl/⌘+K 聚焦会话搜索
 document.addEventListener("keydown", (e) => {
   if (!(e.ctrlKey || e.metaKey)) return;
   const k = (e.key || "").toLowerCase();
   if (k === "n") { e.preventDefault(); newSessionBtn.click(); }
   else if (k === "p" && e.shiftKey) { e.preventDefault(); planBtn.click(); }
+  else if (k === "r" && e.shiftKey) { e.preventDefault(); if (reviewBtn) reviewBtn.click(); }
   else if (k === "k") { e.preventDefault(); sessionSearch.focus(); }
 });
 
@@ -1870,6 +1874,7 @@ const SHORTCUT_GROUPS = [
     ["/", "唤起斜杠命令菜单"],
     [`${_mod} F`, "在本对话中查找"],
     [`${_mod} Shift P`, "切换规划模式"],
+    [`${_mod} Shift R`, "发起评审"],
   ]],
   ["查找栏", [
     ["Enter", "跳到下一个匹配"],
@@ -3235,6 +3240,8 @@ function setTopTitle(label) {
   const name = (label || "").trim();
   el.textContent = name || "未打开项目";
   el.classList.toggle("is-placeholder", !name);
+  // 让原生窗口标题栏跟随项目名（去掉冗余的「Hermes Dev」）；空时后端回落到品牌名保住任务栏辨识度
+  try { window.pywebview && window.pywebview.api.set_window_title(name); } catch (e) {}
 }
 
 // ---- 右侧工作区文件预览面板（只读） ------------------------------------
