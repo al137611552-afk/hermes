@@ -542,8 +542,9 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
 .ws-reopen[hidden] { display: none; }   /* 否则上面的 display:flex 会盖掉 hidden 属性 */
 .ws-reopen:hover { border-color: var(--accent); }
 
-/* 文件树（上半） */
-.ws-tree { flex: 0 0 40%; overflow: auto; padding: 6px; border-bottom: 1px solid var(--border); }
+/* 文件树（上半）：按内容高、最多占 40%；文件少/空时不再硬占 40% 留一大块黑，让预览上移 */
+.ws-tree { flex: 0 1 auto; max-height: 40%; min-height: 0; overflow: auto; padding: 6px; border-bottom: 1px solid var(--border); }
+.ws-tree:empty { padding: 0; border-bottom: none; }
 .ws-dir > summary {
   list-style: none; cursor: pointer; padding: 3px 4px; border-radius: 6px;
   font-size: 13px; white-space: nowrap; user-select: none;

@@ -676,6 +676,47 @@ class Api:
             return {"ok": False, "error": f"写入失败：{e}"}
         return {"ok": True, "path": str(p)}
 
+    def save_image(self, data_url: str, filename: str = "") -> dict:
+        """弹系统「保存为」对话框把对话里的图片（data:image base64）存到本地，返回实际路径。
+
+        WebView2/pywebview 里 <a download> 点了不落盘，所以图片下载统一走这里。
+        无窗口（headless）或对话框不可用时返回 {ok:False}，前端回退到浏览器下载。"""
+        import base64
+        import re
+        m = re.match(r"^data:image/([a-zA-Z0-9.+-]+);base64,(.*)$", (data_url or "").strip(), re.S)
+        if not m:
+            return {"ok": False, "error": "不是可保存的 base64 图片"}
+        ext = m.group(1).lower()
+        if ext in ("jpeg", "jpg"):
+            ext = "jpg"
+        elif ext == "svg+xml":
+            ext = "svg"
+        name = (filename or "").strip() or ("hermes-image." + ext)
+        if not name.lower().endswith("." + ext):
+            name += "." + ext
+        try:
+            data = base64.b64decode(m.group(2), validate=False)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"图片解码失败：{e}"}
+        try:
+            import webview
+            if not self._window:
+                return {"ok": False, "error": "无窗口"}
+            result = self._window.create_file_dialog(webview.SAVE_DIALOG, save_filename=name)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"保存对话框失败：{e}"}
+        if not result:
+            return {"ok": False, "cancelled": True}
+        path = result[0] if isinstance(result, (list, tuple)) else result
+        try:
+            p = Path(path)
+            if not p.suffix:
+                p = p.with_suffix("." + ext)
+            p.write_bytes(data)
+        except OSError as e:  # noqa: BLE001
+            return {"ok": False, "error": f"写入失败：{e}"}
+        return {"ok": True, "path": str(p)}
+
     def pick_directory(self) -> dict:
         """弹系统选文件夹对话框，只返回选中的路径（不起会话）——给 MCP/配置等处填目录用。"""
         try:

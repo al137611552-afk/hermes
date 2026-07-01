@@ -329,10 +329,20 @@ function openLightbox(src) {
   lb.classList.add("show");
 }
 
-function downloadImage(src) {
-  const ext = ((src || "").match(/^data:image\/([a-zA-Z0-9]+)/) || [, "png"])[1];
+async function downloadImage(src) {
+  const ext = ((src || "").match(/^data:image\/([a-zA-Z0-9.+-]+)/) || [, "png"])[1];
+  const name = "hermes-image-" + Date.now() + "." + (ext === "svg+xml" ? "svg" : ext);
+  // WebView2 里 <a download> 点了不落盘 → 优先走 Python 存盘对话框；失败/非桌面再回退浏览器下载
+  if (window.pywebview && window.pywebview.api && window.pywebview.api.save_image
+      && /^data:image\//.test(src || "")) {
+    try {
+      const r = await window.pywebview.api.save_image(src, name);
+      if (r && r.ok) { showToast("已保存：" + r.path); return; }
+      if (r && r.cancelled) return;                 // 用户取消，别再回退触发第二次
+    } catch (e) { /* 落到浏览器下载兜底 */ }
+  }
   const a = document.createElement("a");
-  a.href = src; a.download = "hermes-image-" + Date.now() + "." + ext;
+  a.href = src; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
 }
 
@@ -1387,11 +1397,8 @@ function renderReviewPanel(state, opts) {
   } else if (gate.user_signed) {
     parts.push(`<div class="rv-sign signed">已签字 ✓</div>`);
   }
-  // gate 放行后：把定稿落回规划/任务（Accepted 建议→待办，共识→notes）
-  if (lbl.enabled) {
-    parts.push(`<div class="rv-apply"><button class="rv-btn primary" data-rv="apply">应用到规划 / 任务</button>` +
-      `<span class="rv-hint">采纳项写入待办、共识写入工作笔记（不改你原方案正文）</span></div>`);
-  }
+  // gate 放行后落回规划/任务的动作，统一并入「签字确认开工」——那步已含重排+落 notes，
+  // 单独的「应用到规划」按钮多余，去掉。
   REVIEW_STATUSES.forEach((s) => {
     const items = groups[s] || [];
     if (!items.length) return;
@@ -1496,21 +1503,6 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
         autoResize();
         send();
       }
-      return;
-    }
-    if (act === "apply") {
-      const prev = t.textContent;                       // 重排要调主模型、耗时，给按钮态提示别让用户干等
-      t.disabled = true; t.textContent = "主模型重排待办中…";
-      showToast("主模型正在按评审共识重排待办清单…");
-      try {
-        const r = await window.pywebview.api.apply_review_to_plan();
-        if (r && r.ok) {
-          showToast(r.replanned
-            ? `✅ 已按评审共识重排待办（${r.tasks_added || 0} 条）、共识写入工作笔记`
-            : `已落回：采纳项 +${r.tasks_added || 0} 条待办，共识已写入工作笔记`);
-          refreshTasks();   // 刷新任务清单反映新待办
-        } else { showToast(r && r.error ? r.error : "应用失败"); }
-      } finally { t.disabled = false; t.textContent = prev; }
       return;
     }
     if (act === "resolve") {
