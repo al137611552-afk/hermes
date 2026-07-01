@@ -989,12 +989,14 @@ class Conversation:
         # 轮数按同/异构分档：同模型（无异构映射）容易快速收敛，封顶 2 轮省调用；配了异构才用满配置轮数。
         cfg_rounds = self.res.config.agent.design_review_max_rounds
         rounds = cfg_rounds if (self.res.config.agent.design_review_models or {}) else min(cfg_rounds, 2)
-        return DesignReviewSession(decisions, rounds), None
+        return DesignReviewSession(decisions, rounds,
+                                   timeout=self.res.config.agent.design_review_timeout_s), None
 
     def run_design_review(self) -> dict:
         """**第二阶段**：评审模型直接读方案原文抽出决策 → 多角色评审（最多 3 轮×2 角色）→ 四态共识 + gate。"""
         from ..agent.design_review import make_review_fn
-        review_fn = make_review_fn(self._design_review_provider_for())
+        review_fn = make_review_fn(self._design_review_provider_for(),
+                                   max_tokens=self.res.config.agent.design_review_verdict_max_tokens)
         session, err = self._seed_decisions_from_plan(review_fn)
         if err is not None:
             return err

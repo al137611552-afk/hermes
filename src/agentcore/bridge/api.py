@@ -448,6 +448,33 @@ class Api:
         persist_flags(updates)  # 持久化（只取白名单键）
         return self.get_feature_flags()
 
+    def get_limits(self) -> dict:
+        """「限额与预算」面板数据：spec（分组/标签/范围，前端据此渲染）+ 各项当前生效值。"""
+        from ..config import LIMITS_SPEC
+        values = {}
+        for s in LIMITS_SPEC:
+            section, _, field = s["key"].partition(".")
+            sec = getattr(self.config, section, None)
+            values[s["key"]] = getattr(sec, field, None) if sec is not None else None
+        return {"ok": True, "spec": [dict(s) for s in LIMITS_SPEC], "values": values}
+
+    def set_limits(self, updates: dict) -> dict:
+        """GUI 改限额：持久化到 limits.json（重启仍在）+ 即时改活动 config 对应字段（下一步即生效）。"""
+        from ..config import set_limits as persist_limits, _LIMITS_BY_KEY, _coerce_limit
+        for k, v in (updates or {}).items():
+            spec = _LIMITS_BY_KEY.get(k)
+            if spec is None:
+                continue
+            num = _coerce_limit(spec, v)
+            if num is None:
+                continue
+            section, _, field = k.partition(".")
+            sec = getattr(self.config, section, None)
+            if sec is not None and hasattr(sec, field):
+                setattr(sec, field, num)     # 即时生效（各处现读 config）
+        persist_limits(updates)              # 持久化（只取白名单键、按范围校验）
+        return self.get_limits()
+
     def set_browser_headed(self, headed: bool) -> dict:
         """切换浏览器穿透的「有头·登录态」模式：有头=弹出可见浏览器供手动登录/划滑块，登录态持久复用。
         改完重连 MCP（重启 server 让新参数生效）；仅在已启用穿透时有意义。"""

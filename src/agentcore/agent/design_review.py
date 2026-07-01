@@ -341,7 +341,8 @@ def escalate_unresolved(decisions) -> list:
     return out
 
 
-def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -> dict:
+def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
+               timeout: int = REVIEW_TIMEOUT_S) -> dict:
     """跑完整一轮多角色评审直到停止条件命中。
 
     `review_fn(name, prompt)->str` 注入式 seam（同 judge 范式）：引擎按 reviewer **名字**调用，
@@ -358,7 +359,7 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -
         # 一轮内两个角色**并行**：都审同一份轮初快照（更像独立双审），各自超时/故障→空评审跳过。
         # 异构时两角色打不同端点 → 真同时跑，一轮耗时 ≈ max 而非 sum。
         prompts = [(name, build_review_prompt(directive, cur)) for name, directive in reviewers]
-        outs = _run_reviewers_parallel(review_fn, prompts)
+        outs = _run_reviewers_parallel(review_fn, prompts, timeout=timeout)
         for out in outs:                # 顺序合并两份评审到同一快照（apply 只改 status/blocking）
             cur = apply_review(cur, out)
         rounds.append(round_snapshot(cur))
@@ -373,7 +374,7 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS) -
 
 
 # ── IO 适配器：把 provider 包成引擎 seam（唯一碰 provider 的地方，IO 在 provider 内）──
-def make_review_fn(provider_for):
+def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS):
     """把"按 reviewer 名取 provider"的 `provider_for(name)->provider` 包成 seam `review_fn(name, prompt)->str`。
 
     **异构路由的唯一落点**：provider_for 内部据 name 选不同模型档案（如 `build_provider(config, profile)`），
@@ -388,7 +389,7 @@ def make_review_fn(provider_for):
             return "[]"                        # 没配该角色的模型 → 无意见，不阻断评审
         out = []
         for ev in provider.stream_chat([Message("user", prompt)], system=None,
-                                       tools=[], max_tokens=REVIEW_MAX_TOKENS):
+                                       tools=[], max_tokens=max_tokens):
             if getattr(ev, "type", None) == "text":
                 out.append(ev.text)
         return "".join(out)
@@ -402,20 +403,22 @@ class DesignReviewSession:
     纯逻辑（review_fn 注入）。供 conversation/api 在规划模式下驱动；前端按其 gate()/consensus() 渲染。
     """
 
-    def __init__(self, decisions, max_rounds: int = 3) -> None:
+    def __init__(self, decisions, max_rounds: int = 3, timeout: int = REVIEW_TIMEOUT_S) -> None:
         self.decisions = list(decisions)
         self.max_rounds = max_rounds
+        self.timeout = timeout
         self.signed = False
         self.last_result = None
 
     @classmethod
-    def from_proposal(cls, proposal_text: str, max_rounds: int = 3) -> "DesignReviewSession":
+    def from_proposal(cls, proposal_text: str, max_rounds: int = 3,
+                      timeout: int = REVIEW_TIMEOUT_S) -> "DesignReviewSession":
         """从模型 proposal 输出抽 Decision 列表建会话。"""
-        return cls(parse_decisions(proposal_text), max_rounds)
+        return cls(parse_decisions(proposal_text), max_rounds, timeout)
 
     def review(self, review_fn) -> dict:
         """跑一整轮多角色评审（直到停止条件），更新决策集。返回 run_review 结果。"""
-        res = run_review(self.decisions, review_fn, self.max_rounds)
+        res = run_review(self.decisions, review_fn, self.max_rounds, timeout=self.timeout)
         self.decisions = res["decisions"]
         self.signed = False                    # 决策集变了 → 旧签字作废
         self.last_result = res

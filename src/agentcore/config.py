@@ -67,6 +67,8 @@ class AgentConfig(BaseModel):
     per_session_workspace: bool = True   # 每个会话用独立文件夹（隔离不同项目，避免互相污染）
     workspaces_root: str | None = None   # 会话工作区根；None -> ROOT/data/workspaces
     max_steps: int = 25
+    model_max_tokens: int = 0     # 主模型输出上限覆盖（0=跟随模型档 max_tokens）。长任务被截断时在设置里调高
+    token_budget: int = 0         # 会话累计 token 预算总额（0=不设）。顶部用量芯片据此显示已用百分比、还剩多少
     shell: Literal["powershell", "pwsh", "cmd", "bash", "zsh"] = "powershell"
     shell_timeout: int = 180   # 前台命令超时（秒）：放宽到 180s 容纳装依赖/编译这类真·慢命令；
                                # 交互命令已由 stdin=DEVNULL 快速失败、长服务该 background:true，不靠超时兜
@@ -75,6 +77,7 @@ class AgentConfig(BaseModel):
     auto_conventions: bool = True  # 工作区有项目内容但缺 conventions_file 时，自动生成一版
     subagent_model: str | None = None  # 委派子任务用的模型档案名；None=用当前主模型（FR-9.3）
     subagent_max_steps: int = 15       # 子 Agent 循环步数上限（独立于主循环 max_steps）
+    subagent_max_tokens: int = 0       # 子 Agent 输出上限覆盖（0=跟随子模型档 max_tokens）
     roles: dict[str, RoleSpec] = {}    # 自定义子 Agent 角色（FR-10.5）；与内置角色合并、同名覆盖
     permissions: PermissionsConfig = PermissionsConfig()  # 细粒度权限规则（FR-11.4）
     auto_approve_safe: bool = True     # 智能确认分级（Tier1，对标 Claude Auto mode / Cursor Auto-review）：
@@ -125,6 +128,8 @@ class AgentConfig(BaseModel):
                                        # 评审方案、产出四态共识、开工 gate 卡"未决阻塞==0"。默认开——只在用户点「评审」时才跑，
                                        # 不点零成本（区别于 auto_review/auto_test 那种每轮自动触发的功能，故不套"额外调用→默认关"惯例）
     design_review_max_rounds: int = 3  # 评审最大轮数（防无限互评，同 research_max_rounds 纪律）
+    design_review_timeout_s: int = 90        # 单个评审角色单次调用超时（秒），慢/卡按空评审跳过
+    design_review_verdict_max_tokens: int = 2048  # 单角色评审结论输出上限（防长篇大论的安全网，非抽取）
     design_review_models: dict = {}    # 异构路由：reviewer 名→模型档案名（如 {"architecture":"openai/gpt-4o"}）。
                                        # 空=全部用当前主模型（同模型双角色，离线零成本）；大设计才给某角色配异构档
 
@@ -501,6 +506,140 @@ def merge_feature_flags(data: dict, path: "Path | None" = None) -> dict:
     return data
 
 
+# ── 统一「限额与预算」面板（GUI 改数值参数，免手编 config.yaml）────────────────
+# 单一数据源 LIMITS_SPEC 同时驱动：① 校验/持久化 ② 前端渲染。key = "section.field" 点分路径。
+# 留空/0 的语义由各字段默认与 zero 提示表达；merge_limits 把保存值覆盖进对应 config 段。
+LIMITS_FILE = "limits.json"  # GUI「限额与预算」面板写它、load_config 据此覆盖各段默认
+LIMITS_SPEC = (
+    # 预算
+    {"key": "agent.token_budget", "group": "预算", "label": "会话 token 预算总额",
+     "hint": "0 = 不设；设了顶部用量芯片显示已用百分比、还剩多少", "type": "int", "min": 0, "max": 100000000},
+    # 主模型 / 主循环
+    {"key": "agent.model_max_tokens", "group": "主模型 / 主循环", "label": "输出上限 max_tokens",
+     "hint": "0 = 跟随模型档；长任务被截断时调高", "type": "int", "min": 0, "max": 200000},
+    {"key": "agent.max_steps", "group": "主模型 / 主循环", "label": "单轮最多工具步数",
+     "hint": "一轮对话内最多工具调用步数，防死循环", "type": "int", "min": 1, "max": 500},
+    {"key": "agent.shell_timeout", "group": "主模型 / 主循环", "label": "前台命令超时（秒）",
+     "hint": "装依赖/编译等慢命令的上限；长服务用 background:true", "type": "int", "min": 5, "max": 3600},
+    # 委派 / 子 Agent
+    {"key": "agent.subagent_max_tokens", "group": "委派 / 子 Agent", "label": "输出上限 max_tokens",
+     "hint": "0 = 跟随子模型档", "type": "int", "min": 0, "max": 200000},
+    {"key": "agent.subagent_max_steps", "group": "委派 / 子 Agent", "label": "子 Agent 步数上限",
+     "hint": "子 Agent 循环步数（独立于主循环）", "type": "int", "min": 1, "max": 500},
+    {"key": "agent.delegate_max_revisions", "group": "委派 / 子 Agent", "label": "回炉重评轮数",
+     "hint": "0 = 关；子产出由 lead 评分不达标打回重做的最多轮数", "type": "int", "min": 0, "max": 10},
+    # 评审
+    {"key": "agent.design_review_max_rounds", "group": "评审", "label": "评审最大轮数",
+     "hint": "防无限互评", "type": "int", "min": 1, "max": 20},
+    {"key": "agent.design_review_timeout_s", "group": "评审", "label": "单角色超时（秒）",
+     "hint": "慢/卡的评审调用按空评审跳过", "type": "int", "min": 10, "max": 600},
+    {"key": "agent.design_review_verdict_max_tokens", "group": "评审", "label": "评审结论上限 max_tokens",
+     "hint": "防长篇大论的安全网；被截断可调高", "type": "int", "min": 256, "max": 32000},
+    # 自主 / crazy
+    {"key": "agent.crazy_max_rounds", "group": "自主模式（crazy）", "label": "外层目标循环最大轮数",
+     "hint": "无人值守的预算护栏", "type": "int", "min": 1, "max": 500},
+    {"key": "agent.crazy_max_seconds", "group": "自主模式（crazy）", "label": "墙钟时间预算（秒）",
+     "hint": "0 = 不限；超时回合间停", "type": "int", "min": 0, "max": 86400},
+    {"key": "agent.crazy_max_tokens", "group": "自主模式（crazy）", "label": "累计 token 预算",
+     "hint": "0 = 不限；资源止损，超预算回合间停", "type": "int", "min": 0, "max": 100000000},
+    {"key": "agent.crazy_stall_rounds", "group": "自主模式（crazy）", "label": "空转停机轮数",
+     "hint": "连续多少轮没动用工具就停", "type": "int", "min": 1, "max": 50},
+    {"key": "agent.crazy_verify_ask_at", "group": "自主模式（crazy）", "label": "验收连败问用户阈值",
+     "hint": "验收门连续修不过这么多次后停下问用户", "type": "int", "min": 1, "max": 20},
+    # 重试 / 研究 / 测试
+    {"key": "agent.retry_max_attempts", "group": "重试 / 研究 / 测试", "label": "瞬时失败最大重试次数",
+     "hint": "不含首次；总执行 = 1 + 本值", "type": "int", "min": 0, "max": 10},
+    {"key": "agent.research_max_rounds", "group": "重试 / 研究 / 测试", "label": "整轮催重搜总预算",
+     "hint": "达上限→停搜、用现有内容综合作答", "type": "int", "min": 1, "max": 20},
+    {"key": "agent.research_refine_max", "group": "重试 / 研究 / 测试", "label": "同 query 催重搜上限",
+     "hint": "防同词无限重搜", "type": "int", "min": 1, "max": 10},
+    {"key": "agent.test_max_iters", "group": "重试 / 研究 / 测试", "label": "自动测试修复轮数",
+     "hint": "auto_test 失败后自动迭代修复的最多轮数", "type": "int", "min": 1, "max": 10},
+    {"key": "agent.deadend_threshold", "group": "重试 / 研究 / 测试", "label": "死路提示阈值",
+     "hint": "同一条路累计非瞬时失败 ≥ 此值 → 提示换思路", "type": "int", "min": 1, "max": 10},
+    # 联网 / MCP 超时
+    {"key": "web.timeout", "group": "联网 / MCP", "label": "web 请求超时（秒）",
+     "hint": "单次 web_search/web_fetch 请求超时", "type": "int", "min": 5, "max": 300},
+    {"key": "web.fetch_max_chars", "group": "联网 / MCP", "label": "web_fetch 正文上限（字符）",
+     "hint": "抓取正文默认上限，模型可临时调大", "type": "int", "min": 1000, "max": 200000},
+    {"key": "mcp.connect_timeout", "group": "联网 / MCP", "label": "MCP 连接超时（秒）",
+     "hint": "server 启动+握手+列工具超时", "type": "int", "min": 5, "max": 600},
+    {"key": "mcp.call_timeout", "group": "联网 / MCP", "label": "MCP 调用超时（秒）",
+     "hint": "单次 MCP 工具调用超时", "type": "int", "min": 5, "max": 600},
+    # 多模态输入
+    {"key": "multimodal.max_image_mb", "group": "多模态输入", "label": "单图大小上限（MB）",
+     "type": "int", "min": 1, "max": 100},
+    {"key": "multimodal.max_doc_chars", "group": "多模态输入", "label": "单文档字符上限",
+     "type": "int", "min": 1000, "max": 2000000},
+    {"key": "multimodal.max_attachments", "group": "多模态输入", "label": "单条消息附件数上限",
+     "type": "int", "min": 1, "max": 100},
+)
+_LIMITS_BY_KEY = {s["key"]: s for s in LIMITS_SPEC}
+
+
+def _coerce_limit(spec: dict, v):
+    """按 spec 把值转成 int/float 并夹在 [min,max]；失败返回 None（跳过该项）。"""
+    try:
+        num = int(v) if spec["type"] == "int" else float(v)
+    except (TypeError, ValueError):
+        return None
+    lo, hi = spec.get("min"), spec.get("max")
+    if lo is not None:
+        num = max(lo, num)
+    if hi is not None:
+        num = min(hi, num)
+    return num
+
+
+def read_limits(path: "Path | None" = None) -> dict:
+    """读 GUI「限额与预算」保存值（点分 key→数值）。不存在/坏档返回 {}。"""
+    p = path or (APP_DIR / LIMITS_FILE)
+    if not p.is_file():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def set_limits(updates: dict, path: "Path | None" = None) -> dict:
+    """合并写入限额（只收 LIMITS_SPEC 白名单 key、按类型/范围校验），返回合并后全量。"""
+    p = path or (APP_DIR / LIMITS_FILE)
+    cur = read_limits(p)
+    for k, v in (updates or {}).items():
+        spec = _LIMITS_BY_KEY.get(k)
+        if spec is None:
+            continue
+        num = _coerce_limit(spec, v)
+        if num is not None:
+            cur[k] = num
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cur, ensure_ascii=False), encoding="utf-8")
+    return cur
+
+
+def merge_limits(data: dict, path: "Path | None" = None) -> dict:
+    """把 GUI 保存的限额覆盖到对应 config 段（load_config 用）。key='section.field'。"""
+    saved = read_limits(path)
+    if not saved:
+        return data
+    for k, v in saved.items():
+        spec = _LIMITS_BY_KEY.get(k)
+        if spec is None:
+            continue
+        num = _coerce_limit(spec, v)
+        if num is None:
+            continue
+        section, _, field = k.partition(".")
+        if not field:
+            continue
+        sec = dict(data.get(section) or {})
+        sec[field] = num
+        data[section] = sec
+    return data
+
+
 def merge_browser_mcp(data: dict) -> dict:
     """若 GUI 启用了浏览器穿透，把 Playwright MCP server 合并进 data['mcp']（不动用户手编的其它 server）。"""
     if not browser_mcp_enabled():
@@ -721,6 +860,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     data = merge_user_hooks(data)   # 「统一管理面」加的 hooks（Tier2-①）
     data = merge_browser_mcp(data)  # GUI 一键开关启用的浏览器穿透（Playwright MCP；穿透 browser 优先）
     data = merge_feature_flags(data)  # GUI「功能开关」面板保存的 agent 开关（覆盖 config.yaml 默认）
+    data = merge_limits(data)         # GUI「限额与预算」面板保存的数值参数（覆盖各段默认）
     _resolve_shell(data)              # shell: auto / 缺省 → 按系统选（Windows→powershell，macOS/Linux→bash）
     return AppConfig(**data)
 

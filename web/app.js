@@ -944,7 +944,20 @@ function renderUsage(v, data) {
   if (isActive(v)) updateUsageChip();
 }
 
-// 顶部「会话累计用量」芯片：当前会话累计 token + 按公开价粗估的成本。切会话时刷新。
+// 会话 token 预算总额（agent.token_budget，0=不设）。设了顶部芯片显示已用百分比。
+let tokenBudget = 0;
+
+// 从后端限额里读预算总额，缓存到 tokenBudget（启动时 + 改限额后调用）。
+async function refreshTokenBudget() {
+  try {
+    const data = (await window.pywebview.api.get_limits()) || {};
+    const b = data.values && data.values["agent.token_budget"];
+    tokenBudget = Number(b) > 0 ? Number(b) : 0;
+  } catch (_) { tokenBudget = 0; }
+  updateUsageChip();
+}
+
+// 顶部「会话累计用量」芯片：设了预算显示「已用 X% · a/b」，否则显示累计 token + 粗估成本。切会话时刷新。
 function updateUsageChip() {
   const chip = document.getElementById("usage-chip");
   if (!chip) return;
@@ -955,10 +968,19 @@ function updateUsageChip() {
   const total = u.input + u.output + u.cacheRead;
   const cost = estimateCostUsd(modelSelect.value, u);
   const costTxt = cost != null ? `　≈ $${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}` : "";
-  chip.textContent = `Σ ${fmtK(total)} tok${costTxt}`;
+  if (tokenBudget > 0) {
+    const pct = (total / tokenBudget) * 100;
+    const pctTxt = pct < 10 ? pct.toFixed(1) : Math.round(pct);
+    chip.textContent = `已用 ${pctTxt}% · ${fmtK(total)}/${fmtK(tokenBudget)}${costTxt}`;
+  } else {
+    chip.textContent = `Σ ${fmtK(total)} tok${costTxt}`;
+  }
+  const budgetLine = tokenBudget > 0
+    ? `\n预算 ${tokenBudget} tokens，剩 ${Math.max(0, tokenBudget - total)}（${(total / tokenBudget * 100).toFixed(1)}% 已用）`
+    : "";
   chip.title =
     `本会话累计（本次打开以来，共 ${u.turns} 轮）\n` +
-    `输入 ${u.input} / 输出 ${u.output} / 缓存 ${u.cacheRead} tokens` +
+    `输入 ${u.input} / 输出 ${u.output} / 缓存 ${u.cacheRead} tokens` + budgetLine +
     (cost != null ? `\n成本 ≈ $${cost.toFixed(4)}（按公开列表价粗估，仅供参考）` : "\n（当前模型无价目，仅统计 token）");
 }
 
@@ -2452,6 +2474,12 @@ function renderProviderList() {
   fp.innerHTML = '<span class="prov-name">🛠 功能开关</span>';
   fp.addEventListener("click", () => { provSelected = "__features__"; renderProviderList(); renderProviderDetail(); });
   provListEl.appendChild(fp);
+  // 限额与预算（数值参数统一管理：token/轮次/时间/步数等，即改即生效 + 持久化）
+  const lm = document.createElement("button");
+  lm.className = "prov-item prov-special" + (provSelected === "__limits__" ? " active" : "");
+  lm.innerHTML = '<span class="prov-name">📊 限额与预算</span>';
+  lm.addEventListener("click", () => { provSelected = "__limits__"; renderProviderList(); renderProviderDetail(); });
+  provListEl.appendChild(lm);
   const add = document.createElement("button");
   add.className = "prov-add";
   add.textContent = "+ 自定义服务";
@@ -2844,12 +2872,55 @@ async function renderFeaturePane() {
   });
 }
 
+// 限额与预算：后端 get_limits() 的 spec（分组/标签/范围）+ 当前值 → 通用渲染数字输入，改一项存一项
+async function renderLimitsPane() {
+  const data = (await window.pywebview.api.get_limits()) || {};
+  const spec = data.spec || [];
+  const values = data.values || {};
+  const groups = [];
+  const byGroup = {};
+  spec.forEach((s) => {
+    if (!byGroup[s.group]) { byGroup[s.group] = []; groups.push(s.group); }
+    byGroup[s.group].push(s);
+  });
+  const rowHtml = (s) => {
+    const v = values[s.key];
+    const rng = [s.min, s.max].filter((x) => x != null);
+    return `<label class="lim-row"><span class="lim-text">` +
+      `<span class="lim-title">${escapeHtml(s.label)}</span>` +
+      (s.hint ? `<span class="lim-desc">${escapeHtml(s.hint)}</span>` : "") + `</span>` +
+      `<input class="lim-input" type="number" data-key="${escapeHtml(s.key)}"` +
+      (s.min != null ? ` min="${s.min}"` : "") + (s.max != null ? ` max="${s.max}"` : "") +
+      ` value="${v == null ? "" : escapeHtml(String(v))}"` +
+      (rng.length === 2 ? ` title="范围 ${rng[0]}–${rng[1]}"` : "") + `></label>`;
+  };
+  provDetailEl.innerHTML =
+    '<div class="prov-d-head"><span class="prov-d-title">📊 限额与预算</span></div>' +
+    '<p class="settings-hint">token / 轮次 / 时间 / 步数等数值上限统一在这改，即改即生效、自动记住（不必手编 config.yaml）。留空/为 0 处按提示表示「跟随默认」。</p>' +
+    groups.map((g) =>
+      `<div class="lim-group"><div class="lim-group-h">${escapeHtml(g)}</div>` +
+      byGroup[g].map(rowHtml).join("") + `</div>`).join("");
+  provDetailEl.querySelectorAll(".lim-input").forEach((inp) => {
+    inp.addEventListener("change", async () => {
+      const key = inp.dataset.key;
+      const raw = inp.value.trim();
+      if (raw === "") { renderLimitsPane(); return; }   // 清空=不改，重载回显当前值
+      const r = await window.pywebview.api.set_limits({ [key]: Number(raw) });
+      const nv = r && r.values ? r.values[key] : null;  // 后端已按范围夹取，回显夹取后的值
+      if (nv != null) inp.value = nv;
+      if (key === "agent.token_budget") refreshTokenBudget();  // 预算变了，顶部芯片跟着刷新
+      showToast("已保存");
+    });
+  });
+}
+
 function renderProviderDetail() {
   if (provSelected === "__browser__") { renderBrowserPane(); return; }
   if (provSelected === "__mcp__") { renderMcpPane(); return; }
   if (provSelected === "__hooks__") { renderHooksPane(); return; }
   if (provSelected === "__appearance__") { renderAppearancePane(); return; }
   if (provSelected === "__features__") { renderFeaturePane(); return; }
+  if (provSelected === "__limits__") { renderLimitsPane(); return; }
   const p = provData.find((x) => x.key === provSelected);
   if (!p) { provDetailEl.innerHTML = '<div class="prov-empty">选择左侧的模型服务进行配置</div>'; return; }
   const fmt = p.provider === "openai" ? "OpenAI 兼容" : "Anthropic 兼容";
@@ -3602,6 +3673,7 @@ window.addEventListener("pywebviewready", async () => {
   clog(`refreshSessions: ${Math.round(performance.now() - t)}ms`);
   setWorkspaceCollapsed(localStorage.getItem("wsCollapsed") === "1");
   refreshWorkspace();
+  refreshTokenBudget();      // 读预算总额 → 顶部用量芯片按百分比显示
 
   // 桥就绪：开放输入
   input.disabled = false;
