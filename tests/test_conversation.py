@@ -1394,11 +1394,10 @@ def test_design_review_end_to_end_wiring(tmp: Path):
     orig = convmod.build_provider
     convmod.build_provider = lambda cfg, model: _ReviewProvider()
     try:
-        # 第一阶段：只拆解，决策可见、尚未评审
+        # 第一阶段：瞬时校验（零模型调用），面板就绪、决策尚未抽取
         r0 = conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
-        assert r0["ok"] and len(r0["decisions"]) == 2 and r0["reviewed"] is False
-        assert all(d["status"] == "Open" for d in r0["decisions"])   # 拆完都 Open
-        # 第二阶段：跑多角色评审，回填四态
+        assert r0["ok"] and r0.get("ready") is True and r0["decisions"] == []
+        # 第二阶段：评审模型直接读原文抽决策 + 多角色评审，回填四态
         r = conv.run_design_review()
         assert r["ok"] and r["reviewed"] is True and len(r["decisions"]) == 2
         ids = {d["id"]: d for d in r["decisions"]}
@@ -1488,9 +1487,37 @@ def test_start_design_review_retries_once_on_nojson(tmp: Path):
     orig = convmod.build_provider
     convmod.build_provider = lambda cfg, model: prov
     try:
-        r = conv.start_design_review("方案：桌面框架用 Tauri……")
+        assert conv.start_design_review("方案：桌面框架用 Tauri……")["ok"] is True   # 瞬时校验
+        r = conv.run_design_review()                             # 抽取在此，含收紧重试
         assert r["ok"] is True and len(r["decisions"]) == 1
         assert prov.decompose_calls == 2                          # 确有一次重试
+    finally:
+        convmod.build_provider = orig
+
+
+class _TruncatedDecomposeProvider:
+    """假 provider：拆解时吐没闭合的 JSON 且 stop_reason=max_tokens（超模型上限被截断）。"""
+    def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
+        from agentcore.providers import StreamEvent
+        prompt = str(messages[0].content)
+        txt = '[{"id":"a","title":"框架","current_choice":"Tauri"' if "拆成" in prompt else "[]"
+        yield StreamEvent("text", txt)
+        yield StreamEvent("done", meta={"stop_reason": "max_tokens"})   # 截断信号
+
+
+def test_run_design_review_reports_truncation_honestly(tmp: Path):
+    """抽取被 max_tokens 截断 → 如实报"被截断/换高上限模型"，不误导成"没吐 JSON"、也不空转重试。"""
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv.res.config.agent.design_review = True
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _TruncatedDecomposeProvider()
+    try:
+        conv.start_design_review("方案：一份很大的方案……")
+        r = conv.run_design_review()
+        assert r["ok"] is False and r.get("no_decisions") is not True
+        assert "截断" in r["error"] and "没吐" not in r["error"]
     finally:
         convmod.build_provider = orig
 
@@ -1504,7 +1531,8 @@ def test_start_design_review_empty_is_no_decisions_not_error(tmp: Path):
     orig = convmod.build_provider
     convmod.build_provider = lambda cfg, model: _EmptyDecomposeProvider()
     try:
-        r = conv.start_design_review("方案：1. 建表 2. 写接口 3. 加测试")
+        assert conv.start_design_review("方案：1. 建表 2. 写接口 3. 加测试")["ok"] is True   # 瞬时校验
+        r = conv.run_design_review()                             # 抽取在此 → 空数组
         assert r["ok"] is False and r.get("no_decisions") is True
         assert "关键决策" in r["error"] and "非预期" not in r["error"]
         assert "raw" not in r                                     # 空数组不是解析失败，不回原文

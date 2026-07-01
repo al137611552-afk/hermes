@@ -302,7 +302,9 @@ def build_review_prompt(role_directive: str, decisions) -> str:
     return role_directive + "\n\n" + "\n".join(body) + _REVIEW_OUTPUT_SPEC
 
 
-REVIEW_MAX_TOKENS = 1024          # 评审/角色输出上限：只需一小段紧凑 JSON，别让它长篇（提速大头）
+# 评审 verdict 输出天生紧凑（每条决策就 {id,status,blocking} 几十 token），此上限是**防长篇大论的安全网**、
+# 不是紧箍：设得宽松（覆盖 ~50 条决策的 verdict），既挡住模型跑偏写小作文，又不至于把 verdict 数组从中间切断。
+REVIEW_MAX_TOKENS = 2048
 REVIEW_TIMEOUT_S = 90             # 单个角色单次调用超时（秒）：慢/卡的调用不无限等，超时按空评审跳过
 
 

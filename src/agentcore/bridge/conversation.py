@@ -210,6 +210,7 @@ class Conversation:
         self._sub_lock = threading.Lock() # 并行委派时计数安全（FR-10.5）
         self.plan_mode = False            # 规划模式（FR-11.5）：只读勘察+产出方案，运行时态不持久化
         self._review_session = None       # ADR 0019：规划模式下的方案评审会话（DesignReviewSession），运行时态
+        self._pending_review_plan = None  # start 已确认可评审的方案原文，交 run 让评审模型直接读取抽决策
         self.crazy_mode = False           # 自主/crazy 模式（无人值守外层循环），运行时态不持久化
         self._last_turn_hit_max = False   # 上一轮 send_message 是否撞步数上限（crazy 外层据此强制续命）
         self._last_turn_had_inject = False # 上一轮是否有用户中途补充（crazy 外层据此不轻信 [[DONE]]）
@@ -878,10 +879,10 @@ class Conversation:
 
     # ---- ADR 0019：规划模式方案评审（Review Mode）------------------
 
-    # 刻意精简字段（去 alternatives/rationale）保持输出短、拆解快（延迟≈生成 token 数）；但抽取范围不止技术，
-    # 也覆盖范围/阶段取舍与「待用户确认」的开放问题——后者把待定点写进 blocking，会显示为未决、锁住 gate 待拍板。
-    _DECOMPOSE_PROMPT = (
-        "把下面这份方案拆成「关键决策」列表，只输出 JSON 数组，每项只含这几个短字段（不要 alternatives/rationale）：\n"
+    # 评审模型直接读**方案原文**抽决策（不经主模型重排一遍）。精简字段（去 alternatives/rationale）保持输出短；
+    # 范围不止技术，也覆盖范围/阶段取舍与「待用户确认」的开放问题——后者把待定点写进 blocking，显示为未决、锁 gate。
+    _SEED_PROMPT = (
+        "从下面的**方案原文**里把「关键决策」拆成列表，只输出 JSON 数组，每项只含这几个短字段（不要 alternatives/rationale）：\n"
         '[{"id":"短标识","title":"这个决策在定什么（一句话）","current_choice":"当前选择或倾向（一句话）",'
         '"status":"Open","blocking":["待确认或有争议的点；没有就省略该字段"]}]\n'
         "要抽的不止技术选型，还包括：\n"
@@ -889,17 +890,27 @@ class Conversation:
         "· 范围与阶段划分（MVP 必做 vs 增强、砍哪些、先后顺序）；\n"
         "· 方案里明确「待你确认」的开放问题（默认值、风格方向、是否进入开发等）——current_choice 填当前倾向，把待定点写进 blocking。\n"
         "最多约 10 条，每条一句话，琐碎实现细节不算。\n"
-        "无论方案多长，都只输出这一个 JSON 数组，不要 markdown 表格、不要代码围栏、不要任何解释。\n\n方案：\n"
+        "无论方案多长，都只输出这一个 JSON 数组，不要 markdown 表格、不要代码围栏、不要任何解释。\n\n方案原文：\n"
     )
 
-    def _oneshot_text(self, provider, prompt: str, max_tokens: "int | None" = None) -> str:
-        """一次性只读补全（无 system/无 tools），同 judge 范式。max_tokens 限输出长度（提速）。"""
-        out = []
+    def _oneshot(self, provider, prompt: str, max_tokens: "int | None" = None):
+        """一次性只读补全（无 system/无 tools），同 judge 范式。返回 (文本, 是否因 max_tokens 被截断)。
+
+        截断标志来自 done 事件的 stop_reason∈{max_tokens,length}——用于区分"模型没吐 JSON"和"吐了但被切断"。
+        """
+        out, stop = [], ""
         for ev in provider.stream_chat([Message("user", prompt)], system=None,
                                        tools=[], max_tokens=max_tokens):
-            if getattr(ev, "type", None) == "text":
+            t = getattr(ev, "type", None)
+            if t == "text":
                 out.append(ev.text)
-        return "".join(out)
+            elif t == "done":
+                stop = (getattr(ev, "meta", None) or {}).get("stop_reason", "")
+        return "".join(out), stop in ("max_tokens", "length")
+
+    def _oneshot_text(self, provider, prompt: str, max_tokens: "int | None" = None) -> str:
+        """只读补全，只取文本（截断标志用不上时的便捷包装）。"""
+        return self._oneshot(provider, prompt, max_tokens)[0]
 
     def _design_review_provider_for(self):
         """据 config.agent.design_review_models 把 reviewer 名路由到模型档案；缺省=主模型（异构唯一落点）。"""
@@ -927,50 +938,67 @@ class Conversation:
                               for d in s.decisions]}
 
     def start_design_review(self, proposal_text: "str | None" = None) -> dict:
-        """**第一阶段**：方案文本 → 主模型拆成 Decision JSON → 建会话 → 立即返回（决策可见，未评审）。
+        """**第一阶段（瞬时，零模型调用）**：只校验有方案可评、亮出面板；抽取+评审全在 `run_design_review`。
 
-        刻意只做"拆解"这一次模型调用就返回，让前端先把面板亮出来；多角色评审由 `run_design_review`
-        续跑（否则 1 次拆解 + 最多 3 轮×2 角色 = 至多 7 次串行模型调用全压在一个调用里，前端看着像卡死）。
+        刻意不在这里跑模型：抽取交给**评审模型直接读方案原文**完成（主模型不再把刚写的方案重排一遍），
+        面板也能秒开——彻底消灭"点了按钮 1 分钟没反应"。真正的模型工作都在 run 里、面板显示"评审中"骨架。
         """
-        from ..agent.design_review import DesignReviewSession, diagnose_decisions
         if not self.res.config.agent.design_review:
             return {"ok": False, "error": "design_review 未启用（config.agent.design_review=false）"}
         text = (proposal_text or self.get_notes() or "").strip()
         if not text:
             return {"ok": False, "error": "没有可评审的方案（先在规划模式产出 notes，或传入 proposal_text）"}
-        try:
-            provider = build_provider(self.res.config, self.active_model)
-        except Exception as e:  # noqa: BLE001
-            return {"ok": False, "error": str(e)}
+        self._pending_review_plan = text
+        self._review_session = None
+        return {"ok": True, "ready": True, "decisions": [],
+                "gate": {"can_start": False, "blocking_count": 0, "user_signed": False, "reason": "评审待运行"}}
+
+    def _seed_decisions_from_plan(self, review_fn):
+        """让评审模型**直接读方案原文**抽出初始 Decision 列表（取代主模型单独拆解）。
+
+        返回 (session_or_None, error_dict_or_None)。用独立的 2048 token 上限（评审输出上限 1024 太小、长列表会截断）。
+        路由到「务实」评审员对应的模型档（配了异构就用快/异构档，否则回落主模型）。
+        """
+        from ..agent.design_review import (DesignReviewSession, diagnose_decisions, parse_decisions)
+        text = (self._pending_review_plan or self.get_notes() or "").strip()
+        if not text:
+            return None, {"ok": False, "error": "没有可评审的方案（先调 start_design_review）"}
+        provider = self._design_review_provider_for()("execution") \
+            or build_provider(self.res.config, self.active_model)
+        prompt = self._SEED_PROMPT + text
+        # 抽取输出随决策数增长，**不设人为紧上限**：用满该模型单次预算（max_tokens=None）。延迟只随实际生成量，
+        # 精简 schema 下正常方案输出很短、并不慢；只有极大方案才可能触到模型硬顶——那种情况如实报截断，别误导成"没吐JSON"。
+        raw, truncated = self._oneshot(provider, prompt, max_tokens=None)
+        decisions = parse_decisions(raw)
+        # 只有"没被截断却仍没吐 JSON"（大白话/markdown 带跑）才值得收紧重试；被截断时同预算重试是空转，直接如实报错。
+        if not decisions and not truncated and diagnose_decisions(raw) == "nojson":
+            strict = "只输出 JSON 数组本身：第一个字符必须是 [，最后一个字符必须是 ]，中间不得有任何其他文字。\n\n" + prompt
+            raw, truncated = self._oneshot(provider, strict, max_tokens=None)
+            decisions = parse_decisions(raw)
+        if not decisions:
+            if truncated:   # 吐了但超出模型单次上限被切断——不是"没吐JSON"，重试同上限也没用
+                return None, {"ok": False, "error": "方案过大，决策抽取超出该模型单次输出上限被截断——"
+                              "请精简方案，或在顶部「模型 ▾」把评审模型换成输出上限更高的档后重试。"}
+            if diagnose_decisions(raw) == "empty":   # 合法空数组：方案没有方向/范围/待确认类决策——纯执行清单，不是报错
+                return None, {"ok": False, "no_decisions": True,
+                              "error": "这份方案没有需要评审的「关键决策」（技术方向 / 范围阶段 / 待确认的开放问题）——"
+                                       "更像一份执行清单，可直接开始编码，无需评审。"}
+            return None, {"ok": False, "error": "未能从方案抽出决策（模型没吐出预期 JSON，可点 ↻ 重试）",
+                          "raw": raw[:500]}
         # 轮数按同/异构分档：同模型（无异构映射）容易快速收敛，封顶 2 轮省调用；配了异构才用满配置轮数。
         cfg_rounds = self.res.config.agent.design_review_max_rounds
         rounds = cfg_rounds if (self.res.config.agent.design_review_models or {}) else min(cfg_rounds, 2)
-        # 2048：精简 schema 下 ≤10 条决策够写完不截断（长方案曾因 1024 截断致数组不闭合、解析归零）；仍比旧 3072 省。
-        prompt = self._DECOMPOSE_PROMPT + text
-        decisions_json = self._oneshot_text(provider, prompt, max_tokens=2048)
-        session = DesignReviewSession.from_proposal(decisions_json, max_rounds=rounds)
-        # 模型被大白话/markdown 带跑、没吐出 JSON 数组 → 收紧措辞重试一次（只在失败时多花一次调用）。
-        if not session.decisions and diagnose_decisions(decisions_json) == "nojson":
-            strict = "只输出 JSON 数组本身：第一个字符必须是 [，最后一个字符必须是 ]，中间不得有任何其他文字。\n\n" + prompt
-            decisions_json = self._oneshot_text(provider, strict, max_tokens=2048)
-            session = DesignReviewSession.from_proposal(decisions_json, max_rounds=rounds)
-        if not session.decisions:
-            why = diagnose_decisions(decisions_json)
-            if why == "empty":   # 合法空数组：方案确实没有方向/范围/待确认类决策——多是纯执行清单，不是报错
-                return {"ok": False, "no_decisions": True,
-                        "error": "这份方案没有需要评审的「关键决策」（技术方向 / 范围阶段 / 待确认的开放问题）——"
-                                 "更像一份执行清单，可直接开始编码，无需评审。"}
-            return {"ok": False, "error": "未能从方案抽出决策（模型没吐出预期 JSON，或被截断，可点 ↻ 重试）",
-                    "raw": decisions_json[:500]}
-        self._review_session = session
-        return self._review_state(ok=True)
+        return DesignReviewSession(decisions, rounds), None
 
     def run_design_review(self) -> dict:
-        """**第二阶段**：对已拆解的会话跑多角色评审（最多 3 轮×2 角色），回填四态共识 + gate。"""
+        """**第二阶段**：评审模型直接读方案原文抽出决策 → 多角色评审（最多 3 轮×2 角色）→ 四态共识 + gate。"""
         from ..agent.design_review import make_review_fn
-        if self._review_session is None:
-            return {"ok": False, "error": "尚未拆解方案（先调 start_design_review）"}
-        self._review_session.review(make_review_fn(self._design_review_provider_for()))
+        review_fn = make_review_fn(self._design_review_provider_for())
+        session, err = self._seed_decisions_from_plan(review_fn)
+        if err is not None:
+            return err
+        self._review_session = session
+        session.review(review_fn)
         return self._review_state(ok=True)
 
     def get_design_review(self) -> dict:

@@ -1435,24 +1435,21 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
   const v = activeView();
   if (!v || !window.pywebview) return;
   if (!v.planMode) { showToast("先开规划模式产出方案，再发起评审"); return; }
-  showToast("正在拆解方案…");
   reviewBtn.classList.add("busy");
-  showReviewSkeleton("正在拆解方案…（把方案拆成关键决策）");   // 立刻亮面板，别让用户以为点了没反应
+  showReviewSkeleton("评审模型正在读方案原文、抽取关键决策并评审…");   // start 瞬时返回，面板立刻亮
   try {
-    // 第一阶段：拆解（一次模型调用）→ 面板已亮，回来后填决策
+    // 第一阶段：瞬时校验（零模型调用），面板已亮
     const st = await window.pywebview.api.start_design_review();
     if (!st || !st.ok) {
-      if (st && st.raw) console.log("[design_review] 拆解原始输出：", st.raw);   // 解析失败时在 DevTools 里可查
-      renderReviewPanel(null);                                 // 收起骨架面板
+      renderReviewPanel(null);
       showToast(st && st.error ? st.error : "评审未能开始");
       return;
     }
-    renderReviewPanel(st, { running: true });
-    showToast(`已拆出 ${(st.decisions || []).length} 项决策，多角色评审中…`);
-    // 第二阶段：跑评审（最多 3 轮×2 角色，耗时较长）→ 回填共识
+    // 第二阶段：评审模型直接读原文抽决策 + 多角色评审（决策与共识一起回来）
     const st2 = await window.pywebview.api.run_design_review();
-    renderReviewPanel(st2 && st2.ok ? st2 : st);
-    if (!st2 || !st2.ok) showToast(st2 && st2.error ? st2.error : "评审过程出错（决策已保留，可点 ↻ 重试）");
+    if (st2 && st2.raw) console.log("[review] 抽取原始输出：", st2.raw);   // 解析失败时在 DevTools 里可查
+    renderReviewPanel(st2 && st2.ok ? st2 : null);
+    if (!st2 || !st2.ok) showToast(st2 && st2.error ? st2.error : "评审过程出错（可点 ↻ 重试）");
   } catch (e) { renderReviewPanel(null); showToast("评审失败：" + (e && e.message ? e.message : e)); } finally { reviewBtn.classList.remove("busy"); }
 });
 
@@ -1467,8 +1464,9 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
     if (act === "rerun") {
       const cur = await window.pywebview.api.get_design_review();
       if (cur && cur.ok) renderReviewPanel(cur, { running: true });
+      else showReviewSkeleton("评审模型正在重读方案、重新评审…");
       const st = await window.pywebview.api.run_design_review();
-      renderReviewPanel(st && st.ok ? st : cur);
+      renderReviewPanel(st && st.ok ? st : (cur && cur.ok ? cur : null));
       if (!st || !st.ok) showToast(st && st.error ? st.error : "评审出错");
       return;
     }
