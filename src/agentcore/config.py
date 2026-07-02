@@ -128,7 +128,8 @@ class AgentConfig(BaseModel):
                                        # 评审方案、产出四态共识、开工 gate 卡"未决阻塞==0"。默认开——只在用户点「评审」时才跑，
                                        # 不点零成本（区别于 auto_review/auto_test 那种每轮自动触发的功能，故不套"额外调用→默认关"惯例）
     design_review_max_rounds: int = 4  # 评审轮数上限（含初始规划快照）：4 = 最多 3 个讨论轮（v5 hub-and-spoke），防无限互评
-    design_review_timeout_s: int = 90        # 单个评审角色单次调用超时（秒），慢/卡按空评审跳过
+    design_review_timeout_s: int = 180       # 单个评审角色单次调用超时（秒）：v5 进言更长（上限 4096），90s 太紧会超时丢内容；
+                                             # 超时不再丢成空——已流式内容会被回捞（见 _run_reviewers_serial）
     design_review_verdict_max_tokens: int = 4096  # 单角色评审进言输出上限：v5 评审员是讨论参与者（散文进言给主模型+展示给用户），
                                                    # 2048 太紧会当场截断（真机反馈"产品镜头没说完就断"）；4096 够一份方案的批评说完整，仍是防跑飞安全网
     design_review_models: dict = {}    # 异构路由：reviewer 名→模型档案名（如 {"technical":"openai/gpt-4o"}）。

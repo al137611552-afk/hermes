@@ -288,6 +288,33 @@ def test_run_reviewers_serial_runs_in_order_and_times_out():
     assert seen[0] == "a"                            # 逐个跑（产品先说、技术再回应）
 
 
+def test_run_reviewers_serial_recovers_partial_on_timeout():
+    # 真机 bug：评审员流式打完却因超时被丢成 "[]"（前端覆盖、主模型读不到）。
+    # 修复：review_fn.partial 里增量存的已流式内容，超时时**回捞**而非丢弃。
+    import time
+    from agentcore.agent.design_review import _run_reviewers_serial
+
+    def rf(name, prompt):
+        rf.partial[name] = "产品镜头分析到一半就超时了"   # 模拟已流式（make_review_fn 会这样增量存）
+        time.sleep(0.3)                                    # 超过下面的 timeout
+        return "本不该被读到的完整输出"
+    rf.partial = {}
+    outs = _run_reviewers_serial(rf, [("product", "p")], timeout=0.05)
+    assert outs == ["产品镜头分析到一半就超时了"]          # 回捞已流式内容，不再丢成 "[]"
+
+
+def test_run_review_min_rounds_forces_reviewers_to_respond_to_main():
+    # 用户明确要"评审员基于主模型回复再讨论"：min_rounds=2 时，即便一轮后就 no_new_blocking，
+    # 也强制跑满 2 个讨论轮（评审员→主模型→评审员基于回复再谈）。should_stop 内核未动。
+    def rf(name, prompt):
+        return "[]"                                        # 无新增 blocking → 单看 should_stop 第 1 轮后即收敛
+    decisions = [Decision("d1", "存储", "SQLite", [], "", OPEN, [])]
+    one = run_review(list(decisions), rf, max_rounds=4, min_rounds=1)
+    two = run_review(list(decisions), rf, max_rounds=4, min_rounds=2)
+    assert len(one["rounds"]) - 1 == 1                     # 下限=1：第 1 轮后即收敛（旧行为）
+    assert len(two["rounds"]) - 1 == 2                     # 下限=2：强制评审员再基于主模型回复回应一轮
+
+
 def test_make_review_fn_bounds_output_tokens():
     seen = {}
 

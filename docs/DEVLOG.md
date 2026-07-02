@@ -18,6 +18,7 @@
 - **自检**：Python 全量 **58/58**（`test_design_review.py` **36/36**、`test_conversation.py` **93/93**，新增覆盖：主模型是唯一改状态处 / 评审员进言不改状态 / 主模型可改 current_choice / 每轮一次主模型调用且轮数封顶 / 流式序列含 main_reply / 端到端 advice-only 反例不改状态）；前端 node:test **55/55**（新增 hub role 纯逻辑用例）；Golden **3/3**（决策内核回归门绿，未动 `should_stop`/`gate_status`）。
 - **验证状态**：**待 Windows 真机验证**（开发环境 Linux 无 GUI，跑不了 pywebview + 真实模型调用）。**未定版**——验证通过后再同步 pyproject/CHANGELOG/PRD 并定版。
 - **v5.1 交互打磨（真机反馈跟进）**：分屏两列并排 → **单列线性讨论流**（产品→技术→主模型回复→下一轮，竖向逐块）；新增 `review_started` 事件让面板**秒出**「正在拆解方案…」，不再干等抽取阻塞调用；`design_review_max_rounds` 默认 3→4（=最多 3 讨论轮，`should_stop`/golden 未动）。
+- **v5.2 真机 bug 修复**：① "产品评审打完显示成 [ ]、主模型读不到"＝超时丢内容——`make_review_fn` 增量存 `.partial`、`_run_reviewers_serial` 超时**回捞**而非丢 `[]`，`design_review_timeout_s` 90→180，前端 verdict 空时不覆盖已流式原文。② "设 20 轮却只评 1 轮"＝`min(cfg_rounds,2)` 砍轮——已删（面板设置直接生效）+ `min_rounds=2` 下限门保证评审员基于主模型回复至少再谈一轮（`should_stop` 内核未动）。
 - **Windows 验证清单**（请依次核对）：
   1. 点评审 → 面板**立即**出现并显示「正在拆解方案为决策项…」（不再干等几秒才有反应）；抽取完提示更新为「已抽出 N 项决策」。
   2. 单列讨论流按序逐块逐 token 打字：**产品市场镜头 → 技术镜头 → 主模型回复**，每轮如此叠加（第 1/2/3 轮以「第 N 轮」分隔）。

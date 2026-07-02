@@ -999,10 +999,10 @@ class Conversation:
                                        "更像一份执行清单，可直接开始编码，无需评审。"}
             return None, {"ok": False, "error": "未能从方案抽出决策（模型没吐出预期 JSON，可点 ↻ 重试）",
                           "raw": raw[:500]}
-        # 轮数按同/异构分档：同模型（无异构映射）容易快速收敛，封顶 2 轮省调用；配了异构才用满配置轮数。
+        # 轮数=用户配置（面板「评审最大轮数」直接生效——旧的"同模型封顶 2 轮"砍轮已删：真机反馈"设 20 却只评 1 轮"的根因）。
+        # min_rounds=2 保证至少来回 2 个讨论轮（评审员→主模型→评审员基于回复再谈），除非配置轮数本就更小；防"主模型回复后即收敛无下一轮"。
         cfg_rounds = self.res.config.agent.design_review_max_rounds
-        rounds = cfg_rounds if (self.res.config.agent.design_review_models or {}) else min(cfg_rounds, 2)
-        return DesignReviewSession(decisions, rounds,
+        return DesignReviewSession(decisions, cfg_rounds, min_rounds=2,
                                    timeout=self.res.config.agent.design_review_timeout_s), None
 
     def run_design_review(self) -> dict:

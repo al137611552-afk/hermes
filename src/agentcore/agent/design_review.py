@@ -456,12 +456,15 @@ def _run_reviewers_serial(review_fn, prompts, timeout: int = REVIEW_TIMEOUT_S) -
     """
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FTimeout
     outs = []
+    partial = getattr(review_fn, "partial", {})   # review_fn 增量存的已流式内容（见 make_review_fn）
     for name, prompt in prompts:
         with ThreadPoolExecutor(max_workers=1) as ex:   # 仅用于施加单角色超时；顺序执行=逐个流式
             f = ex.submit(review_fn, name, prompt)
             try:
                 outs.append(f.result(timeout=timeout))
-            except (FTimeout, Exception):   # noqa: BLE001 — 超时/故障：这一脑子当没意见，不中断评审
+            except FTimeout:   # 超时：**回捞已流式到的部分内容**，别丢成 "[]"——否则前端已打出的散文被覆盖、主模型也读不到（真机 bug）
+                outs.append((partial.get(name) or "").strip() or "[]")
+            except Exception:   # noqa: BLE001 — 其它故障：这一脑子当没意见，不中断评审
                 outs.append("[]")
     return outs
 
@@ -489,7 +492,7 @@ MAIN_REPLY_TIMEOUT_S = 120       # 主模型逐轮回复超时（比评审员宽
 
 def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
                timeout: int = REVIEW_TIMEOUT_S, on_event=None,
-               main_timeout: int = MAIN_REPLY_TIMEOUT_S) -> dict:
+               main_timeout: int = MAIN_REPLY_TIMEOUT_S, min_rounds: int = 1) -> dict:
     """跑完整多轮 hub-and-spoke 评审直到停止条件命中（ADR 0019 v5）。
 
     每轮：两评审员各自**只向主模型进言**（串行流式，避免同 key 并发限流）→ **主模型逐轮回复**（读双方意见、
@@ -510,8 +513,14 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
     rounds = [round_snapshot(cur)]
     stop_reason = ""
     round_idx = 0
+    eff_min = max(0, min(min_rounds, max_rounds - 1))   # 讨论轮下限，但不越过 max_rounds 硬顶
     while True:
         stop, stop_reason = should_stop(rounds, max_rounds)
+        # 用户明确要"评审员基于主模型回复再讨论"：**提前收敛**（no_new_blocking/wording_only 等非 max_rounds 原因）
+        # 在跑满 eff_min 个讨论轮前不生效，保证 hub 至少来回 eff_min 轮（评审员→主模型→评审员…）。max_rounds 仍是硬顶。
+        # should_stop 决策内核未动（golden 不破）——这是 run_review 编排层的下限门。
+        if stop and stop_reason != "max_rounds" and round_idx < eff_min:
+            stop, stop_reason = False, ""
         if stop:
             break
         round_idx += 1
@@ -555,6 +564,7 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
     避免逐条回复被从中间切断。本函数同 `_make_research_judge` 范式：自身无 IO，IO 在注入的 provider.stream_chat 内。
     """
     from ..providers.base import Message      # 延迟导入，保持模块 import 期纯净
+    partial = {}                              # {name: 已流式文本}——供 _run_reviewers_serial 超时时回捞（别丢成 "[]"）
 
     def review_fn(name, prompt):
         provider = provider_for(name)
@@ -562,11 +572,13 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
             return "[]"                        # 没配该角色的模型 → 无意见，不阻断评审
         mt = main_max_tokens if name == MAIN else max_tokens   # 主模型逐轮回复放宽上限（更长、别被切断）
         out, stop = [], ""
+        partial[name] = ""
         for ev in provider.stream_chat([Message("user", prompt)], system=None,
                                        tools=[], max_tokens=mt):
             t = getattr(ev, "type", None)
             if t == "text":
                 out.append(ev.text)
+                partial[name] = "".join(out)       # 增量存：即便随后超时被打断，已打出的内容也不丢
                 if on_delta:                       # 逐 token 推给前端讨论流（实时辩论）
                     try:
                         on_delta(name, ev.text)
@@ -582,7 +594,10 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
                     on_delta(name, note)
                 except Exception:  # noqa: BLE001
                     pass
-        return "".join(out)
+        result = "".join(out)
+        partial[name] = result
+        return result
+    review_fn.partial = partial                # 暴露给 _run_reviewers_serial 超时回捞
     return review_fn
 
 
@@ -593,18 +608,20 @@ class DesignReviewSession:
     纯逻辑（review_fn 注入）。供 conversation/api 在规划模式下驱动；前端按其 gate()/consensus() 渲染。
     """
 
-    def __init__(self, decisions, max_rounds: int = 3, timeout: int = REVIEW_TIMEOUT_S) -> None:
+    def __init__(self, decisions, max_rounds: int = 3, timeout: int = REVIEW_TIMEOUT_S,
+                 min_rounds: int = 1) -> None:
         self.decisions = list(decisions)
         self.max_rounds = max_rounds
         self.timeout = timeout
+        self.min_rounds = min_rounds       # 讨论轮下限：保证评审员至少基于主模型回复回应一轮（用户明确要）
         self.signed = False
         self.last_result = None
 
     @classmethod
     def from_proposal(cls, proposal_text: str, max_rounds: int = 3,
-                      timeout: int = REVIEW_TIMEOUT_S) -> "DesignReviewSession":
+                      timeout: int = REVIEW_TIMEOUT_S, min_rounds: int = 1) -> "DesignReviewSession":
         """从模型 proposal 输出抽 Decision 列表建会话。"""
-        return cls(parse_decisions(proposal_text), max_rounds, timeout)
+        return cls(parse_decisions(proposal_text), max_rounds, timeout, min_rounds)
 
     def review(self, review_fn, on_event=None) -> dict:
         """跑一整轮多角色评审（直到停止条件），更新决策集。返回 run_review 结果。
@@ -613,7 +630,7 @@ class DesignReviewSession:
         main_reply_done / converged），供 conversation 转成前端事件做实时分屏；缺省=不回调（纯逻辑/单测不受影响）。
         """
         res = run_review(self.decisions, review_fn, self.max_rounds,
-                         timeout=self.timeout, on_event=on_event)
+                         timeout=self.timeout, on_event=on_event, min_rounds=self.min_rounds)
         self.decisions = res["decisions"]
         self.signed = False                    # 决策集变了 → 旧签字作废
         self.last_result = res

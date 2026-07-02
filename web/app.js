@@ -1705,8 +1705,14 @@ function debateReviewerDone(v, data) {
   const raw = typeof data.verdict === "string" ? data.verdict : (cell.text || "");
   const { prose, json } = splitVerdictProse(raw);
   cell.body.classList.remove("cursor");
-  // 收尾把散文渲成 markdown；散文为空（模型只吐了 JSON 结论）就保留已流式的原文，绝不清空成空白。
-  const shown = prose || cell.text || "（本镜头无输出）";
+  // 收尾把散文渲成 markdown。防御：verdict 为空/仅"[]"（如后台超时回捞失败），但已流式到真实内容 →
+  // **保留已流式原文**，绝不覆盖成 "[]"/空白（真机 bug：产品评审打完却被覆盖为 [ ]）。
+  const rawTrim = (raw || "").trim();
+  const streamed = (cell.text || "").trim();
+  const verdictEmpty = !rawTrim || rawTrim === "[]";
+  const shown = (verdictEmpty && streamed && streamed !== "[]")
+    ? cell.text
+    : (prose || cell.text || "（本镜头无输出）");
   try { renderMarkdown(cell.body, shown); } catch (e) { cell.body.textContent = shown; }
   const tally = verdictTally(json);
   if (tally && cell.verdict) { cell.verdict.textContent = "结论：" + tally; cell.verdict.hidden = false; }
