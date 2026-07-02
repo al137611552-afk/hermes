@@ -129,7 +129,8 @@ class AgentConfig(BaseModel):
                                        # 不点零成本（区别于 auto_review/auto_test 那种每轮自动触发的功能，故不套"额外调用→默认关"惯例）
     design_review_max_rounds: int = 4  # 评审轮数上限（含初始规划快照）：4 = 最多 3 个讨论轮（v5 hub-and-spoke），防无限互评
     design_review_timeout_s: int = 90        # 单个评审角色单次调用超时（秒），慢/卡按空评审跳过
-    design_review_verdict_max_tokens: int = 2048  # 单角色评审结论输出上限（防长篇大论的安全网，非抽取）
+    design_review_verdict_max_tokens: int = 4096  # 单角色评审进言输出上限：v5 评审员是讨论参与者（散文进言给主模型+展示给用户），
+                                                   # 2048 太紧会当场截断（真机反馈"产品镜头没说完就断"）；4096 够一份方案的批评说完整，仍是防跑飞安全网
     design_review_models: dict = {}    # 异构路由：reviewer 名→模型档案名（如 {"technical":"openai/gpt-4o"}）。
                                        # 角色名：product（产品/市场镜头）、technical（技术镜头）；旧键 execution/architecture 读时自动归一。
                                        # 空=全部用当前主模型（同模型双角色，离线零成本）；推荐给两角色各配一个异构档形成真·双脑评审

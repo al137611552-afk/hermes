@@ -561,16 +561,27 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
         if provider is None:
             return "[]"                        # 没配该角色的模型 → 无意见，不阻断评审
         mt = main_max_tokens if name == MAIN else max_tokens   # 主模型逐轮回复放宽上限（更长、别被切断）
-        out = []
+        out, stop = [], ""
         for ev in provider.stream_chat([Message("user", prompt)], system=None,
                                        tools=[], max_tokens=mt):
-            if getattr(ev, "type", None) == "text":
+            t = getattr(ev, "type", None)
+            if t == "text":
                 out.append(ev.text)
-                if on_delta:                       # 逐 token 推给前端分屏（v4 实时辩论）
+                if on_delta:                       # 逐 token 推给前端讨论流（实时辩论）
                     try:
                         on_delta(name, ev.text)
                     except Exception:  # noqa: BLE001 — 推流故障不阻断评审
                         pass
+            elif t == "done":
+                stop = (getattr(ev, "meta", None) or {}).get("stop_reason", "")
+        if stop in ("max_tokens", "length"):       # 达上限被截断：补可见提示（别让用户/主模型面对无声断句）
+            note = "\n\n_（本镜头输出达 max_tokens 上限被截断，可在设置调高「评审结论上限」）_"
+            out.append(note)
+            if on_delta:
+                try:
+                    on_delta(name, note)
+                except Exception:  # noqa: BLE001
+                    pass
         return "".join(out)
     return review_fn
 

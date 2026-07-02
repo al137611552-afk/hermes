@@ -367,6 +367,32 @@ def test_make_review_fn_none_provider_skips():
     assert rf("technical", "p") == "[]"
 
 
+class _FakeDoneEv:
+    def __init__(self, stop_reason):
+        self.type, self.meta = "done", {"stop_reason": stop_reason}
+
+
+class _FakeTruncProvider:
+    """吐一段文本后以 stop_reason=max_tokens 收尾（模拟达上限被截断）。"""
+    def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
+        yield _FakeEv("产品镜头分析到一半")
+        yield _FakeDoneEv("max_tokens")
+
+
+def test_make_review_fn_appends_visible_note_on_truncation():
+    # 达 max_tokens 被截断时补可见提示（真机反馈"产品镜头没说完就断"，别再无声断句）——
+    # 既进返回文本（供主模型知悉），也逐 token 推给前端讨论流。
+    deltas = []
+    rf = make_review_fn(lambda name: _FakeTruncProvider(),
+                        on_delta=lambda name, text: deltas.append((name, text)))
+    out = rf("product", "评一下")
+    assert "产品镜头分析到一半" in out
+    assert "截断" in out and "评审结论上限" in out          # 提示进了返回文本
+    assert any("截断" in t for _, t in deltas)              # 也逐 token 推给了前端
+    # 未截断（无 done 事件的假 provider）不应有提示
+    assert "截断" not in make_review_fn(lambda name: _FakeProvider("正常输出"))("product", "p")
+
+
 # ── DesignReviewSession 状态机 ──────────────────────────────────────────────
 def test_session_from_proposal_parses_decisions():
     s = DesignReviewSession.from_proposal('[{"id":"d1","title":"存储","current_choice":"SQLite"}]')
