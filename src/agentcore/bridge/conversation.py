@@ -211,6 +211,8 @@ class Conversation:
         self.plan_mode = False            # 规划模式（FR-11.5）：只读勘察+产出方案，运行时态不持久化
         self._review_session = None       # ADR 0019：规划模式下的方案评审会话（DesignReviewSession），运行时态
         self._review_applied = False      # ADR 0019 v4：本轮评审是否已落回规划并开工（终态）——修 bug#4：应用后切回不再重现面板/重复开工
+        self._review_thread: "threading.Thread | None" = None  # ADR 0019 v4：评审跑在独立后台线程（否则同步占用 JS-API 通道，WebView2 下 evaluate_js 分屏事件要等整轮跑完才渲染）
+        self._review_thread_lock = threading.Lock()
         self._pending_review_plan = None  # start 已确认可评审的方案原文，交 run 让评审模型直接读取抽决策
         self.crazy_mode = False           # 自主/crazy 模式（无人值守外层循环），运行时态不持久化
         self._last_turn_hit_max = False   # 上一轮 send_message 是否撞步数上限（crazy 外层据此强制续命）
@@ -999,24 +1001,46 @@ class Conversation:
                                    timeout=self.res.config.agent.design_review_timeout_s), None
 
     def run_design_review(self) -> dict:
-        """**第二阶段**：评审模型直接读方案原文抽出决策 → 多角色评审（最多 3 轮×2 角色）→ 四态共识 + gate。"""
+        """**第二阶段**：抽决策 → 多角色评审（最多 3 轮×2 角色）→ 四态共识 + gate。
+
+        **立即返回**（`{started:True}`）——真正的抽取/评审跑在**后台线程**，过程与结果全走
+        `review_*` 事件推前端。刻意不在 JS-API 调用里同步跑：WebView2 下同步占用调用通道时，
+        期间的 `evaluate_js`（逐 token 分屏）要等整个方法返回才一次性渲染——分屏辩论就"看不到过程"了
+        （真机反馈的症状）。改后台线程 + 事件驱动，与 `send_message`/`enqueue` 的流式一致。
+        """
+        with self._review_thread_lock:
+            if self._review_thread is not None and self._review_thread.is_alive():
+                return {"ok": False, "error": "评审进行中，请稍候"}
+            self._review_thread = threading.Thread(target=self._run_design_review_worker, daemon=True)
+            self._review_thread.start()
+        return {"ok": True, "started": True}
+
+    def _run_design_review_worker(self) -> dict:
+        """评审同步核心（后台线程体，也供无头/自检直接调）：抽决策→逐轮逐角色评审→四态共识，
+        逐 token/逐轮 emit，收尾 emit review_done 并返回最终态字典。"""
         from ..agent.design_review import make_review_fn
-        # 逐 token 推前端分屏（product/technical 两列实时打字机）；on_event 推逐轮/逐角色进度。
-        review_fn = make_review_fn(
-            self._design_review_provider_for(),
-            max_tokens=self.res.config.agent.design_review_verdict_max_tokens,
-            on_delta=lambda name, text: self.emit("review_delta", {"reviewer": name, "text": text}))
-        session, err = self._seed_decisions_from_plan(review_fn)
-        if err is not None:
-            return err
-        self._review_session = session
-        self._review_applied = False      # 重新跑评审（含 ↻ 重跑）→ 复活面板，撤销上一轮终态
-        # 抽好的决策先推给前端把两列骨架搭起来，再开始逐轮辩论
-        self.emit("review_seed", {"decisions": [self._decision_brief(d) for d in session.decisions]})
-        session.review(review_fn, on_event=lambda kind, payload: self.emit("review_" + kind, payload))
-        state = self._review_state(ok=True)
-        self.emit("review_done", state)
-        return state
+        try:
+            # 逐 token 推前端分屏（product/technical 两列实时打字机）；on_event 推逐轮/逐角色进度。
+            review_fn = make_review_fn(
+                self._design_review_provider_for(),
+                max_tokens=self.res.config.agent.design_review_verdict_max_tokens,
+                on_delta=lambda name, text: self.emit("review_delta", {"reviewer": name, "text": text}))
+            session, err = self._seed_decisions_from_plan(review_fn)
+            if err is not None:
+                self.emit("review_done", err)   # 抽取阶段失败（无决策/截断/nojson）：让前端清 busy + 提示
+                return err
+            self._review_session = session
+            self._review_applied = False      # 重新跑评审（含 ↻ 重跑）→ 复活面板，撤销上一轮终态
+            # 抽好的决策先推给前端把两列骨架搭起来，再开始逐轮辩论
+            self.emit("review_seed", {"decisions": [self._decision_brief(d) for d in session.decisions]})
+            session.review(review_fn, on_event=lambda kind, payload: self.emit("review_" + kind, payload))
+            state = self._review_state(ok=True)
+            self.emit("review_done", state)
+            return state
+        except Exception as e:  # 后台线程异常无处冒泡：兜底 emit，避免前端 busy 卡死
+            st = {"ok": False, "error": "评审过程出错：" + str(e)}
+            self.emit("review_done", st)
+            return st
 
     def get_design_review(self) -> dict:
         # 终态：本轮已应用并开工——面板不再重现（修 bug#4：切走再切回不重弹、不可重复开工）。

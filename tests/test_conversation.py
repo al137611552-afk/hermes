@@ -1398,7 +1398,7 @@ def test_design_review_end_to_end_wiring(tmp: Path):
         r0 = conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
         assert r0["ok"] and r0.get("ready") is True and r0["decisions"] == []
         # 第二阶段：评审模型直接读原文抽决策 + 多角色评审，回填四态
-        r = conv.run_design_review()
+        r = conv._run_design_review_worker()
         assert r["ok"] and r["reviewed"] is True and len(r["decisions"]) == 2
         ids = {d["id"]: d for d in r["decisions"]}
         assert ids["idx"]["status"] == "Accepted"             # Product 采纳
@@ -1427,8 +1427,34 @@ def test_design_review_end_to_end_wiring(tmp: Path):
         gs = conv.get_design_review()
         assert gs["ok"] is False and gs.get("applied") is True
         # ↻ 重跑评审 → 撤销终态、面板复活
-        conv.run_design_review()
+        conv._run_design_review_worker()
         assert conv.get_design_review()["ok"] is True
+    finally:
+        convmod.build_provider = orig
+
+
+def test_run_design_review_is_threaded_and_streams(tmp: Path):
+    """ADR 0019 v4 修：run_design_review 立即返回 started（后台线程跑），事件流式推、线程完成后回填 session。
+    根因＝同步跑在 JS-API 调用里时 WebView2 的 evaluate_js 分屏事件要等整轮完才渲染。"""
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    conv.res.config.agent.design_review = True
+    seen = []
+    conv.emit = lambda event, data: seen.append(event)   # 截获事件序列
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _ReviewProvider()
+    try:
+        conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
+        r = conv.run_design_review()
+        assert r.get("started") is True and r["ok"] is True   # 立即返回、不阻塞
+        conv._review_thread.join(timeout=30)                  # 等后台线程跑完
+        assert not conv._review_thread.is_alive()
+        # 流式事件序列：先 seed，中途 delta（逐 token）与逐轮/逐角色，末尾 done
+        assert "review_seed" in seen and "review_delta" in seen and "review_done" in seen
+        assert seen[-1] == "review_done"
+        assert conv.get_design_review()["ok"] is True         # 线程回填了 session
     finally:
         convmod.build_provider = orig
 
@@ -1442,7 +1468,7 @@ def test_apply_review_to_plan_blocked_before_signoff(tmp: Path):
     convmod.build_provider = lambda cfg, model: _ReviewProvider()
     try:
         conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
-        conv.run_design_review()
+        conv._run_design_review_worker()
         r = conv.apply_review_to_plan()          # 有 NeedUser 未拍板 → gate 未放行 → 拒绝落回
         assert r["ok"] is False and "未放行" in r["error"]
     finally:
@@ -1494,7 +1520,7 @@ def test_start_design_review_retries_once_on_nojson(tmp: Path):
     convmod.build_provider = lambda cfg, model: prov
     try:
         assert conv.start_design_review("方案：桌面框架用 Tauri……")["ok"] is True   # 瞬时校验
-        r = conv.run_design_review()                             # 抽取在此，含收紧重试
+        r = conv._run_design_review_worker()                             # 抽取在此，含收紧重试
         assert r["ok"] is True and len(r["decisions"]) == 1
         assert prov.decompose_calls == 2                          # 确有一次重试
     finally:
@@ -1534,7 +1560,7 @@ def test_run_design_review_reports_truncation_honestly(tmp: Path):
     convmod.build_provider = lambda cfg, model: _TruncatedDecomposeProvider()
     try:
         conv.start_design_review("方案：一份很大的方案……")
-        r = conv.run_design_review()
+        r = conv._run_design_review_worker()
         assert r["ok"] is False and r.get("no_decisions") is not True
         assert "截断" in r["error"] and "没吐" not in r["error"]
     finally:
@@ -1551,7 +1577,7 @@ def test_start_design_review_empty_is_no_decisions_not_error(tmp: Path):
     convmod.build_provider = lambda cfg, model: _EmptyDecomposeProvider()
     try:
         assert conv.start_design_review("方案：1. 建表 2. 写接口 3. 加测试")["ok"] is True   # 瞬时校验
-        r = conv.run_design_review()                             # 抽取在此 → 空数组
+        r = conv._run_design_review_worker()                             # 抽取在此 → 空数组
         assert r["ok"] is False and r.get("no_decisions") is True
         assert "关键决策" in r["error"] and "非预期" not in r["error"]
         assert "raw" not in r                                     # 空数组不是解析失败，不回原文

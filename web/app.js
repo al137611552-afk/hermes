@@ -1504,16 +1504,18 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
     // 第一阶段：瞬时校验（零模型调用），面板已亮
     const st = await window.pywebview.api.start_design_review();
     if (!st || !st.ok) {
-      renderReviewPanel(null);
+      renderReviewPanel(null); reviewBtn.classList.remove("busy");
       showToast(st && st.error ? st.error : "评审未能开始");
       return;
     }
-    // 第二阶段：评审模型直接读原文抽决策 + 多角色评审（决策与共识一起回来）
-    const st2 = await window.pywebview.api.run_design_review();
-    if (st2 && st2.raw) console.log("[review] 抽取原始输出：", st2.raw);   // 解析失败时在 DevTools 里可查
-    renderReviewPanel(st2 && st2.ok ? st2 : null);
-    if (!st2 || !st2.ok) showToast(st2 && st2.error ? st2.error : "评审过程出错（可点 ↻ 重试）");
-  } catch (e) { renderReviewPanel(null); showToast("评审失败：" + (e && e.message ? e.message : e)); } finally { reviewBtn.classList.remove("busy"); }
+    // 第二阶段：**后台线程流式跑**——立即返回，过程（review_seed/delta/round_start/reviewer_done/converged）
+    // 与结果（review_done）全走事件推前端（见 startDebate/debate*）。busy 与最终面板由 review_done 收尾，这里不 await 结果。
+    const kick = await window.pywebview.api.run_design_review();
+    if (!kick || !kick.ok) {            // 启动即失败（如已有评审在跑）→ 立即复位
+      reviewBtn.classList.remove("busy");
+      showToast(kick && kick.error ? kick.error : "评审未能开始");
+    }
+  } catch (e) { renderReviewPanel(null); reviewBtn.classList.remove("busy"); showToast("评审失败：" + (e && e.message ? e.message : e)); }
 });
 
 (function bindReviewPanel() {
@@ -1528,9 +1530,14 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
       const cur = await window.pywebview.api.get_design_review();
       if (cur && cur.ok) renderReviewPanel(cur, { running: true });
       else showReviewSkeleton("评审模型正在重读方案、重新评审…");
-      const st = await window.pywebview.api.run_design_review();
-      renderReviewPanel(st && st.ok ? st : (cur && cur.ok ? cur : null));
-      if (!st || !st.ok) showToast(st && st.error ? st.error : "评审出错");
+      if (reviewBtn) reviewBtn.classList.add("busy");
+      // 后台线程流式重跑：过程/结果走 review_* 事件（新分屏块 + review_done 收尾面板与 busy），这里不 await 结果。
+      const kick = await window.pywebview.api.run_design_review();
+      if (!kick || !kick.ok) {
+        if (reviewBtn) reviewBtn.classList.remove("busy");
+        renderReviewPanel(cur && cur.ok ? cur : null);
+        showToast(kick && kick.error ? kick.error : "评审出错");
+      }
       return;
     }
     if (act === "sign") { renderReviewPanel(await window.pywebview.api.sign_off_design_review()); return; }
@@ -1687,14 +1694,26 @@ function debateConverged(v, data) {
 }
 
 function debateDone(v, data) {
-  const d = v && v.debate; if (!d) return;
-  const ok = data && data.ok;
-  const el = document.createElement("div");
-  el.className = "rvd-done" + (ok ? "" : " rvd-err");
-  el.textContent = ok ? "→ 共识与「开始编码」已就绪，见右侧评审面板" : "评审未完成，可点右侧 ↻ 重试";
-  d.footEl.appendChild(el);
-  v.debate = null;                            // 本轮辩论收束；再次评审会新建块
-  scrollView(v);
+  const ok = !!(data && data.ok);
+  const active = isActive(v);
+  // 面板 + busy 收尾：**无论有没有分屏块都做**——抽取阶段就失败时不会有分屏块（review_seed 没发过）。
+  // 评审改后台线程流式后，run_design_review 立即返回，最终态与 busy 全由本事件（review_done）收尾。
+  if (active) {
+    if (reviewBtn) reviewBtn.classList.remove("busy");
+    if (data && data.raw) { try { console.log("[review] 抽取原始输出：", data.raw); } catch (e) { /* ignore */ } }
+    renderReviewPanel(ok ? data : null);
+    if (!ok) showToast(data && data.error ? data.error : "评审过程出错（可点 ↻ 重试）");
+  }
+  // 分屏块收束（若有；后台视图也要落收尾行，块在该视图离屏 chat 里）
+  const d = v && v.debate;
+  if (d) {
+    const el = document.createElement("div");
+    el.className = "rvd-done" + (ok ? "" : " rvd-err");
+    el.textContent = ok ? "→ 共识与「开始编码」已就绪，见右侧评审面板" : "评审未完成，可点右侧 ↻ 重试";
+    d.footEl.appendChild(el);
+    v.debate = null;                          // 本轮辩论收束；再次评审会新建块
+    scrollView(v);
+  }
 }
 
 // ---- 附件 --------------------------------------------------------------

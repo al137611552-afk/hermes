@@ -76,6 +76,7 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   新增/升级这些库时替换 `web/vendor/` 下文件即可；`web/` 整目录已进打包 spec，无需改打包。
 - 工作区预览面板根目录 = `config.agent.workspace`（默认项目根）；想让 Agent 在别处干活就改它。
 - 本机（开发用 Linux）为跑测装过 anthropic/openai/mcp SDK：`pip install --break-system-packages`。
+- **WebView2 死锁坑（v3.51 评审踩过）**：**别在 pywebview 的 `js_api` 方法里同步调 `window.evaluate_js` 推流式事件**——WebView2 下 js_api 处理函数返回前 JS 执行结果无法回传，首个 `evaluate_js` 就死锁：方法永不返回、前端 `await` 永远 pending（症状＝按钮一直转、事件一个不出）。**规避**：凡是"边跑边 emit"的长任务都走**后台 worker 线程**（照 `conversation.enqueue`/`_worker_loop`、`run_design_review` 的模式），js_api 立即返回、事件由线程 emit、前端靠事件（非 await 返回值）驱动渲染与收尾。**Chromium/Playwright 复现不出**（WebView2 专属）。
 - **WebView2 滚动坑（v3.37 踩过）**：对话区 `.chat` 是滚动容器，某些 CSS 会让 WebView2 在内容**异步重排**时把 `scrollHeight` 暂时算塌（→ 滚轮跳回顶部、几轮后自愈），**Chromium/Playwright 复现不出**（WebView2 专属）。已知触发：① 给元素只设 `overflow-x:auto`（`overflow-y` 连带变 `auto`、成滚动容器）；② `<hr>` 用 `border:none;border-top` 重构盒子；③ 嵌套列表加 `margin`（嵌套 margin 合并）；④ 给 `table` 加 `display:block`。**规避**：宽表格用外层 `.table-wrap` div 滚动（别动 table 的 display）；列表只用 `padding` 缩进别用 margin；hr 只改色别重构；`.chat` 已加 `overflow-anchor:none`。改对话区 CSS 后**务必真机滚长对话验**，别只信 Chromium 截图。
 
 ## 非目标
