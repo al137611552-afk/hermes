@@ -1137,35 +1137,27 @@ body.plan-on .composer::before {
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .rvd-sub { font-size: 11px; font-weight: 400; color: var(--muted); }
 .rvd-seed { font-size: 12px; color: var(--muted); margin-top: 6px; }
-.rvd-round { margin-top: 10px; }
-.rvd-round-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
-  letter-spacing: .04em; margin-bottom: 4px; }
-.rvd-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.rvd-col { border: 1px solid var(--border); border-radius: 8px;
-  background: var(--bg); padding: 8px 10px; min-width: 0; }
-.rvd-col[data-role="product"] { border-top: 2px solid rgba(var(--accent-rgb), .55); }
-.rvd-col[data-role="technical"] { border-top: 2px solid var(--border-strong); }
-.rvd-col-head { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
-.rvd-col-body { font-size: 13px; line-height: 1.55; white-space: pre-wrap;
-  word-break: break-word; overflow-wrap: anywhere; }
-.rvd-col-body.cursor::after { content: "▍"; color: var(--accent); animation: hd-pulse 1s infinite; }
-.rvd-col-verdict { margin-top: 6px; font-size: 11px; color: var(--accent);
-  border-top: 1px dashed var(--border); padding-top: 4px; }
-.rvd-col-verdict[hidden] { display: none; }
-/* v5 hub-and-spoke：两列下方整宽「主模型回复」区——主模型逐条采纳/反驳/收敛（唯一改状态处）。
+/* v5.1：单列线性讨论流——竖向逐块（产品→技术→主模型回复→下一轮）。
    守 WebView2 滚动坑：仅用 padding 缩进（不用 margin 造嵌套合并）、不设 overflow-x（免连带成滚动容器）。 */
-.rvd-main { margin-top: 10px; border: 1px solid rgba(var(--accent-rgb), .35); border-radius: 8px;
-  background: rgba(var(--accent-rgb), .06); padding: 8px 10px; }
-.rvd-main[hidden] { display: none; }
-.rvd-main-head { font-size: 11px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
-.rvd-main-body { font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+.rvd-stream { margin-top: 8px; }
+.rvd-round-sep { font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .04em; margin-top: 12px; padding-top: 6px; border-top: 1px solid var(--border); }
+.rvd-stream > .rvd-round-sep:first-child { margin-top: 4px; border-top: none; padding-top: 0; }
+.rvd-turn { border: 1px solid var(--border); border-left: 3px solid var(--border-strong);
+  border-radius: 8px; background: var(--bg); padding: 8px 10px; margin-top: 8px; }
+.rvd-turn-main { border-left-color: var(--accent);
+  background: rgba(var(--accent-rgb), .06); border-color: rgba(var(--accent-rgb), .35); }
+.rvd-turn-head { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.rvd-turn-main .rvd-turn-head { color: var(--accent); }
+.rvd-turn-body { font-size: 13px; line-height: 1.55; white-space: pre-wrap;
   word-break: break-word; overflow-wrap: anywhere; }
-.rvd-main-body.cursor::after { content: "▍"; color: var(--accent); animation: hd-pulse 1s infinite; }
+.rvd-turn-body.cursor::after { content: "▍"; color: var(--accent); animation: hd-pulse 1s infinite; }
+.rvd-turn-verdict { margin-top: 6px; font-size: 11px; color: var(--accent);
+  border-top: 1px dashed var(--border); padding-top: 4px; }
+.rvd-turn-verdict[hidden] { display: none; }
 .rvd-converged { margin-top: 10px; font-size: 12px; color: var(--accent); font-weight: 600; }
 .rvd-done { margin-top: 4px; font-size: 12px; color: var(--muted); }
 .rvd-done.rvd-err { color: #e5735a; }
-/* 窄屏（工作区展开挤压对话时）退化为单列上下叠放 */
-@media (max-width: 720px) { .rvd-cols { grid-template-columns: 1fr; } }
 
 /* ===== 设置面板（API Key + 模型档案）：左 tab 导航 + 右内容，对标主流设置 ===== */
 .settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5);

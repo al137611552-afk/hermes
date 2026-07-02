@@ -1457,7 +1457,10 @@ def test_run_design_review_is_threaded_and_streams(tmp: Path):
         assert r.get("started") is True and r["ok"] is True   # 立即返回、不阻塞
         conv._review_thread.join(timeout=30)                  # 等后台线程跑完
         assert not conv._review_thread.is_alive()
-        # 流式事件序列（v5）：先 seed，中途 delta（逐 token）、逐轮/逐角色，**含主模型逐轮回复事件**，末尾 done
+        # 流式事件序列（v5.1）：worker 一启动即发 review_started（面板秒出、早于阻塞抽取），再 seed，
+        # 中途 delta（逐 token）、逐轮/逐角色，**含主模型逐轮回复事件**，末尾 done
+        assert seen[0] == "review_started"                    # 即时反馈：早于抽取
+        assert seen.index("review_started") < seen.index("review_seed")
         assert "review_seed" in seen and "review_delta" in seen and "review_done" in seen
         assert "review_main_reply_start" in seen and "review_main_reply_done" in seen  # hub 逐轮回复
         assert seen.index("review_reviewer_done") < seen.index("review_main_reply_start")  # 评审员先进言、主模型后回复

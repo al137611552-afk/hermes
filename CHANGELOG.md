@@ -14,8 +14,13 @@
 - **每轮一次主模型调用（决策 B）**：一轮 = 2 评审 + 1 主模型收敛调用（≈3 主模型 + 6 评审/次深评审，低频手动动作可接受）。
 
 ### Added
-- **主模型逐轮回复分屏区**：两列（产品/技术）下方新增整宽「主模型回复」区，逐轮累加、逐 token 打字（`review_main_reply_start/done` 事件 + `review_delta` name="main"）。主模型收敛档缺省=会话主模型，可在 config `design_review_models` 加 `main` 键走异构。
+- **主模型逐轮回复**：两评审员进言后新增主模型回复环节，逐 token 打字（`review_main_reply_start/done` 事件 + `review_delta` name="main"）。主模型收敛档缺省=会话主模型，可在 config `design_review_models` 加 `main` 键走异构。
 - **主模型硬纪律**：`MAIN_REPLY_DIRECTIVE` 明令主模型每轮回复绑定具体 Decision id、可证伪、真取舍，**禁"你们说得都有道理"式空话**、禁共识百分比/评分（守 ADR 0014）。
+
+**v5.1 交互打磨（同随 v5 一并待验证）**——真机反馈"分屏效果不理想、点评审要等一会儿才出内容"：
+- **分屏（两列并排）改为单列线性讨论流**：反正评审串行（产品→技术→主模型回复→下一轮），改成竖向逐块追加、每块逐 token 打字，更贴合真实顺序，也免掉 WebView2 双列网格排版负担。`web/app.js` 辩论 DOM 重写为惰性追加发言块（`.rvd-turn`）+ 轮次分隔（`.rvd-round-sep`），`style.css` 去 grid。
+- **即时反馈**：新增 `review_started` 事件——评审 worker 一启动就发，前端面板**秒出**「正在拆解方案为决策项…」，不再干等 `_seed_decisions_from_plan` 那次**阻塞式**整段抽取调用返回（真机"点评审要等一会儿"的根因就是这次拆解阅读）。抽取完成后 `review_seed` 把提示更新为决策条数。
+- **轮数对齐**：`design_review_max_rounds` 默认 3→4（含初始规划快照，4=最多 3 个讨论轮，与"最多3轮收敛"一致；`should_stop` 决策内核未动，golden 基线不破）。
 
 停止条件（max_rounds/无新增阻塞/连两轮仅措辞）、开工 gate（未决==0 + 签字）、评审生命周期终态（bug#4）、双重 replan guard 全部沿用不动。
 

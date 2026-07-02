@@ -242,7 +242,9 @@ Consensus 只总结（禁发明）。其中"Reviewer 禁重写"**引擎已物理
 
 **引擎 seam**：主模型复用 `review_fn(name, prompt)` seam，保留名 `MAIN="main"`；接线层 `_design_review_provider_for` 缺省把 `"main"` 路由到当前会话主模型（`self.active_model`），想异构收敛档在 config `design_review_models` 加 `main` 键即可。`make_review_fn` 给主模型放宽 `main_max_tokens`（逐条回复更长，别被评审员紧上限切断）。
 
-**流式事件（v5 新增）**：每轮 `round_start → reviewer_done×2 → main_reply_start → (review_delta name="main") → main_reply_done → …→ converged → done`。前端分屏两列（产品/技术）下方新增整宽「主模型回复」区，逐轮累加、逐 token 打字（守 WebView2 滚动坑：padding 缩进、不设 overflow-x）。
+**流式事件（v5 新增）**：每轮 `round_start → reviewer_done×2 → main_reply_start → (review_delta name="main") → main_reply_done → …→ converged → done`。
+
+**v5.1 呈现打磨（真机反馈"分屏效果不理想、点评审要等一会儿才出内容"）**：① 因评审本就串行，**分屏两列并排 → 单列线性讨论流**（产品→技术→主模型回复→下一轮，竖向逐块逐 token；`.rvd-turn` 惰性追加 + `.rvd-round-sep` 分隔），更贴合真实顺序、免 WebView2 双列网格负担。② 新增 `review_started` 事件——worker 一启动即发，面板**秒出**「正在拆解方案…」，不再干等 `_seed_decisions_from_plan` 那次**阻塞式**整段抽取调用（真机延迟根因）；抽取完 `review_seed` 更新为决策条数。③ `design_review_max_rounds` 默认 3→4（含初始快照，=最多 3 讨论轮；`should_stop`/golden 未动）。呈现层调整，引擎/决策 A·B/停止/gate 全不变。
 
 **保持不动**：Decision 对象为评审单位、四态=Decision.status、gate 卡可数阻塞（禁百分比）、`_run_reviewers_serial`（评审员串行流式，避免同 key 并发限流）、评审生命周期终态（`_review_applied`，修 bug#4）、双重 replan guard（`_review_applying`）。
 

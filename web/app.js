@@ -33,6 +33,7 @@ const EV = {
   AUTO_TEST: "auto_test",
   ERROR: "error",
   // ADR 0019 v4 分屏辩论：评审逐轮逐角色流式事件（run_design_review 期间穿插推送）
+  REVIEW_STARTED: "review_started",   // 评审 worker 一启动即发：面板秒出「正在拆解方案…」，不等抽取阻塞调用返回
   REVIEW_SEED: "review_seed",
   REVIEW_DELTA: "review_delta",
   REVIEW_ROUND_START: "review_round_start",
@@ -1225,8 +1226,10 @@ window.__onAgentEvent = function (msg) {
             (data.pending > 1 ? `（待纳入 ${data.pending}）` : "")
         : "📨 已排队，当前任务完成后处理" +
             (data && data.pending > 1 ? `（待处理 ${data.pending}）` : ""));
-  } else if (event === EV.REVIEW_SEED) {
+  } else if (event === EV.REVIEW_STARTED) {
     startDebate(v, data); markActivity(v);
+  } else if (event === EV.REVIEW_SEED) {
+    debateSeeded(v, data); markActivity(v);
   } else if (event === EV.REVIEW_ROUND_START) {
     debateRoundStart(v, data); markActivity(v);
   } else if (event === EV.REVIEW_DELTA) {
@@ -1612,76 +1615,82 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
 // 分屏出现在**对话中间**（过程可见）：两列（产品/技术）+ 下方整宽「主模型回复」区，逐 token 打字。
 // 右侧评审面板仍渲染最终共识与「开始编码」门。
 // 纯逻辑（DEBATE_ROLES/DEBATE_MAIN/splitVerdictProse/verdictTally/debateConvergedText/debateMainRoundLabel）在 pure.js。
+// v5.1：分屏（两列并排）改为**单列线性讨论流**——反正评审是串行的（产品→技术→主模型回复→下一轮），
+// 竖向逐块追加、每块逐 token 打字，更贴合真实顺序，也免掉 WebView2 双列网格的排版负担。
 function startDebate(v, data) {
   if (!v) return;
+  if (v.debate) return;                       // review_started 已建过骨架，别重复建（review_seed 走 debateSeeded 更新）
   finalizeTextBubble(v);                      // 收束上一段主模型文本气泡
   const box = document.createElement("div");
   box.className = "rv-debate";
-  const seedN = ((data && data.decisions) || []).length;
   box.innerHTML =
     `<div class="rvd-head">🔬 方案评审 · 多模型讨论` +
-      `<span class="rvd-sub">${escapeHtml(DEBATE_ROLE_LABELS.product)} ⟷ ${escapeHtml(DEBATE_ROLE_LABELS.technical)} · 主模型逐轮回复收敛</span></div>` +
-    (seedN ? `<div class="rvd-seed">已从方案抽出 ${seedN} 项决策，进入多轮评审…</div>` : "") +
-    `<div class="rvd-rounds"></div>` +
+      `<span class="rvd-sub">${escapeHtml(DEBATE_ROLE_LABELS.product)} → ${escapeHtml(DEBATE_ROLE_LABELS.technical)} → 主模型回复 · 逐轮收敛</span></div>` +
+    `<div class="rvd-seed">正在拆解方案为决策项…</div>` +   // 即时反馈：worker 一启动就亮，不等抽取阻塞调用
+    `<div class="rvd-stream"></div>` +
     `<div class="rvd-foot"></div>`;
   appendRow(v, box);
   v.debate = {
     el: box,
-    roundsEl: box.querySelector(".rvd-rounds"),
+    seedEl: box.querySelector(".rvd-seed"),
+    streamEl: box.querySelector(".rvd-stream"),
     footEl: box.querySelector(".rvd-foot"),
     rounds: new Map(), curRound: 0,
   };
   scrollView(v);
 }
 
-function debateRound(v, round) {
+// review_seed：抽取完成，把「正在拆解…」更新为决策条数（骨架已在 review_started 建好）。
+function debateSeeded(v, data) {
+  if (!v) return;
+  if (!v.debate) startDebate(v, data);
+  const d = v.debate; if (!d || !d.seedEl) return;
+  const seedN = ((data && data.decisions) || []).length;
+  d.seedEl.textContent = seedN
+    ? `已从方案抽出 ${seedN} 项决策，进入多轮评审…`
+    : "方案已拆解，进入评审…";
+  scrollView(v);
+}
+
+// 单个发言块（某轮某角色）——首次流式时按到达顺序惰性创建，天然保证「产品→技术→主模型」的竖向次序。
+function debateTurn(v, round, role) {
   const d = v && v.debate; if (!d) return null;
-  if (d.rounds.has(round)) return d.rounds.get(round);
+  let rec = d.rounds.get(round);
+  if (!rec) { rec = { turns: {} }; d.rounds.set(round, rec); }
+  if (rec.turns[role]) return rec.turns[role];
+  const isMain = role === DEBATE_MAIN;
+  const label = isMain ? debateMainRoundLabel(round) : DEBATE_ROLE_LABELS[role];
   const el = document.createElement("div");
-  el.className = "rvd-round";
+  el.className = "rvd-turn" + (isMain ? " rvd-turn-main" : "");
   el.innerHTML =
-    `<div class="rvd-round-label">第 ${round} 轮</div>` +
-    `<div class="rvd-cols">` +
-      DEBATE_ROLES.map((role) =>
-        `<div class="rvd-col" data-role="${role}">` +
-          `<div class="rvd-col-head">${escapeHtml(DEBATE_ROLE_LABELS[role])}</div>` +
-          `<div class="rvd-col-body"></div>` +
-          `<div class="rvd-col-verdict" hidden></div>` +
-        `</div>`).join("") +
-    `</div>` +
-    // v5 hub-and-spoke：两列下方整宽「主模型回复」区——两评审员进言完，主模型逐条采纳/反驳/收敛（唯一改状态处）。
-    `<div class="rvd-main" hidden>` +
-      `<div class="rvd-main-head">${escapeHtml(debateMainRoundLabel(round))}</div>` +
-      `<div class="rvd-main-body"></div>` +
-    `</div>`;
-  d.roundsEl.appendChild(el);
-  const rec = { el, cells: {} };
-  DEBATE_ROLES.forEach((role) => {
-    const col = el.querySelector(`.rvd-col[data-role="${role}"]`);
-    rec.cells[role] = {
-      body: col.querySelector(".rvd-col-body"),
-      verdict: col.querySelector(".rvd-col-verdict"),
-      text: "", done: false,
-    };
-  });
-  const mainWrap = el.querySelector(".rvd-main");
-  rec.main = { wrap: mainWrap, body: mainWrap.querySelector(".rvd-main-body"), text: "", done: false };
-  d.rounds.set(round, rec);
-  return rec;
+    `<div class="rvd-turn-head">${escapeHtml(label)}</div>` +
+    `<div class="rvd-turn-body"></div>` +
+    (isMain ? "" : `<div class="rvd-turn-verdict" hidden></div>`);
+  d.streamEl.appendChild(el);
+  const cell = {
+    body: el.querySelector(".rvd-turn-body"),
+    verdict: el.querySelector(".rvd-turn-verdict"),
+    text: "", done: false,
+  };
+  rec.turns[role] = cell;
+  return cell;
 }
 
 function debateRoundStart(v, data) {
   const d = v && v.debate; if (!d) return;
   const round = (data && data.round) || 1;
   d.curRound = round;
-  debateRound(v, round);
+  if (!d.rounds.has(round)) d.rounds.set(round, { turns: {} });
+  const sep = document.createElement("div");   // 轮次分隔
+  sep.className = "rvd-round-sep";
+  sep.textContent = "第 " + round + " 轮";
+  d.streamEl.appendChild(sep);
   scrollView(v);
 }
 
 function debateDelta(v, data) {
   const d = v && v.debate; if (!d || !data) return;
-  const rec = d.rounds.get(d.curRound) || debateRound(v, d.curRound || 1);
-  const cell = rec && rec.cells[data.reviewer];
+  const cell = debateTurn(v, d.curRound || 1, data.reviewer);
   if (!cell) return;
   cell.text += data.text || "";
   cell.body.textContent = cell.text;          // 流式先按纯文本追加（便宜、稳）；done 时再渲 markdown
@@ -1691,8 +1700,7 @@ function debateDelta(v, data) {
 
 function debateReviewerDone(v, data) {
   const d = v && v.debate; if (!d || !data) return;
-  const rec = d.rounds.get(data.round) || d.rounds.get(d.curRound); if (!rec) return;
-  const cell = rec.cells[data.reviewer]; if (!cell) return;
+  const cell = debateTurn(v, data.round || d.curRound || 1, data.reviewer); if (!cell) return;
   cell.done = true;
   const raw = typeof data.verdict === "string" ? data.verdict : (cell.text || "");
   const { prose, json } = splitVerdictProse(raw);
@@ -1701,40 +1709,36 @@ function debateReviewerDone(v, data) {
   const shown = prose || cell.text || "（本镜头无输出）";
   try { renderMarkdown(cell.body, shown); } catch (e) { cell.body.textContent = shown; }
   const tally = verdictTally(json);
-  if (tally) { cell.verdict.textContent = "结论：" + tally; cell.verdict.hidden = false; }
+  if (tally && cell.verdict) { cell.verdict.textContent = "结论：" + tally; cell.verdict.hidden = false; }
   scrollView(v);
 }
 
-// v5 hub-and-spoke：主模型逐轮回复——两评审员进言完毕后，主模型在整宽区逐条回复并做决定。
+// v5 hub-and-spoke：主模型逐轮回复——两评审员进言完毕后，主模型逐条回复并做决定（排在本轮两块之后）。
 function debateMainReplyStart(v, data) {
   const d = v && v.debate; if (!d) return;
   const round = (data && data.round) || d.curRound || 1;
-  const rec = d.rounds.get(round) || debateRound(v, round);
-  if (rec && rec.main) rec.main.wrap.hidden = false;   // 亮出主模型回复区（此前隐藏）
+  debateTurn(v, round, DEBATE_MAIN);          // 此刻创建主模型回复块
   scrollView(v);
 }
 
 function debateMainDelta(v, data) {
   const d = v && v.debate; if (!d || !data) return;
-  const rec = d.rounds.get(d.curRound) || debateRound(v, d.curRound || 1);
-  if (!rec || !rec.main) return;
-  rec.main.wrap.hidden = false;
-  rec.main.text += data.text || "";
-  rec.main.body.textContent = rec.main.text;           // 流式先按纯文本追加；done 时再渲 markdown
-  rec.main.body.classList.add("cursor");
+  const cell = debateTurn(v, d.curRound || 1, DEBATE_MAIN); if (!cell) return;
+  cell.text += data.text || "";
+  cell.body.textContent = cell.text;          // 流式先按纯文本追加；done 时再渲 markdown
+  cell.body.classList.add("cursor");
   scrollView(v);
 }
 
 function debateMainReplyDone(v, data) {
   const d = v && v.debate; if (!d || !data) return;
-  const rec = d.rounds.get(data.round) || d.rounds.get(d.curRound); if (!rec || !rec.main) return;
-  rec.main.done = true;
-  rec.main.wrap.hidden = false;
-  const raw = typeof data.reply === "string" ? data.reply : (rec.main.text || "");
-  const { prose } = splitVerdictProse(raw);            // 只显散文回复；```json 决策块对用户是噪声（右侧面板已呈现四态）
-  rec.main.body.classList.remove("cursor");
-  const shown = prose || rec.main.text || "（主模型本轮未回复）";
-  try { renderMarkdown(rec.main.body, shown); } catch (e) { rec.main.body.textContent = shown; }
+  const cell = debateTurn(v, data.round || d.curRound || 1, DEBATE_MAIN); if (!cell) return;
+  cell.done = true;
+  const raw = typeof data.reply === "string" ? data.reply : (cell.text || "");
+  const { prose } = splitVerdictProse(raw);   // 只显散文回复；```json 决策块对用户是噪声（右侧面板已呈现四态）
+  cell.body.classList.remove("cursor");
+  const shown = prose || cell.text || "（主模型本轮未回复）";
+  try { renderMarkdown(cell.body, shown); } catch (e) { cell.body.textContent = shown; }
   scrollView(v);
 }
 

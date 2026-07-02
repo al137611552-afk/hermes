@@ -1025,7 +1025,10 @@ class Conversation:
         逐 token/逐轮 emit，收尾 emit review_done 并返回最终态字典。"""
         from ..agent.design_review import make_review_fn
         try:
-            # 逐 token 推前端分屏（product/technical 两列 + 主模型回复区实时打字机）；on_event 推逐轮进度。
+            # 即时反馈：worker 一启动就发 review_started，前端面板秒出「正在拆解方案…」——不必等下面
+            # _seed_decisions_from_plan 那次**阻塞式**整段抽取调用返回（真机反馈「点评审要等一会儿才跳出」的根因）。
+            self.emit("review_started", {})
+            # 逐 token 推前端讨论流（产品→技术→主模型回复，单列线性实时打字机）；on_event 推逐轮进度。
             # v5 hub-and-spoke：主模型（name==MAIN="main"）逐轮回复更长——放宽其上限（main_max_tokens=None=走模型单次预算），
             # 避免逐条决策回复被评审员紧上限从中间切断。主模型 provider 由 provider_for("main") 路由（缺省=主档）。
             review_fn = make_review_fn(
