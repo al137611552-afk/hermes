@@ -8,6 +8,14 @@
 
 后续候补：**研究墙·墙钟时间上限**；**目标满足驱动的换源**（把换源触发从"零新域名"补成"目标数据点连续缺席"，价格/数字类先做）；**Learning 运行时接线**（让 active 策略真正影响选路，须再过 Golden）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
 
+## [3.51.1] - 2026-07-02
+
+**发送/停止交互与顶部「运行中」chip 修复（对齐 Figma）**：紧跟 3.51.0 的视觉打磨补两处细节。**已 Windows 真机验证通过**。
+
+### Fixed
+- **发送/停止按钮不再并列**：`#send` 与 `.stop-btn` 上的 `display:inline-flex` 覆盖了 `[hidden]` 属性的 `display:none`（同 `.ws-reopen` 已知坑），运行中「发送」没被隐藏而与「停止」并列出现。补 `#send[hidden], .stop-btn[hidden] { display:none }` 显式复位——恢复为同一位置的互斥切换（运行中只显示停止、否则只显示发送，逻辑见 `pure.js` `composerState`）。
+- **顶部「运行中」chip 改为线框描边**：原为紫色实心填充（`background: var(--accent)` + 白字），与 Figma 不符。改为 Figma 的 ghost 样式——accent 半透明底(.10) + accent 描边(.30) + accent 文字 + 脉冲圆点（`:root` 补 `--accent-rgb` 支持深浅两档 rgba），文案去掉冗余 `▶`。
+
 ## [3.51.0] - 2026-07-01
 
 **UI 视觉/交互打磨（对齐 Figma 重设计，不加游戏化功能）**：工作区标签化、左侧栏与顶栏还原、明暗切换、全站图标统一到官方 lucide 矢量、浅色主题可读性、Hermes 翼形 logo 等一批纯视觉/交互改动。**已 Windows 真机验证通过**。

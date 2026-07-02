@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-07-02 — 发送/停止交互 + 顶部「运行中」chip 修复定版 v3.51.1
+
+紧跟 3.51.0 视觉打磨的两处真机反馈修复：
+
+- **做了什么**：① 修复「发送」与「停止」按钮并列显示——`#send`/`.stop-btn` 的 `display:inline-flex` 盖掉了 `[hidden]` 的 `display:none`（同 `.ws-reopen` 老坑），补 `#send[hidden], .stop-btn[hidden]{display:none}` 复位，恢复同位互斥切换（运行中只显停止、否则只显发送，逻辑本就在 `pure.js` `composerState`）；② 顶部「运行中」chip 从紫色实心填充改为 Figma 的 ghost 线框（accent 半透明底/描边/文字 + 脉冲点，`:root` 补 `--accent-rgb`），文案去掉冗余 `▶`。
+- **关键决策**：切换逻辑（互斥）本身正确，问题纯在 CSS 优先级；只补显式 `[hidden]` 复位、不改 JS 状态机。chip 与发送键统一对齐 Figma（线框 chip / 实心发送键）。
+- **自检**：Python 全量 **58/58**、前端 node:test **49/49**；三项密钥扫描全 0。
+- **验证状态**：**已 Windows 真机验证通过**（用户确认后要求全部定版）。**已定版 v3.51.1**。
+- **遗留**：同前，macOS WKWebView 窗口待有 Mac 后验。
+
+---
+
 ## 2026-07-01 — UI 视觉/交互打磨定版 v3.51.0（对齐 Figma 重设计）
 
 一批纯视觉/交互改动（明确不加游戏化功能），按 Figma 重设计还原并解决真机反馈：
