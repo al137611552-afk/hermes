@@ -184,26 +184,32 @@ def test_run_review_leftover_open_becomes_needuser_actionable():
     assert res["gate"]["can_start"] is False                     # 依旧不自动放行（守 ADR 0014）
 
 
-def test_run_reviewers_parallel_preserves_order_and_isolates_failures():
-    from agentcore.agent.design_review import _run_reviewers_parallel
+def test_run_reviewers_serial_preserves_order_and_isolates_failures():
+    from agentcore.agent.design_review import _run_reviewers_serial
 
     def rf(name, prompt):
         if name == "boom":
             raise RuntimeError("x")
         return name.upper()
-    outs = _run_reviewers_parallel(rf, [("a", "p"), ("boom", "p"), ("b", "p")])
+    outs = _run_reviewers_serial(rf, [("a", "p"), ("boom", "p"), ("b", "p")])
     assert outs == ["A", "[]", "B"]                 # 同序返回；中间故障→"[]" 不影响其它
 
 
-def test_run_reviewers_parallel_timeout_yields_empty():
+def test_run_reviewers_serial_runs_in_order_and_times_out():
     import time
-    from agentcore.agent.design_review import _run_reviewers_parallel
+    from agentcore.agent.design_review import _run_reviewers_serial
 
-    def slow(name, prompt):
-        time.sleep(0.3)
-        return "late"
-    outs = _run_reviewers_parallel(slow, [("a", "p")], timeout=0.05)
-    assert outs == ["[]"]                            # 超时按空评审跳过，不无限等
+    seen = []
+
+    def rf(name, prompt):
+        seen.append(name)
+        if name == "slow":
+            time.sleep(0.3)
+            return "late"
+        return name.upper()
+    outs = _run_reviewers_serial(rf, [("a", "p"), ("slow", "p")], timeout=0.05)
+    assert outs == ["A", "[]"]                       # 顺序执行：a 先完成，slow 超时→空评审跳过
+    assert seen[0] == "a"                            # 逐个跑（产品先说、技术再回应）
 
 
 def test_make_review_fn_bounds_output_tokens():

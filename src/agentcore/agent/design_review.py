@@ -336,20 +336,24 @@ REVIEW_MAX_TOKENS = 2048
 REVIEW_TIMEOUT_S = 90             # 单个角色单次调用超时（秒）：慢/卡的调用不无限等，超时按空评审跳过
 
 
-def _run_reviewers_parallel(review_fn, prompts, timeout: int = REVIEW_TIMEOUT_S) -> list:
-    """并发跑一轮的多个角色评审，各自带超时；返回与 prompts 同序的评审文本（故障/超时→"[]"）。"""
+def _run_reviewers_serial(review_fn, prompts, timeout: int = REVIEW_TIMEOUT_S) -> list:
+    """**顺序**跑一轮的多个角色评审（产品先说、技术再回应——像两个模型轮流讨论）；各自带独立超时；
+    返回与 prompts 同序的评审文本（故障/超时→"[]"）。
+
+    v4 由并行改顺序：① 分屏辩论逐个流式打字更像"讨论"、不再两列同时乱蹦；② 规避同一 API key
+    并发多路请求被上游限流导致某一路空手而归（真机：技术镜头没输出）。每角色一个单线程执行器只为
+    施加超时，不为并发。低频主动动作，一轮 ≈ sum 的延迟可接受。
+    """
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FTimeout
-    if not prompts:
-        return []
-    with ThreadPoolExecutor(max_workers=len(prompts)) as ex:
-        futs = [ex.submit(review_fn, name, prompt) for name, prompt in prompts]
-        outs = []
-        for f in futs:
+    outs = []
+    for name, prompt in prompts:
+        with ThreadPoolExecutor(max_workers=1) as ex:   # 仅用于施加单角色超时；顺序执行=逐个流式
+            f = ex.submit(review_fn, name, prompt)
             try:
                 outs.append(f.result(timeout=timeout))
             except (FTimeout, Exception):   # noqa: BLE001 — 超时/故障：这一脑子当没意见，不中断评审
                 outs.append("[]")
-        return outs
+    return outs
 
 
 def escalate_unresolved(decisions) -> list:
@@ -393,10 +397,10 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
             break
         round_idx += 1
         _emit("round_start", {"round": round_idx})
-        # 一轮内两个角色**并行**：都审同一份轮初快照（更像独立双审），各自超时/故障→空评审跳过。
-        # 异构时两角色打不同端点 → 真同时跑，一轮耗时 ≈ max 而非 sum。
+        # 一轮内两个角色**顺序**：都审同一份轮初快照（独立双审），各自超时/故障→空评审跳过。
+        # v4 由并行改顺序——分屏逐个流式打字像"讨论"，且规避同 key 并发被限流（见 _run_reviewers_serial）。
         prompts = [(name, build_review_prompt(directive, cur)) for name, directive in reviewers]
-        outs = _run_reviewers_parallel(review_fn, prompts, timeout=timeout)
+        outs = _run_reviewers_serial(review_fn, prompts, timeout=timeout)
         for (name, _directive), out in zip(reviewers, outs):   # 顺序合并两份评审（apply 只改 status/blocking）
             cur = apply_review(cur, out)
             _emit("reviewer_done", {"round": round_idx, "reviewer": name, "verdict": out})

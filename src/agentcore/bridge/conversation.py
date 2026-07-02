@@ -211,6 +211,7 @@ class Conversation:
         self.plan_mode = False            # 规划模式（FR-11.5）：只读勘察+产出方案，运行时态不持久化
         self._review_session = None       # ADR 0019：规划模式下的方案评审会话（DesignReviewSession），运行时态
         self._review_applied = False      # ADR 0019 v4：本轮评审是否已落回规划并开工（终态）——修 bug#4：应用后切回不再重现面板/重复开工
+        self._review_applying = False     # 正在落回（重排耗时中）：一置位 get_design_review 即转终态，堵住"切走再切回二次开工"
         self._review_thread: "threading.Thread | None" = None  # ADR 0019 v4：评审跑在独立后台线程（否则同步占用 JS-API 通道，WebView2 下 evaluate_js 分屏事件要等整轮跑完才渲染）
         self._review_thread_lock = threading.Lock()
         self._pending_review_plan = None  # start 已确认可评审的方案原文，交 run 让评审模型直接读取抽决策
@@ -1043,8 +1044,8 @@ class Conversation:
             return st
 
     def get_design_review(self) -> dict:
-        # 终态：本轮已应用并开工——面板不再重现（修 bug#4：切走再切回不重弹、不可重复开工）。
-        if self._review_applied:
+        # 终态：本轮已应用并开工（或正在开工）——面板不再重现（修 bug#4/二次重排：切走再切回不重弹、不可重复开工）。
+        if self._review_applied or self._review_applying:
             return {"ok": False, "applied": True, "error": "本轮评审已应用并开始编码"}
         return self._review_state() if self._review_session else {"ok": False, "error": "尚未开始评审"}
 
@@ -1080,38 +1081,46 @@ class Conversation:
         s = self._review_session
         if s is None:
             return {"ok": False, "error": "尚未开始评审"}
+        # 重入护栏（修二次重排）：已开工 or 正在开工（重排耗时里用户切走再点）→ 拒绝。**必须在慢重排之前置位**，
+        # 否则 _review_applied 只在末尾置真、重排进行中 get_design_review 仍返回可点面板 → 二次点击→二次重排。
+        if self._review_applied or self._review_applying:
+            return {"ok": False, "error": "本轮评审已开工（或正在开工），无需重复"}
         if not s.can_start():
             return {"ok": False, "error": "评审未放行（" + s.gate().get("reason", "") +
                     "）：落回规划前需未决清零并签字"}
         if self.res.store is None or self.session_id is None:
             return {"ok": False, "error": "当前为草稿会话（未落库），无法写规划/任务"}
-        # 1) notes：剥掉旧共识段后追加新的（幂等）
-        consensus = s.consensus()
-        base = (self.get_notes() or "").split(self._REVIEW_SECTION_MARK)[0].rstrip()
-        section = self._REVIEW_SECTION_MARK + "\n\n" + consensus
-        self.res.store.set_notes(self.session_id, (base + "\n\n" + section) if base else section)
-        # 2) tasks：**参考评审共识重排整份待办**（而非在旧清单尾部追加）。
-        #    已完成项保留在前（既成事实不动），未完成部分交主模型据 采纳/否决/后置 重新拆解+排序。
-        old = list(self.res.store.get_tasks(self.session_id) or [])
-        done = [t for t in old if t.get("status") == "completed"]
-        new_pending = self._replan_tasks_from_review(base, consensus, done)
-        if new_pending is None:                      # 模型没给出可用清单 → 退化为老的"补采纳项"，不丢原清单
-            existing = {t.get("content") for t in old}
-            added = 0
-            for d in s.decisions:
-                if d.status != ACCEPTED:
-                    continue
-                c = (d.title + ("：" + d.current_choice if d.current_choice else "")).strip()
-                if c and c not in existing:
-                    old.append({"content": c, "status": "pending"}); existing.add(c); added += 1
-            if added:
-                self.res.store.set_tasks(self.session_id, old)
-            self._review_applied = True   # 终态：已落回并开工（修 bug#4）
-            return {"ok": True, "notes_updated": True, "tasks_added": added, "replanned": False}
-        tasks = done + new_pending
-        self.res.store.set_tasks(self.session_id, tasks)
-        self._review_applied = True       # 终态：已落回并开工（修 bug#4）
-        return {"ok": True, "notes_updated": True, "tasks_added": len(new_pending), "replanned": True}
+        self._review_applying = True     # 进入不可逆开工：get_design_review 即刻转终态、面板不再重现
+        try:
+            # 1) notes：剥掉旧共识段后追加新的（幂等）
+            consensus = s.consensus()
+            base = (self.get_notes() or "").split(self._REVIEW_SECTION_MARK)[0].rstrip()
+            section = self._REVIEW_SECTION_MARK + "\n\n" + consensus
+            self.res.store.set_notes(self.session_id, (base + "\n\n" + section) if base else section)
+            # 2) tasks：**参考评审共识重排整份待办**（而非在旧清单尾部追加）。
+            #    已完成项保留在前（既成事实不动），未完成部分交主模型据 采纳/否决/后置 重新拆解+排序。
+            old = list(self.res.store.get_tasks(self.session_id) or [])
+            done = [t for t in old if t.get("status") == "completed"]
+            new_pending = self._replan_tasks_from_review(base, consensus, done)
+            if new_pending is None:                  # 模型没给出可用清单 → 退化为老的"补采纳项"，不丢原清单
+                existing = {t.get("content") for t in old}
+                added = 0
+                for d in s.decisions:
+                    if d.status != ACCEPTED:
+                        continue
+                    c = (d.title + ("：" + d.current_choice if d.current_choice else "")).strip()
+                    if c and c not in existing:
+                        old.append({"content": c, "status": "pending"}); existing.add(c); added += 1
+                if added:
+                    self.res.store.set_tasks(self.session_id, old)
+                self._review_applied = True   # 终态：已落回并开工（修 bug#4）
+                return {"ok": True, "notes_updated": True, "tasks_added": added, "replanned": False}
+            tasks = done + new_pending
+            self.res.store.set_tasks(self.session_id, tasks)
+            self._review_applied = True       # 终态：已落回并开工（修 bug#4）
+            return {"ok": True, "notes_updated": True, "tasks_added": len(new_pending), "replanned": True}
+        finally:
+            self._review_applying = False    # 成功已置 applied（终态续存）；失败则解锁，允许重试
 
     _REPLAN_PROMPT = (
         "你在把一份已通过多角色评审的方案，落成一份**重新排序的可执行任务清单**。\n"

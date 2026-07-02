@@ -1475,6 +1475,38 @@ def test_apply_review_to_plan_blocked_before_signoff(tmp: Path):
         convmod.build_provider = orig
 
 
+def test_apply_review_guards_against_double_replan(tmp: Path):
+    """bug（二次重排）：开工重排耗时里 get_design_review 即转终态、重入 apply 被拒——堵住切走再切回二次开工。"""
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    conv.res.config.agent.design_review = True
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _ReviewProvider()
+    try:
+        conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
+        conv._run_design_review_worker()
+        conv.resolve_decision("db", "Accepted", "SQLite")   # 清未决
+        conv.sign_off_design_review()                       # 签字 → gate 放行
+        conv.res.store.set_notes(conv.session_id, "原方案正文")
+        checks = {}
+
+        def slow_replan(base, consensus, done):             # 模拟重排耗时里"切走再切回"重取状态 + 重入点击
+            checks["applying_terminal"] = conv.get_design_review().get("applied") is True
+            checks["reentry_rejected"] = conv.apply_review_to_plan().get("ok") is False
+            return [{"content": "落实：SQLite", "status": "pending"}]
+        conv._replan_tasks_from_review = slow_replan
+        r = conv.apply_review_to_plan()
+        assert r["ok"] is True and r["replanned"] is True
+        assert checks["applying_terminal"] is True          # 重排中即终态：切回不重现面板
+        assert checks["reentry_rejected"] is True           # 重排中重入被拒：不会二次重排
+        assert conv.get_design_review().get("applied") is True   # 结束后仍终态
+        assert conv.apply_review_to_plan().get("ok") is False
+    finally:
+        convmod.build_provider = orig
+
+
 def test_design_review_disabled_returns_error(tmp: Path):
     api = _api(tmp)
     api.active.res.config.agent.design_review = False
