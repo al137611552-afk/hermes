@@ -210,6 +210,7 @@ class Conversation:
         self._sub_lock = threading.Lock() # 并行委派时计数安全（FR-10.5）
         self.plan_mode = False            # 规划模式（FR-11.5）：只读勘察+产出方案，运行时态不持久化
         self._review_session = None       # ADR 0019：规划模式下的方案评审会话（DesignReviewSession），运行时态
+        self._review_applied = False      # ADR 0019 v4：本轮评审是否已落回规划并开工（终态）——修 bug#4：应用后切回不再重现面板/重复开工
         self._pending_review_plan = None  # start 已确认可评审的方案原文，交 run 让评审模型直接读取抽决策
         self.crazy_mode = False           # 自主/crazy 模式（无人值守外层循环），运行时态不持久化
         self._last_turn_hit_max = False   # 上一轮 send_message 是否撞步数上限（crazy 外层据此强制续命）
@@ -955,6 +956,7 @@ class Conversation:
             return {"ok": False, "error": "没有可评审的方案（先产出规划方案，或传入 proposal_text）"}
         self._pending_review_plan = text
         self._review_session = None
+        self._review_applied = False      # 新一轮评审开启：清掉上一轮的"已开工"终态
         return {"ok": True, "ready": True, "decisions": [],
                 "gate": {"can_start": False, "blocking_count": 0, "user_signed": False, "reason": "评审待运行"}}
 
@@ -1008,6 +1010,7 @@ class Conversation:
         if err is not None:
             return err
         self._review_session = session
+        self._review_applied = False      # 重新跑评审（含 ↻ 重跑）→ 复活面板，撤销上一轮终态
         # 抽好的决策先推给前端把两列骨架搭起来，再开始逐轮辩论
         self.emit("review_seed", {"decisions": [self._decision_brief(d) for d in session.decisions]})
         session.review(review_fn, on_event=lambda kind, payload: self.emit("review_" + kind, payload))
@@ -1016,6 +1019,9 @@ class Conversation:
         return state
 
     def get_design_review(self) -> dict:
+        # 终态：本轮已应用并开工——面板不再重现（修 bug#4：切走再切回不重弹、不可重复开工）。
+        if self._review_applied:
+            return {"ok": False, "applied": True, "error": "本轮评审已应用并开始编码"}
         return self._review_state() if self._review_session else {"ok": False, "error": "尚未开始评审"}
 
     def resolve_decision(self, decision_id: str, status: str,
@@ -1076,9 +1082,11 @@ class Conversation:
                     old.append({"content": c, "status": "pending"}); existing.add(c); added += 1
             if added:
                 self.res.store.set_tasks(self.session_id, old)
+            self._review_applied = True   # 终态：已落回并开工（修 bug#4）
             return {"ok": True, "notes_updated": True, "tasks_added": added, "replanned": False}
         tasks = done + new_pending
         self.res.store.set_tasks(self.session_id, tasks)
+        self._review_applied = True       # 终态：已落回并开工（修 bug#4）
         return {"ok": True, "notes_updated": True, "tasks_added": len(new_pending), "replanned": True}
 
     _REPLAN_PROMPT = (

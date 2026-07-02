@@ -1423,6 +1423,12 @@ def test_design_review_end_to_end_wiring(tmp: Path):
         conv.apply_review_to_plan()                                    # 幂等：再应用不重复
         assert len(conv.res.store.get_tasks(conv.session_id)) == n1
         assert conv.get_notes().count(conv._REVIEW_SECTION_MARK) == 1
+        # bug#4：应用并开工后进入终态——切走再切回（=重取状态）不重现面板、不可重复开工
+        gs = conv.get_design_review()
+        assert gs["ok"] is False and gs.get("applied") is True
+        # ↻ 重跑评审 → 撤销终态、面板复活
+        conv.run_design_review()
+        assert conv.get_design_review()["ok"] is True
     finally:
         convmod.build_provider = orig
 
