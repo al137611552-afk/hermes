@@ -228,7 +228,7 @@ def test_run_review_survives_reviewer_exception():
 
 def test_build_review_prompt_carries_decisions_and_json_spec():
     p = build_review_prompt("你是评审员", [_d("d1", OPEN, ["未决X"])])
-    assert "id=d1" in p and "未决X" in p and "仅输出 JSON" in p
+    assert "id=d1" in p and "未决X" in p and "结论 JSON 数组" in p
 
 
 # ── IO 适配器 make_review_fn（假 provider，不碰网络）─────────────────────────
@@ -298,6 +298,28 @@ def test_session_resolve_rejects_bad_status_and_resets_signature():
     assert s.can_start() is True                    # 上面都没改 → 签字仍有效
     assert s.resolve("d1", DEFERRED) is True        # 合法改动
     assert s.signed is False and s.can_start() is False  # 改后作废签字（防签完偷改）
+
+
+def test_run_review_emits_streaming_events():
+    # v4 实时流式：run_review 逐轮/逐角色发进度事件，供 conversation 转前端分屏
+    events = []
+
+    def rf(name, prompt):
+        return '```json\n[{"id":"d1","status":"Accepted"}]\n```' if name == "product" else "[]"
+    run_review([_d("d1", OPEN)], rf, max_rounds=2,
+               on_event=lambda kind, p: events.append((kind, p)))
+    kinds = [k for k, _ in events]
+    assert "round_start" in kinds and "reviewer_done" in kinds and "converged" in kinds
+    assert any(p.get("reviewer") == "product" for k, p in events if k == "reviewer_done")
+
+
+def test_apply_review_parses_prose_then_json():
+    # v4：reviewer 先写散文意见、末尾给 ```json 结论——取最后一个数组，散文里的方括号不该被误取
+    ds = [_d("d1", OPEN)]
+    verdict = ("我认为当前选择在维护成本上有风险，建议升级给用户拍板。\n"
+               '```json\n[{"id":"d1","status":"NeedUser","add_blocking":["需拍板"]}]\n```')
+    out = apply_review(ds, verdict)
+    assert out[0].status == "NeedUser" and out[0].blocking == ["需拍板"]
 
 
 def _run_all():

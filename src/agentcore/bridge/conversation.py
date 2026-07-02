@@ -926,6 +926,11 @@ class Conversation:
                 return None                  # 构造失败 → 该角色跳过，不阻断评审
         return provider_for
 
+    @staticmethod
+    def _decision_brief(d) -> dict:
+        return {"id": d.id, "title": d.title, "current_choice": d.current_choice,
+                "status": d.status, "blocking": list(d.blocking)}
+
     def _review_state(self, ok: bool = True) -> dict:
         s = self._review_session
         if s is None:
@@ -934,9 +939,7 @@ class Conversation:
                 "stop_reason": (s.last_result or {}).get("stop_reason", ""),
                 "reviewed": s.last_result is not None,
                 "can_start": s.can_start(),
-                "decisions": [{"id": d.id, "title": d.title, "current_choice": d.current_choice,
-                               "status": d.status, "blocking": list(d.blocking)}
-                              for d in s.decisions]}
+                "decisions": [self._decision_brief(d) for d in s.decisions]}
 
     def start_design_review(self, proposal_text: "str | None" = None) -> dict:
         """**第一阶段（瞬时，零模型调用）**：只校验有方案可评、亮出面板；抽取+评审全在 `run_design_review`。
@@ -996,14 +999,21 @@ class Conversation:
     def run_design_review(self) -> dict:
         """**第二阶段**：评审模型直接读方案原文抽出决策 → 多角色评审（最多 3 轮×2 角色）→ 四态共识 + gate。"""
         from ..agent.design_review import make_review_fn
-        review_fn = make_review_fn(self._design_review_provider_for(),
-                                   max_tokens=self.res.config.agent.design_review_verdict_max_tokens)
+        # 逐 token 推前端分屏（product/technical 两列实时打字机）；on_event 推逐轮/逐角色进度。
+        review_fn = make_review_fn(
+            self._design_review_provider_for(),
+            max_tokens=self.res.config.agent.design_review_verdict_max_tokens,
+            on_delta=lambda name, text: self.emit("review_delta", {"reviewer": name, "text": text}))
         session, err = self._seed_decisions_from_plan(review_fn)
         if err is not None:
             return err
         self._review_session = session
-        session.review(review_fn)
-        return self._review_state(ok=True)
+        # 抽好的决策先推给前端把两列骨架搭起来，再开始逐轮辩论
+        self.emit("review_seed", {"decisions": [self._decision_brief(d) for d in session.decisions]})
+        session.review(review_fn, on_event=lambda kind, payload: self.emit("review_" + kind, payload))
+        state = self._review_state(ok=True)
+        self.emit("review_done", state)
+        return state
 
     def get_design_review(self) -> dict:
         return self._review_state() if self._review_session else {"ok": False, "error": "尚未开始评审"}

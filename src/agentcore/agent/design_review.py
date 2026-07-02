@@ -230,7 +230,16 @@ def apply_review(decisions, review_text: str) -> list:
     reviewer 输出形如：[{"id":"d1","status":"NeedUser","add_blocking":["..."],"resolve_blocking":["..."]}]
     未提到的决策原样保留。纯函数，返回新列表（不原地改）。
     """
-    review = _first_json(review_text, "[", "]")
+    # reviewer 现在先写散文意见、末尾给 ```json 结论（v4 可见辩论）：优先取 fenced 代码块里的数组，
+    # 避免散文里偶发方括号误伤；无 fence（纯 JSON 输出，老测试/静态 reviewer）则退回全文首个数组。
+    s = review_text or ""
+    segment = s
+    fi = s.rfind("```json")
+    if fi >= 0:
+        rest = s[fi + len("```json"):]
+        end = rest.find("```")
+        segment = rest if end < 0 else rest[:end]
+    review = _first_json(segment, "[", "]")
     if not isinstance(review, list):
         return list(decisions)
     by_id = {r.get("id"): r for r in review if isinstance(r, dict) and r.get("id")}
@@ -295,10 +304,13 @@ def migrate_reviewer_models(mapping) -> dict:
     return out
 
 _REVIEW_OUTPUT_SPEC = (
-    "\n\n仅输出 JSON 数组，每个被你评的 Decision 一项："
-    '[{"id":"<决策id>","status":"Accepted|Rejected|Deferred|NeedUser",'
-    '"add_blocking":["新提的阻塞问题"],"resolve_blocking":["你认为已澄清的旧阻塞"]}]。'
-    "没有意见的决策不要列。只输出 JSON，不要解释。"
+    "\n\n请分两部分作答：\n"
+    "① 先用简洁中文写你的评审意见——针对你有看法的 Decision，说清「当前选择 vs 备选」的问题/风险/建议"
+    "（这是给用户看的讨论，像同行评审一样直说，别客套）；\n"
+    "② 最后另起一行，输出结构化结论 JSON 数组（用 ```json 代码块包裹），每个你评过的 Decision 一项：\n"
+    '```json\n[{"id":"<决策id>","status":"Accepted|Rejected|Deferred|NeedUser",'
+    '"add_blocking":["新提的阻塞问题"],"resolve_blocking":["你认为已澄清的旧阻塞"]}]\n```\n'
+    "没有意见的决策不要列。JSON 必须是最后一段、可被机器解析（散文里别用方括号）。"
 )
 
 
@@ -358,28 +370,39 @@ def escalate_unresolved(decisions) -> list:
 
 
 def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
-               timeout: int = REVIEW_TIMEOUT_S) -> dict:
+               timeout: int = REVIEW_TIMEOUT_S, on_event=None) -> dict:
     """跑完整一轮多角色评审直到停止条件命中。
 
     `review_fn(name, prompt)->str` 注入式 seam（同 judge 范式）：引擎按 reviewer **名字**调用，
     **不认识"模型"**——接线层据 name 把不同角色路由到不同模型档案（异构 = 那一个 mapping）。
     返回 {decisions, rounds, stop_reason, consensus, gate}。纯编排：不碰网络（review_fn 自理）。
     """
+    def _emit(kind, payload):
+        if on_event:
+            try:
+                on_event(kind, payload)
+            except Exception:  # noqa: BLE001 — 事件回调故障不该中断评审
+                pass
     cur = list(decisions)
     rounds = [round_snapshot(cur)]
     stop_reason = ""
+    round_idx = 0
     while True:
         stop, stop_reason = should_stop(rounds, max_rounds)
         if stop:
             break
+        round_idx += 1
+        _emit("round_start", {"round": round_idx})
         # 一轮内两个角色**并行**：都审同一份轮初快照（更像独立双审），各自超时/故障→空评审跳过。
         # 异构时两角色打不同端点 → 真同时跑，一轮耗时 ≈ max 而非 sum。
         prompts = [(name, build_review_prompt(directive, cur)) for name, directive in reviewers]
         outs = _run_reviewers_parallel(review_fn, prompts, timeout=timeout)
-        for out in outs:                # 顺序合并两份评审到同一快照（apply 只改 status/blocking）
+        for (name, _directive), out in zip(reviewers, outs):   # 顺序合并两份评审（apply 只改 status/blocking）
             cur = apply_review(cur, out)
+            _emit("reviewer_done", {"round": round_idx, "reviewer": name, "verdict": out})
         rounds.append(round_snapshot(cur))
     cur = escalate_unresolved(cur)          # 收敛后仍未定的 Open → NeedUser（交用户拍板，不留死状态）
+    _emit("converged", {"stop_reason": stop_reason, "rounds": len(rounds) - 1})
     return {
         "decisions": cur,
         "rounds": rounds,
@@ -390,7 +413,7 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
 
 
 # ── IO 适配器：把 provider 包成引擎 seam（唯一碰 provider 的地方，IO 在 provider 内）──
-def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS):
+def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=None):
     """把"按 reviewer 名取 provider"的 `provider_for(name)->provider` 包成 seam `review_fn(name, prompt)->str`。
 
     **异构路由的唯一落点**：provider_for 内部据 name 选不同模型档案（如 `build_provider(config, profile)`），
@@ -408,6 +431,11 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS):
                                        tools=[], max_tokens=max_tokens):
             if getattr(ev, "type", None) == "text":
                 out.append(ev.text)
+                if on_delta:                       # 逐 token 推给前端分屏（v4 实时辩论）
+                    try:
+                        on_delta(name, ev.text)
+                    except Exception:  # noqa: BLE001 — 推流故障不阻断评审
+                        pass
         return "".join(out)
     return review_fn
 
@@ -432,9 +460,14 @@ class DesignReviewSession:
         """从模型 proposal 输出抽 Decision 列表建会话。"""
         return cls(parse_decisions(proposal_text), max_rounds, timeout)
 
-    def review(self, review_fn) -> dict:
-        """跑一整轮多角色评审（直到停止条件），更新决策集。返回 run_review 结果。"""
-        res = run_review(self.decisions, review_fn, self.max_rounds, timeout=self.timeout)
+    def review(self, review_fn, on_event=None) -> dict:
+        """跑一整轮多角色评审（直到停止条件），更新决策集。返回 run_review 结果。
+
+        on_event(kind, payload)：可选，逐轮/逐角色进度回调（round_start / reviewer_done / converged），
+        供 conversation 转成前端事件做实时分屏；缺省=不回调（纯逻辑/单测不受影响）。
+        """
+        res = run_review(self.decisions, review_fn, self.max_rounds,
+                         timeout=self.timeout, on_event=on_event)
         self.decisions = res["decisions"]
         self.signed = False                    # 决策集变了 → 旧签字作废
         self.last_result = res
