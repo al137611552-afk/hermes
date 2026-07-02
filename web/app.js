@@ -32,6 +32,13 @@ const EV = {
   SUBAGENT_DONE: "subagent_done",
   AUTO_TEST: "auto_test",
   ERROR: "error",
+  // ADR 0019 v4 分屏辩论：评审逐轮逐角色流式事件（run_design_review 期间穿插推送）
+  REVIEW_SEED: "review_seed",
+  REVIEW_DELTA: "review_delta",
+  REVIEW_ROUND_START: "review_round_start",
+  REVIEW_REVIEWER_DONE: "review_reviewer_done",
+  REVIEW_CONVERGED: "review_converged",
+  REVIEW_DONE: "review_done",
 };
 
 const chat = document.getElementById("chat");
@@ -1216,6 +1223,18 @@ window.__onAgentEvent = function (msg) {
             (data.pending > 1 ? `（待纳入 ${data.pending}）` : "")
         : "📨 已排队，当前任务完成后处理" +
             (data && data.pending > 1 ? `（待处理 ${data.pending}）` : ""));
+  } else if (event === EV.REVIEW_SEED) {
+    startDebate(v, data); markActivity(v);
+  } else if (event === EV.REVIEW_ROUND_START) {
+    debateRoundStart(v, data); markActivity(v);
+  } else if (event === EV.REVIEW_DELTA) {
+    debateDelta(v, data); markActivity(v);
+  } else if (event === EV.REVIEW_REVIEWER_DONE) {
+    debateReviewerDone(v, data); markActivity(v);
+  } else if (event === EV.REVIEW_CONVERGED) {
+    debateConverged(v, data); markActivity(v);
+  } else if (event === EV.REVIEW_DONE) {
+    debateDone(v, data); markActivity(v);
   } else if (event === EV.MEMORY_CAPTURED) {
     renderMemoryCaptured(data);
   } else if (event === EV.WORKSPACE_CHANGED) {
@@ -1569,6 +1588,114 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
     }
   });
 })();
+
+// ---- 分屏辩论（ADR 0019 v4：评审过程可见化，逐 token 流式）------------------
+// 事件流：review_seed → (round_start → delta*(两角色) → reviewer_done×2)×N → converged → done。
+// 分屏出现在**对话中间**（过程可见）；右侧评审面板仍渲染最终共识与「开始编码」门。
+// 纯逻辑（DEBATE_ROLES/DEBATE_ROLE_LABELS/splitVerdictProse/verdictTally/debateConvergedText）在 pure.js。
+function startDebate(v, data) {
+  if (!v) return;
+  finalizeTextBubble(v);                      // 收束上一段主模型文本气泡
+  const box = document.createElement("div");
+  box.className = "rv-debate";
+  const seedN = ((data && data.decisions) || []).length;
+  box.innerHTML =
+    `<div class="rvd-head">🔬 方案评审 · 多模型讨论` +
+      `<span class="rvd-sub">${escapeHtml(DEBATE_ROLE_LABELS.product)} ⟷ ${escapeHtml(DEBATE_ROLE_LABELS.technical)} · 主模型收敛</span></div>` +
+    (seedN ? `<div class="rvd-seed">已从方案抽出 ${seedN} 项决策，进入多轮评审…</div>` : "") +
+    `<div class="rvd-rounds"></div>` +
+    `<div class="rvd-foot"></div>`;
+  appendRow(v, box);
+  v.debate = {
+    el: box,
+    roundsEl: box.querySelector(".rvd-rounds"),
+    footEl: box.querySelector(".rvd-foot"),
+    rounds: new Map(), curRound: 0,
+  };
+  scrollView(v);
+}
+
+function debateRound(v, round) {
+  const d = v && v.debate; if (!d) return null;
+  if (d.rounds.has(round)) return d.rounds.get(round);
+  const el = document.createElement("div");
+  el.className = "rvd-round";
+  el.innerHTML =
+    `<div class="rvd-round-label">第 ${round} 轮</div>` +
+    `<div class="rvd-cols">` +
+      DEBATE_ROLES.map((role) =>
+        `<div class="rvd-col" data-role="${role}">` +
+          `<div class="rvd-col-head">${escapeHtml(DEBATE_ROLE_LABELS[role])}</div>` +
+          `<div class="rvd-col-body"></div>` +
+          `<div class="rvd-col-verdict" hidden></div>` +
+        `</div>`).join("") +
+    `</div>`;
+  d.roundsEl.appendChild(el);
+  const rec = { el, cells: {} };
+  DEBATE_ROLES.forEach((role) => {
+    const col = el.querySelector(`.rvd-col[data-role="${role}"]`);
+    rec.cells[role] = {
+      body: col.querySelector(".rvd-col-body"),
+      verdict: col.querySelector(".rvd-col-verdict"),
+      text: "", done: false,
+    };
+  });
+  d.rounds.set(round, rec);
+  return rec;
+}
+
+function debateRoundStart(v, data) {
+  const d = v && v.debate; if (!d) return;
+  const round = (data && data.round) || 1;
+  d.curRound = round;
+  debateRound(v, round);
+  scrollView(v);
+}
+
+function debateDelta(v, data) {
+  const d = v && v.debate; if (!d || !data) return;
+  const rec = d.rounds.get(d.curRound) || debateRound(v, d.curRound || 1);
+  const cell = rec && rec.cells[data.reviewer];
+  if (!cell) return;
+  cell.text += data.text || "";
+  cell.body.textContent = cell.text;          // 流式先按纯文本追加（便宜、稳）；done 时再渲 markdown
+  cell.body.classList.add("cursor");
+  scrollView(v);
+}
+
+function debateReviewerDone(v, data) {
+  const d = v && v.debate; if (!d || !data) return;
+  const rec = d.rounds.get(data.round) || d.rounds.get(d.curRound); if (!rec) return;
+  const cell = rec.cells[data.reviewer]; if (!cell) return;
+  cell.done = true;
+  const raw = typeof data.verdict === "string" ? data.verdict : (cell.text || "");
+  const { prose, json } = splitVerdictProse(raw);
+  cell.body.classList.remove("cursor");
+  renderMarkdown(cell.body, prose || cell.text || "（无输出）");
+  const tally = verdictTally(json);
+  if (tally) { cell.verdict.textContent = "结论：" + tally; cell.verdict.hidden = false; }
+  scrollView(v);
+}
+
+function debateConverged(v, data) {
+  const d = v && v.debate; if (!d) return;
+  const el = document.createElement("div");
+  el.className = "rvd-converged";
+  el.textContent = debateConvergedText(data);
+  d.footEl.appendChild(el);
+  scrollView(v);
+}
+
+function debateDone(v, data) {
+  const d = v && v.debate; if (!d) return;
+  const ok = data && data.ok;
+  const el = document.createElement("div");
+  el.className = "rvd-done" + (ok ? "" : " rvd-err");
+  el.textContent = ok ? "→ 共识与「开始编码」已就绪，见右侧评审面板" : "评审未完成，可点右侧 ↻ 重试";
+  d.footEl.appendChild(el);
+  v.debate = null;                            // 本轮辩论收束；再次评审会新建块
+  scrollView(v);
+}
 
 // ---- 附件 --------------------------------------------------------------
 function readFileAsDataUrl(file) {

@@ -295,6 +295,47 @@
                    (Array.isArray(d.blocking) && d.blocking.length > 0));
   }
 
+  // ── ADR 0019 v4 分屏辩论：纯逻辑（DOM 由 app.js 逐 token 渲染）───────────
+  // 异构双镜头：产品（市场/路线图/价值）⟷ 技术（选型/架构/风险），主模型收敛=第三视角。
+  const DEBATE_ROLES = ["product", "technical"];
+  const DEBATE_ROLE_LABELS = {
+    product: "产品镜头 · 市场/路线图/价值",
+    technical: "技术镜头 · 选型/架构/风险",
+  };
+  const DEBATE_STATUS_ZH = {
+    Accepted: "采纳", Rejected: "否决", Deferred: "后置", NeedUser: "待拍板",
+  };
+  // reviewer 输出「散文在前、```json 结论在末」：拆成给人看的散文 + 机器结论，分屏只显散文。
+  function splitVerdictProse(text) {
+    const s = text || "";
+    const i = s.lastIndexOf("```json");
+    if (i < 0) return { prose: s.trim(), json: "" };
+    const rest = s.slice(i + "```json".length);
+    const end = rest.indexOf("```");
+    return { prose: s.slice(0, i).trim(), json: (end < 0 ? rest : rest.slice(0, end)).trim() };
+  }
+  // 把一位评审员的结论 JSON（数组）归纳成一句状态计数，**绝不出现百分比**（守 ADR 0014/0019）。
+  function verdictTally(jsonText) {
+    let arr;
+    try { arr = JSON.parse(jsonText); } catch (e) { return ""; }
+    if (!Array.isArray(arr)) return "";
+    const cnt = {};
+    arr.forEach((d) => { const s = d && d.status; if (s) cnt[s] = (cnt[s] || 0) + 1; });
+    return ["Accepted", "Rejected", "Deferred", "NeedUser"]
+      .filter((s) => cnt[s]).map((s) => `${DEBATE_STATUS_ZH[s]}×${cnt[s]}`).join(" · ");
+  }
+  // 收敛横幅文案：停因 + 轮数，人话表述（引擎已保证停因可数，无分数）。
+  function debateConvergedText(payload) {
+    const reasons = {
+      no_new_blocking: "无新增未决问题",
+      wording_only: "两轮仅措辞微调",
+      max_rounds: "达到最大轮数",
+    };
+    const p = payload || {};
+    const why = reasons[p.stop_reason] || p.stop_reason || "已收敛";
+    return `✅ 讨论收敛（${p.rounds || 0} 轮 · ${why}），下面由主模型汇总共识`;
+  }
+
   // 会话列表分组渲染计划（对齐 Figma：已置顶 / 最近）。返回有序渲染项：
   // {type:"group",label} 或 {type:"item",session}。无置顶时不加分组标题（保持扁平列表）。
   function planSessionList(sessions) {
@@ -337,6 +378,7 @@
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
+    DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_STATUS_ZH, splitVerdictProse, verdictTally, debateConvergedText,
     planSessionList,
     WS_TAB_KEYS, wsTabVisible, resolveWorkspaceTabs,
   };

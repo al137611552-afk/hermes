@@ -1128,6 +1128,36 @@ body.plan-on .composer::before {
 .ws-collapsible { cursor: pointer; user-select: none; }
 .ws-fold { display: inline-block; width: 1em; color: var(--muted); }
 
+/* ===== 分屏辩论（ADR 0019 v4：评审过程可见化，对话中间流式）=====
+   两列 grid（产品镜头 ⟷ 技术镜头），逐 token 追加。守 WebView2 滚动坑：
+   缩进只用 padding、不给子元素设 overflow-x、不动 table display。 */
+.rv-debate { border: 1px solid rgba(var(--accent-rgb), .30); border-radius: 10px;
+  background: rgba(var(--accent-rgb), .05); padding: 10px 12px; margin: 4px 0; }
+.rvd-head { font-size: 13px; font-weight: 600; color: var(--accent);
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rvd-sub { font-size: 11px; font-weight: 400; color: var(--muted); }
+.rvd-seed { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.rvd-round { margin-top: 10px; }
+.rvd-round-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .04em; margin-bottom: 4px; }
+.rvd-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rvd-col { border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); padding: 8px 10px; min-width: 0; }
+.rvd-col[data-role="product"] { border-top: 2px solid rgba(var(--accent-rgb), .55); }
+.rvd-col[data-role="technical"] { border-top: 2px solid var(--border-strong); }
+.rvd-col-head { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.rvd-col-body { font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+  word-break: break-word; overflow-wrap: anywhere; }
+.rvd-col-body.cursor::after { content: "▍"; color: var(--accent); animation: hd-pulse 1s infinite; }
+.rvd-col-verdict { margin-top: 6px; font-size: 11px; color: var(--accent);
+  border-top: 1px dashed var(--border); padding-top: 4px; }
+.rvd-col-verdict[hidden] { display: none; }
+.rvd-converged { margin-top: 10px; font-size: 12px; color: var(--accent); font-weight: 600; }
+.rvd-done { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.rvd-done.rvd-err { color: #e5735a; }
+/* 窄屏（工作区展开挤压对话时）退化为单列上下叠放 */
+@media (max-width: 720px) { .rvd-cols { grid-template-columns: 1fr; } }
+
 /* ===== 设置面板（API Key + 模型档案）：左 tab 导航 + 右内容，对标主流设置 ===== */
 .settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5);
   display: flex; align-items: center; justify-content: center; z-index: 9998; }

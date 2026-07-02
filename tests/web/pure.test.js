@@ -11,6 +11,7 @@ const {
   findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
   formatEval,
   reviewGateLabel, decisionsByStatus, decisionNeedsUser,
+  DEBATE_ROLES, DEBATE_ROLE_LABELS, splitVerdictProse, verdictTally, debateConvergedText,
 } = require("../../web/pure.js");
 
 test("reviewGateLabel：可数文案、绝不百分比（守 ADR 0019 禁 score）", () => {
@@ -39,6 +40,41 @@ test("decisionNeedsUser：NeedUser 或带 blocking → 需用户拍板", () => {
   assert.equal(decisionNeedsUser({ status: "Accepted", blocking: ["x"] }), true);
   assert.equal(decisionNeedsUser({ status: "Accepted", blocking: [] }), false);
   assert.equal(decisionNeedsUser(null), false);
+});
+
+test("分屏辩论：异构双镜头角色固定为 product/technical，各有中文标签", () => {
+  assert.deepEqual(DEBATE_ROLES, ["product", "technical"]);
+  assert.ok(DEBATE_ROLE_LABELS.product.includes("产品"));
+  assert.ok(DEBATE_ROLE_LABELS.technical.includes("技术"));
+});
+
+test("splitVerdictProse：散文在前、```json 结论在末，正确切分", () => {
+  const raw = "我认为 d1 该采纳，理由是……\n```json\n[{\"id\":\"d1\",\"status\":\"Accepted\"}]\n```";
+  const r = splitVerdictProse(raw);
+  assert.equal(r.prose, "我认为 d1 该采纳，理由是……");
+  assert.ok(r.json.includes("Accepted"));
+});
+
+test("splitVerdictProse：无 fence 时全当散文、json 为空", () => {
+  const r = splitVerdictProse("纯散文没有结论块");
+  assert.equal(r.prose, "纯散文没有结论块");
+  assert.equal(r.json, "");
+  assert.deepEqual(splitVerdictProse(null), { prose: "", json: "" });  // null 安全
+});
+
+test("verdictTally：按四态计数、中文短标签，绝不百分比（守 ADR 0019）", () => {
+  const t = verdictTally('[{"id":"d1","status":"Accepted"},{"id":"d2","status":"NeedUser"},{"id":"d3","status":"Accepted"}]');
+  assert.equal(t, "采纳×2 · 待拍板×1");
+  assert.ok(!t.includes("%"));
+  assert.equal(verdictTally("不是 JSON"), "");     // 解析失败→空串、不抛
+  assert.equal(verdictTally("{}"), "");            // 非数组→空串
+});
+
+test("debateConvergedText：停因译人话、带轮数，无分数", () => {
+  assert.ok(debateConvergedText({ stop_reason: "no_new_blocking", rounds: 2 }).includes("2 轮"));
+  assert.ok(debateConvergedText({ stop_reason: "no_new_blocking", rounds: 2 }).includes("无新增未决问题"));
+  assert.ok(debateConvergedText({ stop_reason: "怪停因", rounds: 3 }).includes("怪停因"));  // 未知停因原样带出
+  assert.ok(!debateConvergedText({ rounds: 1 }).includes("%"));
 });
 
 test("formatEval：测试通过 → ok 级、N/total 摘要", () => {
