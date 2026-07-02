@@ -1450,13 +1450,15 @@ async function fillReviewerModels() {
   if (!box || !window.pywebview) return;
   let m;
   try { m = await window.pywebview.api.get_design_review_models(); } catch (e) { return; }
-  const roleLabel = { execution: "务实 · 合理性/可交付", architecture: "严谨 · 技术/风险" };
+  // 角色标签优先用后端下发的 reviewer_labels（ADR 0019 v4：产品镜头 / 技术镜头），带兜底描述
+  const roleDesc = { product: "产品 · 市场/路线图/价值", technical: "技术 · 选型/架构/风险" };
+  const roleLabel = (role) => roleDesc[role] || ((m.reviewer_labels || {})[role]) || role;
   const sel = (role) => {
     const cur = (m.current || {})[role] || "";
     const opts = [`<option value=""${cur ? "" : " selected"}>跟随主模型（${escapeHtml(m.active_model || "")}）</option>`]
       .concat((m.available || []).map((p) =>
         `<option value="${escapeHtml(p)}"${p === cur ? " selected" : ""}>${escapeHtml(p)}</option>`));
-    return `<label class="mm-row"><span>${roleLabel[role] || role}</span>` +
+    return `<label class="mm-row"><span>${escapeHtml(roleLabel(role))}</span>` +
       `<select class="rv-model-sel" data-role="${role}">${opts.join("")}</select></label>`;
   };
   box.innerHTML = (m.reviewers || []).map(sel).join("");

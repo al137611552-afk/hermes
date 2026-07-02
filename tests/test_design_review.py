@@ -143,7 +143,7 @@ def test_run_review_converges_and_gates():
 
     def fake_review_fn(name, prompt):                       # seam 现在带 reviewer 名
         state["calls"] += 1
-        if name == "execution" and state["calls"] <= 2:     # 仅 execution 首轮提一次
+        if name == "product" and state["calls"] <= 2:     # 仅 product 首轮提一次
             return '[{"id":"d1","status":"NeedUser","add_blocking":["太大，拆小"]}]'
         return "[]"                                          # 之后无意见 → 零新增 blocking
 
@@ -164,7 +164,7 @@ def test_run_review_routes_by_reviewer_name_heterogeneous():
         seen.append(name)                                   # 记录两个角色都被分别调用
         return "[]"
     run_review([_d("a", ACCEPTED)], routing_review_fn, max_rounds=2)
-    assert "execution" in seen and "architecture" in seen   # 两脑子分别按名被调，可各接各模型
+    assert "product" in seen and "technical" in seen   # 两脑子分别按名被调，可各接各模型
 
 
 def test_escalate_open_to_needuser_preserves_others():
@@ -214,7 +214,7 @@ def test_make_review_fn_bounds_output_tokens():
             seen["mt"] = max_tokens
             yield _FakeEv("[]")
     from agentcore.agent.design_review import REVIEW_MAX_TOKENS
-    make_review_fn(lambda name: P())("execution", "prompt")
+    make_review_fn(lambda name: P())("product", "prompt")
     assert seen["mt"] == REVIEW_MAX_TOKENS           # 评审调用限了输出长度（提速）
 
 
@@ -249,21 +249,21 @@ class _FakeProvider:
 def test_make_review_fn_calls_provider_and_returns_text():
     p = _FakeProvider('[{"id":"d1","status":"Accepted"}]')
     rf = make_review_fn(lambda name: p)
-    assert rf("execution", "评一下") == '[{"id":"d1","status":"Accepted"}]'
+    assert rf("product", "评一下") == '[{"id":"d1","status":"Accepted"}]'
     assert p.seen and "评一下" in str(p.seen[0])
 
 
 def test_make_review_fn_routes_by_name_heterogeneous():
-    # 异构：execution → provider A，architecture → provider B（接线层据 name 选不同模型档案）
+    # 异构：product → provider A，technical → provider B（接线层据 name 选不同模型档案）
     a = _FakeProvider('[{"id":"x","status":"Accepted"}]')
     b = _FakeProvider('[{"id":"x","status":"NeedUser"}]')
-    rf = make_review_fn(lambda name: a if name == "execution" else b)
-    assert "Accepted" in rf("execution", "p") and "NeedUser" in rf("architecture", "p")
+    rf = make_review_fn(lambda name: a if name == "product" else b)
+    assert "Accepted" in rf("product", "p") and "NeedUser" in rf("technical", "p")
 
 
 def test_make_review_fn_none_provider_skips():
     rf = make_review_fn(lambda name: None)        # 没配该角色模型 → 跳过不阻断
-    assert rf("architecture", "p") == "[]"
+    assert rf("technical", "p") == "[]"
 
 
 # ── DesignReviewSession 状态机 ──────────────────────────────────────────────
@@ -277,7 +277,7 @@ def test_session_review_then_resolve_then_sign_opens_gate():
     s = DesignReviewSession([_d("d1", OPEN), _d("d2", ACCEPTED)], max_rounds=3)
 
     def rf(name, prompt):
-        return '[{"id":"d1","status":"NeedUser","add_blocking":["要拍板"]}]' if name == "execution" \
+        return '[{"id":"d1","status":"NeedUser","add_blocking":["要拍板"]}]' if name == "product" \
             else "[]"
     s.review(rf)
     assert s.gate()["blocking_count"] >= 1 and s.can_start() is False   # d1 待拍板

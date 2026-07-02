@@ -914,8 +914,9 @@ class Conversation:
 
     def _design_review_provider_for(self):
         """据 config.agent.design_review_models 把 reviewer 名路由到模型档案；缺省=主模型（异构唯一落点）。"""
+        from ..agent.design_review import migrate_reviewer_models
         cfg = self.res.config
-        mapping = cfg.agent.design_review_models or {}
+        mapping = migrate_reviewer_models(cfg.agent.design_review_models or {})   # 旧键 execution/architecture 归一
 
         def provider_for(name):
             profile = mapping.get(name) or self.active_model
@@ -964,7 +965,7 @@ class Conversation:
         text = (self._pending_review_plan or self.get_notes() or "").strip()
         if not text:
             return None, {"ok": False, "error": "没有可评审的方案（先调 start_design_review）"}
-        provider = self._design_review_provider_for()("execution") \
+        provider = self._design_review_provider_for()("product") \
             or build_provider(self.res.config, self.active_model)
         prompt = self._SEED_PROMPT + text
         # 抽取输出随决策数增长，**不设人为紧上限**：用满该模型单次预算（max_tokens=None）。延迟只随实际生成量，

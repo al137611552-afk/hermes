@@ -257,26 +257,42 @@ def apply_review(decisions, review_text: str) -> list:
     return out
 
 
-# ── 两个对冲评审员 directive（务实/可交付 ⟷ 严谨/前瞻）──────────────────────────
-# 不是「俩开发吵技术」：评审维度覆盖规划合理性、技术判断、产品/范围、风险与遗漏、待用户确认项——
-# 像一场多视角讨论收敛出共识。两人默认立场对冲（降低错误相关性），但各自都跨维度审。
-# 键仍用 execution/architecture（config 异构路由 + UI + 引擎按名调都依赖它，保持稳定）。
-PRAGMATIST_REVIEWER = (
-    "【务实评审】你是 **务实评审员（Pragmatist）**。默认立场：让方案尽快跑起来、别过度设计。"
-    "对每个 Decision 跨维度审——规划合理性（是否过度设计 / 范围失控 / 跑偏目标）、可交付性、成本与性价比、优先级——问："
-    "① 48 小时内能做出可验证的切片吗？② 是不是想多了 / 摊大了，有没有更小的 MVP 先验证核心假设？"
-    "③ 这条对当前目标是不是必要，能不能砍或后置？④ 怎么用 Golden / 自测证伪？"
-    "凡过大、偏题、无法短周期验证的，提成 blocking 或建议 status=Deferred。你只负责让它今晚就能验证，不负责拔高。"
+# ── 两个对冲评审员 directive（产品/市场镜头 ⟷ 技术镜头）──────────────────────────
+# ADR 0019 v4：把外部「复制给 GPT 再发给 Kimi 讨论」的体验显式建模为两个正交对冲镜头——
+# 一个只从产品/市场价值挑刺、一个只从技术工程挑刺，主模型再收敛（= 3 方视角）。两镜头默认异构模型
+# （降错误相关性）。两 directive 都强制**可证伪、只针对具体 Decision 发言**，产品镜头尤其禁「感觉不错」式空话。
+PRODUCT_REVIEWER = (
+    "【产品评审】你是 **产品/市场评审员（Product）**。默认立场：从市场、产品路线图、用户价值角度审，"
+    "防止「技术上成立但产品上没人要 / 优先级错」的决策。对每个 Decision 问（全部要可证伪、落到具体事实，"
+    "**禁「感觉不错 / 挺合理」这类空话**）：① 目标用户是谁、在什么场景用这个决策的产物？"
+    "② 它服务哪个产品目标 / 路线图节点，还是偏离了主线？③ 竞品 / 现状是否已有等价物，我们这样做的差异化与理由？"
+    "④ 优先级对吗——是不是过早优化、该后置，或有更高价值的事没做？"
+    "产品 / 市场层面站不住的提成 blocking 或建议 status=Deferred；必须用户拍板的产品方向设 status=NeedUser。"
+    "你只从产品价值挑刺，不做技术选型。"
 )
-RIGOR_REVIEWER = (
-    "【严谨评审】你是 **严谨评审员（Rigor）**。默认立场：把方案审扎实、防短视与遗漏。"
-    "对每个 Decision 跨维度审——技术判断是否成立、结构与长期风险、被忽略的更稳备选、方案是否自洽完整、"
-    "以及哪些是必须由用户拍板的方向 / 取舍（含方案里明确‘待确认’的开放问题）——问："
-    "当前选择两个月后会不会推倒重来？有没有更稳的备选被漏掉？有没有逻辑漏洞或没考虑的边界 / 风险？"
-    "是否违反既有架构纪律（事实 / 差距 / 做法分离、禁 score、物化而非建引擎）？关键取舍或‘待确认’项是否该升级给用户拍板？"
-    "发现结构性风险或遗漏提成 blocking；必须用户拍板的方向取舍设 status=NeedUser。你只负责让方案经得起推敲，不负责砍范围。"
+TECHNICAL_REVIEWER = (
+    "【技术评审】你是 **技术评审员（Technical）**。默认立场：把技术选型、架构、可行性与工程风险审扎实，"
+    "既压范围也防短视。对每个 Decision 问：① 48 小时内能做出可验证切片吗，会不会改上百个文件、有没有更小 MVP？"
+    "② 技术选型 X vs 备选 Y 的 tradeoff 是什么，当前选择两个月后会不会推倒重来？"
+    "③ 有没有逻辑漏洞、被忽略的更稳备选、没考虑的边界 / 风险 / 维护成本？"
+    "④ 怎么用 Golden / 自测证伪？是否违反既有架构纪律（事实 / 差距 / 做法分离、禁 score、物化而非建引擎）？"
+    "工程风险或遗漏提成 blocking，过大 / 无法短周期验证建议 status=Deferred，必须用户拍板的技术取舍设 status=NeedUser。"
+    "你只从技术角度挑刺，不评产品价值。"
 )
-REVIEWERS = (("execution", PRAGMATIST_REVIEWER), ("architecture", RIGOR_REVIEWER))
+REVIEWERS = (("product", PRODUCT_REVIEWER), ("technical", TECHNICAL_REVIEWER))
+
+# 旧键（v3 及以前的 execution/architecture）→ 新键（product/technical）迁移映射：
+# 兼容用户已存的 config.yaml design_review_models 与历史会话，读时归一，不强迫用户改配置。
+REVIEWER_ALIASES = {"execution": "product", "architecture": "technical"}
+
+
+def migrate_reviewer_models(mapping) -> dict:
+    """把 design_review_models 里旧角色键归一到新键（execution→product、architecture→technical）；丢空值。"""
+    out = {}
+    for k, v in (mapping or {}).items():
+        if v:
+            out[REVIEWER_ALIASES.get(k, k)] = v
+    return out
 
 _REVIEW_OUTPUT_SPEC = (
     "\n\n仅输出 JSON 数组，每个被你评的 Decision 一项："

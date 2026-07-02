@@ -1374,9 +1374,9 @@ class _ReviewProvider:
         elif "拆成" in prompt:                                 # 拆方案 → Decision 列表
             txt = '[{"id":"db","title":"数据库","current_choice":"SQLite","status":"Open"},' \
                   '{"id":"idx","title":"全文检索","current_choice":"先不做","status":"Open"}]'
-        elif "务实评审" in prompt:                              # 务实评审员
+        elif "产品评审" in prompt:                              # 产品/市场镜头
             txt = '[{"id":"idx","status":"Accepted"}]'
-        elif "严谨评审" in prompt:                              # 严谨评审员：把 db 升级待拍板
+        elif "技术评审" in prompt:                              # 技术镜头：把 db 升级待拍板
             txt = '[{"id":"db","status":"NeedUser","add_blocking":["SQLite vs DuckDB 需拍板"]}]'
         else:
             txt = "[]"
@@ -1401,8 +1401,8 @@ def test_design_review_end_to_end_wiring(tmp: Path):
         r = conv.run_design_review()
         assert r["ok"] and r["reviewed"] is True and len(r["decisions"]) == 2
         ids = {d["id"]: d for d in r["decisions"]}
-        assert ids["idx"]["status"] == "Accepted"             # Execution 采纳
-        assert ids["db"]["status"] == "NeedUser"              # Architecture 升级待拍板
+        assert ids["idx"]["status"] == "Accepted"             # Product 采纳
+        assert ids["db"]["status"] == "NeedUser"              # Technical 升级待拍板
         assert r["gate"]["can_start"] is False                # 有 NeedUser → 锁
         assert "%" not in r["gate"]["reason"]                 # 守禁百分比
         # 用户拍板 db=SQLite → 清未决 → 签字 → 开工

@@ -130,8 +130,9 @@ class AgentConfig(BaseModel):
     design_review_max_rounds: int = 3  # 评审最大轮数（防无限互评，同 research_max_rounds 纪律）
     design_review_timeout_s: int = 90        # 单个评审角色单次调用超时（秒），慢/卡按空评审跳过
     design_review_verdict_max_tokens: int = 2048  # 单角色评审结论输出上限（防长篇大论的安全网，非抽取）
-    design_review_models: dict = {}    # 异构路由：reviewer 名→模型档案名（如 {"architecture":"openai/gpt-4o"}）。
-                                       # 空=全部用当前主模型（同模型双角色，离线零成本）；大设计才给某角色配异构档
+    design_review_models: dict = {}    # 异构路由：reviewer 名→模型档案名（如 {"technical":"openai/gpt-4o"}）。
+                                       # 角色名：product（产品/市场镜头）、technical（技术镜头）；旧键 execution/architecture 读时自动归一。
+                                       # 空=全部用当前主模型（同模型双角色，离线零成本）；推荐给两角色各配一个异构档形成真·双脑评审
 
     def resolve_workspace(self) -> Path:
         return Path(self.workspace).expanduser().resolve() if self.workspace else ROOT

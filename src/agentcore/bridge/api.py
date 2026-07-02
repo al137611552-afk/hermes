@@ -1045,19 +1045,22 @@ class Api:
 
     def get_design_review_models(self) -> dict:
         """评审模型选择：两个角色名、可用模型档名、当前映射（空=跟随主模型）。供 UI 下拉。"""
+        from ..agent.design_review import migrate_reviewer_models
         cfg = self.res.config
-        return {"reviewers": ["execution", "architecture"],
+        return {"reviewers": ["product", "technical"],
+                "reviewer_labels": {"product": "产品镜头", "technical": "技术镜头"},
                 "available": list(cfg.models.keys()),
                 "active_model": cfg.active_model,
-                "current": dict(cfg.agent.design_review_models or {})}
+                "current": migrate_reviewer_models(cfg.agent.design_review_models or {})}
 
     def set_design_review_model(self, reviewer: str, profile: "str | None") -> dict:
         """给某评审角色选模型（profile 空/None=跟随主模型），写回内存 + config.yaml。"""
         from ..config import persist_design_review_models
+        from ..agent.design_review import migrate_reviewer_models
         cfg = self.res.config
-        if reviewer not in ("execution", "architecture"):
+        if reviewer not in ("product", "technical"):
             return {"ok": False, "error": "未知角色"}
-        m = dict(cfg.agent.design_review_models or {})
+        m = migrate_reviewer_models(cfg.agent.design_review_models or {})   # 顺带把旧键归一，避免新旧并存
         if profile and profile in cfg.models:
             m[reviewer] = profile
         else:
