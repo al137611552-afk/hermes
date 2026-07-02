@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+**方案评审 v4（待 Windows 真机验证，未定版）**——ADR 0019 v4，让评审"像两个模型讨论"：
+
+### Changed
+- **对冲评审角色改为 产品镜头 ⟷ 技术镜头**（替换原 execution/architecture）：产品（市场/路线图/用户价值/优先级，强制可证伪）⟷ 技术（选型/架构/可行性/工程风险），主模型收敛=第 3 视角。旧配置键自动归一（`REVIEWER_ALIASES` + `migrate_reviewer_models`），设置面板 label 改「产品镜头 / 技术镜头」。
+
+### Added
+- **可见分屏辩论（逐 token 实时流式）**：点评审 → 对话中部两列 grid 分屏（产品 / 技术），两 reviewer 逐轮、逐 token 打字机式展开互评，收敛横幅收束，右侧面板出四态共识 + 「开始编码」gate。后端 `run_review` 逐轮逐角色事件 + `make_review_fn` 逐 token 回传，emit `review_seed/delta/round_start/reviewer_done/converged/done`；纯逻辑落 `web/pure.js` 配单测。**全程无百分比/评分**（守 ADR 0014）。
+- **默认异构评审**：主动点评审时两镜头可各走不同模型档（设置面板下拉，火山单 key 即支持 kimi/deepseek/minimax 等，零额外 key 成本）。
+
+### Fixed
+- **bug#4：开始编码后评审面板重现/可重复开工**——`Conversation` 加 `_review_applied` 终态，应用落回后 `get_design_review` 返回 `{ok:false, applied:true}`，切换会话再切回不再重弹面板、无法重复开工；`↻` 重跑复活面板。
+
 后续候补：**研究墙·墙钟时间上限**；**目标满足驱动的换源**（把换源触发从"零新域名"补成"目标数据点连续缺席"，价格/数字类先做）；**Learning 运行时接线**（让 active 策略真正影响选路，须再过 Golden）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
 
 ## [3.51.1] - 2026-07-02

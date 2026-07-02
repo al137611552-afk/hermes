@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-07-02 — 方案评审 v4：可见分屏辩论 + 产品⟷技术双镜头 + 默认异构 + 生命周期终态（待验证）
+
+真机反馈"现产物像把主模型内容提炼成几个确认项、看不到模型间讨论过程"驱动的评审重做（ADR 0019 v4）。
+
+- **做了什么**：
+  - **对冲角色改写**：`REVIEWERS` 从 execution/architecture → **product（产品/市场/路线图/价值）⟷ technical（技术选型/架构/风险）**，主模型收敛=第 3 视角。旧键经 `REVIEWER_ALIASES`+`migrate_reviewer_models` 自动归一（config/api 层兼容旧配置）。
+  - **逐 token 实时流式分屏**（用户拍板直接做，跳过"整轮显示"MVP）：`run_review` 加 `on_event` 逐轮逐角色事件、`make_review_fn` 加 `on_delta` 逐 token 回传；`run_design_review` 流式 emit `review_seed/delta/round_start/reviewer_done/converged/done`。reviewer 输出"散文在前、` ```json ` 结论在末"，`apply_review` 优先解析 fenced 数组（散文里的方括号不误伤）。
+  - **前端分屏 UI**：对话中部新增 `.rv-debate` 两列 grid（产品镜头 ⟷ 技术镜头），逐轮渲染、逐 token 打字机追加，`reviewer_done` 渲 markdown + 结论计数（禁百分比），收敛横幅收束；右侧评审面板仍出四态共识与「开始编码」gate。纯逻辑 `splitVerdictProse/verdictTally/debateConvergedText/角色标签` 落 `web/pure.js`。
+  - **生命周期终态（修 bug#4）**：`Conversation._review_applied` 标志——`apply_review_to_plan` 成功后置真，`get_design_review` 返回 `{ok:false, applied:true}` → 面板收起、切回不重现、无法重复点开始编码；`start`/`run`（含 ↻ 重跑）撤销终态复活面板。
+- **关键决策**：2 reviewer 不做 3（主模型收敛已是第 3 方视角，省 1.5x 成本/延迟）；默认异构仅在**主动点评审**时触发（低频深度动作，不绑每条消息）；辩论仍绑 Decision 对象 + 停止条件，**不做**自由 chat arena；ADR 硬骨架全不动（评审单位=Decision、Reviewer 禁重写 current_choice、gate 卡可数阻塞禁百分比）；终态用内存态即可（覆盖同会话切换 bug，重启后会话空、面板本不现，无需 DB 持久化）。
+- **自检**：Python 全量 **58/58**、前端 node:test **54/54**（评审角色/流式事件/apply 解析 + 分屏 5 条纯逻辑新用例）；三项密钥扫描全 0。分 4 刀提交（引擎角色改写 cd3a6fc / 流式后端 003c22b / 分屏 UI 10319c4 / 终态修 bug 1ffb8a2）。
+- **验证状态**：**待 Windows 真机验证**（开发环境 Linux 无 GUI，跑不了 pywebview + 真实模型调用）。**未定版**——验证通过后再同步 pyproject/CHANGELOG/PRD 并定版。
+- **Windows 验证清单**（请依次核对）：
+  1. 规划模式产出方案 → 点评审（或 `Ctrl/⌘+Shift+R`）→ 对话中部出现分屏两列「产品镜头 / 技术镜头」，两列**各自逐 token 打字**、逐轮累加（第 1/2/3 轮）。
+  2. 两 reviewer 用的是**不同模型**（在设置面板给产品/技术两镜头各选一档，如产品→minimax、技术→deepseek）；发言角度确有产品 vs 技术差异，不是同一口吻。
+  3. 每列结束显示「结论：采纳×N · …」计数，**全程无百分比/评分**。
+  4. 收敛横幅出现（"讨论收敛（N 轮 · 原因）"）→ 右侧评审面板出四态共识 + gate。
+  5. 有 NeedUser 时 gate 锁住；拍板 + 签字后「开始编码」可点 → 点它 → 待办重排、退出规划模式、自动发起开工指令。
+  6. **bug#4 复验**：开始编码后，切到别的会话再切回本会话——评审面板**不再重现**、也无法再点「开始编码」；点 ↻ 重跑评审面板应复活。
+  7. 长对话下分屏渲染**不触发 WebView2 滚轮跳顶**（滚长对话验，别只看截图）。
+- **遗留**：异构模型自动复杂度触发仍为手动/config（不自动升第二模型）；macOS WKWebView 待有 Mac 后验。
+
+---
+
 ## 2026-07-02 — 发送/停止交互 + 顶部「运行中」chip 修复定版 v3.51.1
 
 紧跟 3.51.0 视觉打磨的两处真机反馈修复：

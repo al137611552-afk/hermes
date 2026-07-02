@@ -1,11 +1,11 @@
 # ADR 0019 — Architecture Review Mode（规划模式下的多角色方案评审，草案）
 
-状态：**草案 v4（引擎+接线已上线，改造"可见分屏辩论 + 产品⟷技术双镜头 + 默认异构"进行中）**（2026-07-02）。本 ADR 先于实现立项——把设计基线定下来再动工，
+状态：**v4 已实现（"可见分屏辩论 + 产品⟷技术双镜头 + 默认异构 + 生命周期终态"四项均落地并全回归绿，待 Windows 真机验后定版）**（2026-07-02）。本 ADR 先于实现立项——把设计基线定下来再动工，
 正是用"先评审再动工"的方式来设计这个"评审再动工"功能本身。**v2 = 第一轮评审收敛**（GPT proposal → Execution+Architecture
 review → Consensus，锁五条约束）；**v3 = 第二轮评审收敛**（针对"单模型 review 是否受限"，锁"Reviewer 是契约非模型 +
 异构靠 `Role.model` 接线 mapping + 复杂度门控第二模型"，见「单模型 vs 异构模型」）；**v4 = 第三轮评审收敛**（针对"现产物像单模型提炼、看不到讨论过程"这一真机反馈，锁"对冲角色改 产品⟷技术、
 手动评审默认异构 2 模型、辩论过程分屏可见、评审生命周期加终态"，见「v4 变更」）。纯逻辑引擎 + 接线已落地（见 MVP「进度」）。
-v4 的分屏 UI / 角色改写 / 默认异构 / 生命周期终态待 Windows 真机验后转"已验证"并定版。
+v4 四项均已编码+全回归绿（引擎逐轮逐角色流式事件、conversation 流式接线、前端 `.rv-debate` 分屏双列逐 token 渲染、`_review_applied` 终态修 bug#4），待 Windows 真机验后转"已验证"并定版。
 关联：[0014 评估/策略架构](0014-evaluation-policy-architecture.md)（**禁 score** 纪律的源头，本 ADR 的硬约束）、
 [0005 工具与 Agent 循环](0005-tools-and-agent-loop.md)（delegate ROLES / judge 注入 / PlanMode 是本功能的复用积木）、
 [0018 Research Evaluator](0018-research-evaluator.md)（"轮数预算 / 收敛停止"纪律直接搬用）。
@@ -208,11 +208,11 @@ Consensus 只总结（禁发明）。其中"Reviewer 禁重写"**引擎已物理
    - **为何仍是好评审**：产品价值 ⟷ 技术代价天然拉扯（产品想要的技术上贵/有风险；技术想做的产品上不紧急），张力真实、错误相关性低（商业脑 vs 工程脑 + 异构模型进一步降相关）。ADR 硬骨架全不动：评审单位=Decision、Reviewer 禁重写 `current_choice`（`apply_review` 物理强制）、四态=Decision.status、gate 卡可数阻塞（禁百分比）、停止条件可数。
 2. **手动评审默认异构 2 模型**（仅"用户主动点评审"时触发，**不**绑每条消息、**不**给琐碎方案强加）：既然要真·两个脑子，同模型双角色达不到效果，故评审这个动作默认走异构。成本只在用户主动深度评审时发生。异构 = 接线层据 reviewer 名（`product`/`technical`）路由到不同模型档，**设置面板下拉已支持按角色选模型**（火山单 key 即支持 kimi/deepseek/minimax 等多档，异构零额外 key 成本）。默认建议对：产品镜头→偏发散/商业档、技术镜头→偏严谨/代码档、收敛→主模型；用户可在面板改。
 3. **辩论过程分屏可见（渐进披露）**：点评审 → 对话区中部分屏两列（产品 / 技术），**逐轮显示**两 reviewer 针对各 Decision 的发言与相互回应，主模型收敛区在下方产出四态共识 + 下一步行动方案。**共识文档是主角、过程可折叠回看**——既满足"看得到讨论"，又不违反 v2"用户不读两万字互评"。仍**不做**自由 chat arena（无结构、不收敛），辩论始终绑在 Decision 对象上、受停止条件约束。
-4. **评审生命周期加终态（修 bug）**：现 bug——点"开始编码"（签字+重排待办+已开工）后，切走再切回，评审栏重现且可再次点"开始编码"。根因＝签字/已开工状态未随会话持久化、重挂按 pending 重渲。v4 给评审会话加 `consumed/started` 终态并持久化到会话；重挂时按终态渲染**只读收条**（"本方案已开工"），不再重现可点 gate。
+4. **评审生命周期加终态（修 bug#4）**：现 bug——点"开始编码"（签字+重排待办+已开工）后，切走再切回，评审栏重现且可再次点"开始编码"。根因＝已开工状态未随会话保留、`get_design_review` 重取仍返回可点 gate。v4 给 `Conversation` 加 `_review_applied` 终态标志：`apply_review_to_plan` 成功后置真，`get_design_review` 返回 `{ok:false, applied:true}` → 前端 `renderReviewPanel(null)` 收起面板、评审 tab 消失，切回不再重现、无法重复开工；`start`/`run`（含 ↻ 重跑）撤销终态复活面板。**范围说明**：终态是会话对象内存态（同主流其它运行时态如 `plan_mode`/`crazy_mode`），覆盖"应用后同会话切换"这一 bug 场景；应用后重启应用，会话从库重建、`_review_session` 为空、面板本就不现，故无需额外 DB 持久化。
 
 **默认档策略**：普通评审即异构（见 2），不再区分"快跑/深度"两档——因为评审本就是低频的主动动作。
 
-**实现切片（MVP 小切口，逐刀过全回归）**：① 引擎 `REVIEWERS` execution/architecture → product/technical + 两 directive 改写；Golden 引用 reviewer 名的基线同步。② 配置层 `design_review_models` 键迁移 + 设置面板 label 改「产品镜头/技术镜头」+ 旧值兼容迁移。③ 会话生命周期终态 + 持久化（修 bug）。④ 前端分屏 UI（纯逻辑落 `web/pure.js` 配单测；注意 WebView2 滚动坑：分屏内滚用 padding 不用 margin、别给容器只设 overflow-x）。⑤ `run_design_review` 把逐轮逐角色发言结构化返回给前端（MVP 先"整轮跑完显示全过程"，逐 token 实时流式作为后续增强）。⑥ ADR 转正 + DEVLOG。⑦ 全回归（Python+前端+Golden）→ Windows 真机验 → 定版。
+**实现切片（MVP 小切口，逐刀过全回归）——均已落地**：① ✅ 引擎 `REVIEWERS` execution/architecture → product/technical + 两 directive 改写；旧键 `REVIEWER_ALIASES`+`migrate_reviewer_models` 归一。② ✅ 配置层 `design_review_models` 键迁移 + 设置面板 label 改「产品镜头/技术镜头」+ 旧值兼容迁移。③ ✅ 会话生命周期终态（`_review_applied`，修 bug#4）。④ ✅ 前端分屏 UI（`.rv-debate` 两列 grid，纯逻辑 `splitVerdictProse/verdictTally/debateConvergedText` 落 `web/pure.js` 配 5 条单测；守 WebView2 滚动坑：缩进用 padding、子元素不设 overflow-x、不动 table display）。⑤ ✅ **直接做逐 token 实时流式**（用户拍板，跳过"整轮显示"MVP）：`run_review` 加 `on_event` 逐轮逐角色事件、`make_review_fn` 加 `on_delta` 逐 token 回传，`run_design_review` 流式 emit `review_seed/delta/round_start/reviewer_done/converged/done`，reviewer 输出"散文在前、```json 结论在末"、`apply_review` 优先解析 fenced 数组。⑥ ✅ ADR 转正 + DEVLOG。⑦ 全回归（Python 58/58 + 前端 54/54 + Golden 绿）✅ → Windows 真机验（待）→ 定版（待）。
 
 ## 评审收敛记录补：第三轮（v4）
 
@@ -223,4 +223,4 @@ Consensus 只总结（禁发明）。其中"Reviewer 禁重写"**引擎已物理
 - **产品镜头做成自由发挥的"市场感觉"**——否决。必须可证伪、针对 Decision，否则退化成空话（守 0014 禁虚分纪律）。
 - **改成自由 chat arena 式两模型对话**——否决。无结构不收敛、逼用户读长文；保留 Decision 对象 + 停止条件的结构化辩论，只把过程"变可见"。
 
-**Deferred（后置，附触发条件）**：逐 token 实时流式分屏——后置到 MVP"整轮显示全过程"跑通之后。异构模型的自动复杂度触发——仍手动/config。
+**Deferred（后置，附触发条件）**：~~逐 token 实时流式分屏~~——**已提前实现**（用户拍板"直接做实时流式"，跳过整轮显示 MVP）。异构模型的自动复杂度触发——仍手动/config（不自动升第二模型，评审是低频主动动作）。
