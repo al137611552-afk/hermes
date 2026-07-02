@@ -394,6 +394,9 @@ mark.find-hit.cur { background: var(--accent); color: #fff; }
 #input:focus { outline: 1px solid var(--accent); }
 /* 发送/停止改为图标按钮：等宽方形、与输入框同高、图标居中 */
 #send { width: 44px; padding: 0; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+/* 发送/停止是同一位置的互斥切换：运行中只显示停止、否则只显示发送。
+   上面的 display:inline-flex 会盖掉 [hidden] 属性（同 .ws-reopen 的坑），故显式复位。 */
+#send[hidden], .stop-btn[hidden] { display: none; }
 #send:disabled { opacity: .5; cursor: default; }
 #send svg, .stop-btn svg { width: 16px; height: 16px; display: block; }
 /* 输入区图标按钮（附件 / 规划）复用全站 .icon-btn 规范，仅做等宽 + 与输入框同高 */
