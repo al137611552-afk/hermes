@@ -1152,6 +1152,15 @@ body.plan-on .composer::before {
 .rvd-col-verdict { margin-top: 6px; font-size: 11px; color: var(--accent);
   border-top: 1px dashed var(--border); padding-top: 4px; }
 .rvd-col-verdict[hidden] { display: none; }
+/* v5 hub-and-spoke：两列下方整宽「主模型回复」区——主模型逐条采纳/反驳/收敛（唯一改状态处）。
+   守 WebView2 滚动坑：仅用 padding 缩进（不用 margin 造嵌套合并）、不设 overflow-x（免连带成滚动容器）。 */
+.rvd-main { margin-top: 10px; border: 1px solid rgba(var(--accent-rgb), .35); border-radius: 8px;
+  background: rgba(var(--accent-rgb), .06); padding: 8px 10px; }
+.rvd-main[hidden] { display: none; }
+.rvd-main-head { font-size: 11px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+.rvd-main-body { font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+  word-break: break-word; overflow-wrap: anywhere; }
+.rvd-main-body.cursor::after { content: "▍"; color: var(--accent); animation: hd-pulse 1s infinite; }
 .rvd-converged { margin-top: 10px; font-size: 12px; color: var(--accent); font-weight: 600; }
 .rvd-done { margin-top: 4px; font-size: 12px; color: var(--muted); }
 .rvd-done.rvd-err { color: #e5735a; }

@@ -6,6 +6,21 @@
 
 ## [Unreleased]
 
+**方案评审 v5：hub-and-spoke 真讨论（待 Windows 真机验证，未定版）**——ADR 0019 v5，引擎级重构，让评审从"拼 JSON"变成"我的方案被挑刺、我逐条回应、最后收敛"：
+
+### Changed
+- **评审改为 hub-and-spoke**：每个评审员（产品/技术镜头）只与**主模型**双边对话，不再评审员互谈或机械折叠。每轮两评审员先各出批评/建议 → **主模型逐一回复**（采纳/反驳/追问，绑定具体 Decision）→ 下一轮评审员基于主模型回复再谈，最多 3 轮收敛。
+- **决策权归主模型（决策 A）**：`run_review` 不再对评审员输出调 `apply_review`——评审员只**进言**，作为参考喂给主模型；**只有主模型的逐轮回复（`apply_main_reply`）能改 Decision 的 status/blocking/current_choice**（唯一改状态处）。评审员仍**物理禁改 current_choice**（ADR 原则不破），主模型可改。
+- **每轮一次主模型调用（决策 B）**：一轮 = 2 评审 + 1 主模型收敛调用（≈3 主模型 + 6 评审/次深评审，低频手动动作可接受）。
+
+### Added
+- **主模型逐轮回复分屏区**：两列（产品/技术）下方新增整宽「主模型回复」区，逐轮累加、逐 token 打字（`review_main_reply_start/done` 事件 + `review_delta` name="main"）。主模型收敛档缺省=会话主模型，可在 config `design_review_models` 加 `main` 键走异构。
+- **主模型硬纪律**：`MAIN_REPLY_DIRECTIVE` 明令主模型每轮回复绑定具体 Decision id、可证伪、真取舍，**禁"你们说得都有道理"式空话**、禁共识百分比/评分（守 ADR 0014）。
+
+停止条件（max_rounds/无新增阻塞/连两轮仅措辞）、开工 gate（未决==0 + 签字）、评审生命周期终态（bug#4）、双重 replan guard 全部沿用不动。
+
+---
+
 **方案评审 v4（待 Windows 真机验证，未定版）**——ADR 0019 v4，让评审"像两个模型讨论"：
 
 ### Changed

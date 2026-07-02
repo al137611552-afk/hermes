@@ -1,6 +1,7 @@
 # ADR 0019 — Architecture Review Mode（规划模式下的多角色方案评审，草案）
 
-状态：**v4 已实现（"可见分屏辩论 + 产品⟷技术双镜头 + 默认异构 + 生命周期终态"四项均落地并全回归绿，待 Windows 真机验后定版）**（2026-07-02）。本 ADR 先于实现立项——把设计基线定下来再动工，
+状态：**v5 已实现待验证（引擎级重构为 hub-and-spoke 真讨论：每评审员只与主模型双边对话，主模型逐轮回复是唯一改 Decision 状态处；已编码 + 全回归绿，待 Windows 真机验后定版）**（2026-07-02）。
+此前：**v4 已实现（"可见分屏辩论 + 产品⟷技术双镜头 + 默认异构 + 生命周期终态"四项均落地并全回归绿）**。本 ADR 先于实现立项——把设计基线定下来再动工，
 正是用"先评审再动工"的方式来设计这个"评审再动工"功能本身。**v2 = 第一轮评审收敛**（GPT proposal → Execution+Architecture
 review → Consensus，锁五条约束）；**v3 = 第二轮评审收敛**（针对"单模型 review 是否受限"，锁"Reviewer 是契约非模型 +
 异构靠 `Role.model` 接线 mapping + 复杂度门控第二模型"，见「单模型 vs 异构模型」）；**v4 = 第三轮评审收敛**（针对"现产物像单模型提炼、看不到讨论过程"这一真机反馈，锁"对冲角色改 产品⟷技术、
@@ -224,3 +225,30 @@ Consensus 只总结（禁发明）。其中"Reviewer 禁重写"**引擎已物理
 - **改成自由 chat arena 式两模型对话**——否决。无结构不收敛、逼用户读长文；保留 Decision 对象 + 停止条件的结构化辩论，只把过程"变可见"。
 
 **Deferred（后置，附触发条件）**：~~逐 token 实时流式分屏~~——**已提前实现**（用户拍板"直接做实时流式"，跳过整轮显示 MVP）。异构模型的自动复杂度触发——仍手动/config（不自动升第二模型，评审是低频主动动作）。
+
+## v5 变更（引擎级重构：hub-and-spoke 真讨论）
+
+**真机反馈驱动**：v4 虽把结构化辩论"变可见"，但两评审员**彼此看不到、主模型也不下场**——`apply_review` 机械把两份评审 JSON 折叠进 Decision，结尾 `render_consensus` 只是**机械分组**，主模型全程不逐轮回复。产物仍像"把评审 JSON 拼起来"，不像"我的方案被人挑刺、我逐条回应、最后收敛"。
+
+**诊断**：v4 是 arena-lite（两评审员各说各话 + 机械合并），不是真讨论。真讨论要有一个 **hub**——主模型——逐轮读双方意见、逐条采纳/反驳/追问，并**亲自拍板**改不改方案。
+
+**锁定（v5 重构）——hub-and-spoke：每个评审员只与主模型双边对话，不是评审员互相谈**：
+
+1. **轮次结构**：第 1 轮两评审员（产品/市场镜头 + 技术镜头）基于主模型的方案各出批评/建议 → **主模型逐一回复**（采纳/反驳/追问，针对具体 Decision）；第 2 轮评审员基于主模型的回复再谈 → 主模型再回复或收敛；**最多 3 轮**（沿用可数停止条件：max_rounds / 无新增阻塞 / 连两轮仅措辞变动，`should_stop` 不动）。
+2. **决策权归主模型（决策 A）**：评审员**只进言**，`run_review` 不再对评审员输出调 `apply_review`；**只有主模型的逐轮回复（`apply_main_reply`）能改 Decision 的 status/blocking/current_choice**——这是全流程唯一改状态处。**评审员禁改 current_choice**（`apply_review` 物理强制、ADR 原则不变）；主模型**可**改 current_choice（它是决策者）。
+3. **每轮一次主模型调用（决策 B）**：接受成本（约 3 次主模型 + 6 次评审调用/次深评审）。这是低频手动动作，可接受；不为省调用牺牲"真讨论"。
+4. **主模型硬纪律（防退化成"更慢的假讨论"）**：`MAIN_REPLY_DIRECTIVE` 明令主模型每轮回复必须**绑定具体 Decision id、可证伪、真做取舍**，**禁**"你们说得都有道理/综合考虑"这类空话（沿用项目既有禁"感觉不错"的可证伪约束风格）。**禁共识百分比/评分**（ADR 0014 禁 score 不破）。
+5. **停止/收敛门槛不变**：`should_stop` 三条可数停止条件、`escalate_unresolved`（收敛后 Open→NeedUser）、开工 gate（未决阻塞==0 + 用户签字）全部沿用——收敛判定基于**主模型 apply 后**的 Decision 状态。
+
+**引擎 seam**：主模型复用 `review_fn(name, prompt)` seam，保留名 `MAIN="main"`；接线层 `_design_review_provider_for` 缺省把 `"main"` 路由到当前会话主模型（`self.active_model`），想异构收敛档在 config `design_review_models` 加 `main` 键即可。`make_review_fn` 给主模型放宽 `main_max_tokens`（逐条回复更长，别被评审员紧上限切断）。
+
+**流式事件（v5 新增）**：每轮 `round_start → reviewer_done×2 → main_reply_start → (review_delta name="main") → main_reply_done → …→ converged → done`。前端分屏两列（产品/技术）下方新增整宽「主模型回复」区，逐轮累加、逐 token 打字（守 WebView2 滚动坑：padding 缩进、不设 overflow-x）。
+
+**保持不动**：Decision 对象为评审单位、四态=Decision.status、gate 卡可数阻塞（禁百分比）、`_run_reviewers_serial`（评审员串行流式，避免同 key 并发限流）、评审生命周期终态（`_review_applied`，修 bug#4）、双重 replan guard（`_review_applying`）。
+
+**实现切片（均已落地，全回归绿）**：① ✅ 引擎 `design_review.py`：新增 `MAIN`/`MAIN_REPLY_DIRECTIVE`/`build_main_reply_prompt`/`apply_main_reply`；`run_review` 轮循环改 hub-and-spoke（评审员只进言→主模型回复→apply_main_reply→判停）；`make_review_fn` 加 `main_max_tokens`。② ✅ `conversation.py`：worker 透传 `main_max_tokens=None` + `main_reply_start/done` 事件（`on_event` 前缀透传）+ `review_delta` name="main" 透传；`_design_review_provider_for` 缺省路由 main→主档。③ ✅ 前端：`app.js` 加 `debateMainReplyStart/debateMainDelta/debateMainReplyDone` + 整宽回复区 DOM；`pure.js` 加 `DEBATE_MAIN/DEBATE_MAIN_LABEL/debateMainRoundLabel`；`style.css` 加 `.rvd-main*`。④ ✅ 测试：`test_design_review.py`（主模型是唯一改状态处 / 评审员进言不改状态 / 主模型可改 current_choice / 每轮一次主模型调用且封顶 / 流式含 main_reply）、`test_conversation.py`（端到端主模型驱动状态 + 反例 advice-only 不改状态 + 流式序列含 main_reply）。⑤ ✅ 全回归（Python 58 文件 / design_review 36 / conversation 93 / 前端 55 / Golden 3）全绿。⑥ ✅ ADR/DEVLOG/CHANGELOG。⑦ Windows 真机验（待）→ 定版（待）。
+
+**第四轮（v5）评审收敛记录**：
+- **Accepted**：hub-and-spoke 每评审员只与主模型双边对话；主模型逐轮回复是唯一改状态处（决策 A）；每轮一次主模型调用（决策 B）；主模型禁空话可证伪；停止/gate/禁 score 全不动。
+- **Rejected**：~~评审员互相直接对话（真 arena）~~——否决，无 hub 不收敛、成本发散；~~保留 `apply_review` 折叠评审员 JSON 到状态~~——否决，那正是"假讨论"根因，改为评审员只进言。
+- **Deferred**：主模型回复里再嵌套子评审 / 多 hub——后置，YAGNI；异构收敛档自动选择——仍 config 手动。

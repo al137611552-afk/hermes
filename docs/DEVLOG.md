@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-07-02 — 方案评审 v5：引擎级重构为 hub-and-spoke 真讨论（待验证）
+
+真机反馈"v4 产物仍像把评审 JSON 拼起来、主模型不下场"驱动的引擎级重构（ADR 0019 v5）。把评审从 arena-lite（两评审员各说各话 + 机械 `apply_review` 折叠 + 机械 `render_consensus` 分组）改成 **hub-and-spoke**：每个评审员只与**主模型**双边对话，主模型逐轮读双方意见、逐条采纳/反驳/追问，**亲自拍板**改方案。
+
+- **做了什么**：
+  - **引擎 `design_review.py`（核心重构）**：新增主模型（hub）环节——`MAIN="main"`（复用 `review_fn` seam 的保留名）、`MAIN_REPLY_DIRECTIVE`（硬纪律：逐条绑定 Decision id、可证伪、真取舍、**禁"你们说得都有道理"空话**、禁 score）、`build_main_reply_prompt(decisions, reviewer_outputs)`（把当前 Decision + 本轮两评审员散文进言喂给主模型，剥掉评审员的 ```json 建议块）、`apply_main_reply`（**全流程唯一改 Decision 状态处**：可改 status/blocking/**current_choice**）。`run_review` 轮循环改为：`round_start → 两评审员串行流式进言（不 apply）→ main_reply_start → 主模型流式回复 → apply_main_reply → 判停`。`make_review_fn` 加 `main_max_tokens`（主模型逐条回复更长，放宽上限免切断）。
+  - **决策 A（决策权归主模型）**：`run_review` **不再对评审员输出调 `apply_review`**——评审员只进言、作为参考喂给主模型；`apply_review` 仍**物理禁改 current_choice**（评审员碰不到方案选择，ADR 原则不破）；`apply_main_reply` 是主模型专用、**能**改 current_choice。
+  - **决策 B（每轮一次主模型调用）**：一轮 = 2 评审 + 1 主模型；最多 3 轮（`should_stop` 三条可数停止条件全不动，收敛判定基于主模型 apply 后状态）。
+  - **`conversation.py` 接线**：worker 透传 `main_max_tokens=None` + `on_event` 前缀透传 `review_main_reply_start/done`；`review_delta`（name="main"）走同一 `on_delta`；`_design_review_provider_for` 缺省把 `"main"` 路由到会话主模型（异构收敛档在 config 加 `main` 键）。
+  - **前端**：`app.js` 加 `debateMainReplyStart/debateMainDelta/debateMainReplyDone` + 两列下方**整宽「主模型回复」区**（逐轮、逐 token 打字、done 时渲 markdown 只显散文）；`pure.js` 加 `DEBATE_MAIN/DEBATE_MAIN_LABEL/debateMainRoundLabel`；`style.css` 加 `.rvd-main*`（守 WebView2 滚动坑：padding 缩进、不设 overflow-x）。
+- **关键决策**：hub-and-spoke（评审员只与主模型双边对话，非评审员互谈——无 hub 不收敛、成本发散）；主模型是唯一改状态处（评审员仅进言）；接受成本（≈3 主模型 + 6 评审调用/次深评审，低频手动动作可接受）；ADR 硬骨架全不动（Decision 为评审单位、评审员禁改 current_choice、四态=status、gate 卡可数阻塞禁百分比、可数停止条件）。
+- **自检**：Python 全量 **58/58**（`test_design_review.py` **36/36**、`test_conversation.py` **93/93**，新增覆盖：主模型是唯一改状态处 / 评审员进言不改状态 / 主模型可改 current_choice / 每轮一次主模型调用且轮数封顶 / 流式序列含 main_reply / 端到端 advice-only 反例不改状态）；前端 node:test **55/55**（新增 hub role 纯逻辑用例）；Golden **3/3**（决策内核回归门绿，未动 `should_stop`/`gate_status`）。
+- **验证状态**：**待 Windows 真机验证**（开发环境 Linux 无 GUI，跑不了 pywebview + 真实模型调用）。**未定版**——验证通过后再同步 pyproject/CHANGELOG/PRD 并定版。
+- **Windows 验证清单**（请依次核对）：
+  1. 规划模式产出方案 → 点评审 → 分屏两列「产品/技术」逐轮逐 token 打字进言完毕后，**两列下方整宽「主模型回复」区**出现并逐 token 打字（第 1/2/3 轮各一块）。
+  2. 主模型回复**言之有物**：逐条点名 Decision、明说采纳了谁/反驳了谁/为什么，**无"你们说得都有道理"这类空话**、无百分比/评分。
+  3. **只有主模型的回复改方案**：评审员进言里若建议某决策 Accepted/NeedUser，但主模型未采纳，则该决策状态**不变**；主模型可改 current_choice 时，右侧面板/共识里的选择应随主模型回复更新。
+  4. 最多 3 轮收敛；收敛横幅 → 右侧四态共识 + gate；NeedUser 锁 gate，拍板+签字后「开始编码」可点。
+  5. 异构档：给 product/technical（可选 main）各选不同模型档，三方口吻确有差异。
+  6. **bug#4 复验**：开始编码后切走再切回，评审面板不重现、无法重复开工；↻ 重跑复活面板。
+  7. 长对话下分屏（含新整宽回复区）**不触发 WebView2 滚轮跳顶**（滚长对话验，别只看截图）。
+- **遗留**：异构收敛档自动选择仍手动/config；主模型回复里再嵌套子评审/多 hub 后置（YAGNI）；macOS WKWebView 待有 Mac 后验。
+
+---
+
 ## 2026-07-02 — 方案评审 v4：可见分屏辩论 + 产品⟷技术双镜头 + 默认异构 + 生命周期终态（待验证）
 
 真机反馈"现产物像把主模型内容提炼成几个确认项、看不到模型间讨论过程"驱动的评审重做（ADR 0019 v4）。

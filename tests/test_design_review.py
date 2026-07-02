@@ -127,6 +127,45 @@ def test_apply_review_ignores_unknown_ids_and_garbage():
     assert apply_review(ds, '[{"id":"zzz","status":"Rejected"}]')[0].status == ACCEPTED  # 未知 id 不动
 
 
+def test_apply_review_never_touches_current_choice():
+    # 评审员进言禁改 current_choice（ADR 原则，apply_review 物理强制）——即便 JSON 里带了也无视。
+    ds = [_d("d1", OPEN, choice="SQLite")]
+    out = apply_review(ds, '[{"id":"d1","status":"Accepted","current_choice":"DuckDB"}]')
+    assert out[0].current_choice == "SQLite" and out[0].status == ACCEPTED  # 状态改了、选择没被评审员改
+
+
+def test_apply_main_reply_changes_status_blocking_and_choice():
+    # 主模型 apply（决策 A）：可改 status、增删 blocking，且**可改 current_choice**（评审员不能）。
+    from agentcore.agent.design_review import apply_main_reply
+    ds = [_d("d1", OPEN, ["旧问"], choice="SQLite"), _d("d2", OPEN, choice="x")]
+    reply = ('逐条回复。\n```json\n[{"id":"d1","current_choice":"DuckDB","status":"Accepted",'
+             '"resolve_blocking":["旧问"],"add_blocking":["容量上限待测"]}]\n```')
+    out = {d.id: d for d in apply_main_reply(ds, reply)}
+    assert out["d1"].current_choice == "DuckDB" and out["d1"].status == ACCEPTED
+    assert out["d1"].blocking == ["容量上限待测"]              # 旧问解决、新问加入
+    assert out["d2"].status == OPEN                            # 未提到的原样
+
+
+def test_apply_main_reply_ignores_garbage_and_unknown():
+    from agentcore.agent.design_review import apply_main_reply
+    ds = [_d("d1", ACCEPTED, choice="X")]
+    assert apply_main_reply(ds, "大白话没 JSON")[0].status == ACCEPTED
+    out = apply_main_reply(ds, '[{"id":"zzz","status":"Rejected"}]')[0]
+    assert out.status == ACCEPTED and out.current_choice == "X"   # 未知 id 不动
+
+
+def test_build_main_reply_prompt_carries_decisions_and_reviewer_advice():
+    from agentcore.agent.design_review import build_main_reply_prompt
+    ds = [_d("d1", OPEN, ["未决Y"], choice="SQLite")]
+    outputs = [("product", "产品觉得优先级不对\n```json\n[{\"id\":\"d1\"}]\n```"),
+               ("technical", "技术担心迁移成本")]
+    p = build_main_reply_prompt(ds, outputs)
+    assert "id=d1" in p and "未决Y" in p
+    assert "产品觉得优先级不对" in p and "技术担心迁移成本" in p    # 双方进言都喂给主模型
+    assert "```json" not in p.split("技术担心迁移成本")[0].split("产品觉得优先级不对")[1]  # 评审员建议块被剥掉（对主模型是噪声）
+    assert "决策 JSON 数组" in p and "禁" in p                    # 主模型输出契约 + 禁空话纪律
+
+
 # ── Consensus 渲染 ──────────────────────────────────────────────────────────
 def test_render_consensus_groups_by_status_no_percent():
     ds = [_d("a", ACCEPTED), _d("b", REJECTED), _d("c", DEFERRED), _d("d", NEEDUSER)]
@@ -138,14 +177,16 @@ def test_render_consensus_groups_by_status_no_percent():
 
 # ── 端到端编排（注入假 review_fn，不碰网络）────────────────────────────────
 def test_run_review_converges_and_gates():
-    # reviewer 第一轮把 d1 提成 NeedUser；之后不再有新增 → 收敛
-    state = {"calls": 0}
+    # v5 hub-and-spoke：评审员进言 NeedUser，但**只有主模型回复**能改状态；主模型采纳后 d1 转 NeedUser。
+    from agentcore.agent.design_review import MAIN
 
-    def fake_review_fn(name, prompt):                       # seam 现在带 reviewer 名
-        state["calls"] += 1
-        if name == "product" and state["calls"] <= 2:     # 仅 product 首轮提一次
-            return '[{"id":"d1","status":"NeedUser","add_blocking":["太大，拆小"]}]'
-        return "[]"                                          # 之后无意见 → 零新增 blocking
+    def fake_review_fn(name, prompt):                       # seam 带 reviewer 名 + 主模型保留名 MAIN
+        if name == "product":                               # 评审员进言（不直接改状态）
+            return '```json\n[{"id":"d1","status":"NeedUser","add_blocking":["太大，拆小"]}]\n```'
+        if name == MAIN:                                    # 主模型采纳进言 → 唯一改状态处
+            return '主模型：采纳 product 对 d1 的意见，d1 需用户拍板。\n' \
+                   '```json\n[{"id":"d1","status":"NeedUser","add_blocking":["太大，拆小"]}]\n```'
+        return "[]"                                          # technical 无意见
 
     ds = [_d("d1", OPEN), _d("d2", ACCEPTED)]
     res = run_review(ds, fake_review_fn, max_rounds=4)
@@ -156,15 +197,50 @@ def test_run_review_converges_and_gates():
     assert "Consensus" in res["consensus"]
 
 
-def test_run_review_routes_by_reviewer_name_heterogeneous():
-    # 异构 seam：引擎按 name 喊 reviewer，接线层可据 name 路由到不同"模型"。
+def test_main_reply_is_only_thing_that_changes_state():
+    # 决策 A：评审员进言 NeedUser + add_blocking，但主模型回复 "[]"（不表态）→ 状态**不变**（d1 仍 Open）。
+    from agentcore.agent.design_review import MAIN
+
+    def rf(name, prompt):
+        if name in ("product", "technical"):
+            return '```json\n[{"id":"d1","status":"NeedUser","add_blocking":["评审员想改"]}]\n```'
+        if name == MAIN:
+            return "[]"                                      # 主模型不采纳、不表态
+        return "[]"
+    res = run_review([_d("d1", OPEN, choice="X")], rf, max_rounds=2)
+    d = res["decisions"][0]
+    # 评审员的 NeedUser/add_blocking 未生效：主模型没 apply。d1 收敛后仍 Open → escalate 成 NeedUser（守活性），
+    # 但**关键**是评审员提的 "评审员想改" blocking 没进来（主模型才是唯一改状态处）。
+    assert "评审员想改" not in d.blocking
+    assert d.current_choice == "X"                           # 评审员碰不到 current_choice
+
+
+def test_main_reply_can_change_current_choice():
+    # 决策 A：主模型（且仅主模型）能改 current_choice。
+    from agentcore.agent.design_review import MAIN
+
+    def rf(name, prompt):
+        if name == MAIN:
+            return '定稿。\n```json\n[{"id":"d1","current_choice":"DuckDB","status":"Accepted"}]\n```'
+        return "[]"
+    res = run_review([_d("d1", OPEN, choice="SQLite")], rf, max_rounds=2)
+    d = res["decisions"][0]
+    assert d.current_choice == "DuckDB" and d.status == ACCEPTED
+
+
+def test_run_review_routes_by_reviewer_name_and_calls_main():
+    # 异构 seam：引擎按 name 喊两评审员 + 主模型（MAIN），接线层据 name 路由到不同"模型"。
+    from agentcore.agent.design_review import MAIN
     seen = []
 
     def routing_review_fn(name, prompt):
-        seen.append(name)                                   # 记录两个角色都被分别调用
+        seen.append(name)                                   # 记录三方都被分别调用
         return "[]"
-    run_review([_d("a", ACCEPTED)], routing_review_fn, max_rounds=2)
-    assert "product" in seen and "technical" in seen   # 两脑子分别按名被调，可各接各模型
+    run_review([_d("a", OPEN)], routing_review_fn, max_rounds=2)
+    assert "product" in seen and "technical" in seen        # 两评审员分别按名被调
+    assert MAIN in seen                                      # 主模型每轮也被调（hub）
+    # 时序：本轮两评审员先进言，主模型后回复（hub-and-spoke）
+    assert seen.index(MAIN) > seen.index("product") and seen.index(MAIN) > seen.index("technical")
 
 
 def test_escalate_open_to_needuser_preserves_others():
@@ -232,9 +308,28 @@ def test_run_review_survives_reviewer_exception():
     assert res["gate"]["can_start"] is False                # 没签字
 
 
+def test_run_review_bounded_rounds_one_main_call_each():
+    # 决策 B（每轮 1 次主模型调用）+ 停止条件（可数、封顶于 max_rounds）：主模型每轮都改架构签名（换 choice）
+    # 并新增 blocking → no_new_blocking/wording_only 都不触发 → 跑到轮数上限封顶。
+    # run_review 的 rounds 含初始快照，故 max_rounds=4 → 3 个评审轮（= 3 次主模型调用）。
+    from agentcore.agent.design_review import MAIN
+    main_calls = {"n": 0}
+
+    def rf(name, prompt):
+        if name == MAIN:
+            main_calls["n"] += 1
+            n = main_calls["n"]
+            return ('回复。\n```json\n[{"id":"d1","current_choice":"选%d","status":"Open",'
+                    '"add_blocking":["第%d轮新问"]}]\n```' % (n, n))
+        return "[]"
+    res = run_review([_d("d1", OPEN)], rf, max_rounds=4)
+    assert main_calls["n"] == 3                             # 3 个评审轮、每轮恰 1 次主模型调用（决策 B）
+    assert res["stop_reason"] == "max_rounds"
+
+
 def test_build_review_prompt_carries_decisions_and_json_spec():
     p = build_review_prompt("你是评审员", [_d("d1", OPEN, ["未决X"])])
-    assert "id=d1" in p and "未决X" in p and "结论 JSON 数组" in p
+    assert "id=d1" in p and "未决X" in p and "建议** JSON 数组" in p and "只是进言" in p
 
 
 # ── IO 适配器 make_review_fn（假 provider，不碰网络）─────────────────────────
@@ -280,11 +375,15 @@ def test_session_from_proposal_parses_decisions():
 
 
 def test_session_review_then_resolve_then_sign_opens_gate():
+    from agentcore.agent.design_review import MAIN
     s = DesignReviewSession([_d("d1", OPEN), _d("d2", ACCEPTED)], max_rounds=3)
 
     def rf(name, prompt):
-        return '[{"id":"d1","status":"NeedUser","add_blocking":["要拍板"]}]' if name == "product" \
-            else "[]"
+        if name == "product":
+            return '```json\n[{"id":"d1","status":"NeedUser","add_blocking":["要拍板"]}]\n```'
+        if name == MAIN:                                    # 主模型采纳 product 进言 → 唯一改状态处
+            return '采纳。\n```json\n[{"id":"d1","status":"NeedUser","add_blocking":["要拍板"]}]\n```'
+        return "[]"
     s.review(rf)
     assert s.gate()["blocking_count"] >= 1 and s.can_start() is False   # d1 待拍板
     # 用户拍板 d1 → 清空 blocking、定稿；签字 → 开
@@ -306,17 +405,26 @@ def test_session_resolve_rejects_bad_status_and_resets_signature():
     assert s.signed is False and s.can_start() is False  # 改后作废签字（防签完偷改）
 
 
-def test_run_review_emits_streaming_events():
-    # v4 实时流式：run_review 逐轮/逐角色发进度事件，供 conversation 转前端分屏
+def test_run_review_emits_streaming_events_with_main_reply():
+    # v5 实时流式：run_review 每轮发 round_start → reviewer_done×2 → main_reply_start/done → converged。
+    from agentcore.agent.design_review import MAIN
     events = []
 
     def rf(name, prompt):
-        return '```json\n[{"id":"d1","status":"Accepted"}]\n```' if name == "product" else "[]"
+        if name == "product":
+            return '```json\n[{"id":"d1","status":"Accepted"}]\n```'
+        if name == MAIN:
+            return '主模型采纳。\n```json\n[{"id":"d1","status":"Accepted"}]\n```'
+        return "[]"
     run_review([_d("d1", OPEN)], rf, max_rounds=2,
                on_event=lambda kind, p: events.append((kind, p)))
     kinds = [k for k, _ in events]
     assert "round_start" in kinds and "reviewer_done" in kinds and "converged" in kinds
+    assert "main_reply_start" in kinds and "main_reply_done" in kinds   # 主模型逐轮回复事件
     assert any(p.get("reviewer") == "product" for k, p in events if k == "reviewer_done")
+    # 时序：一轮内 reviewer_done 都在 main_reply_start 之前
+    seq = [k for k in kinds if k in ("reviewer_done", "main_reply_start")]
+    assert seq[:3] == ["reviewer_done", "reviewer_done", "main_reply_start"]
 
 
 def test_apply_review_parses_prose_then_json():

@@ -304,10 +304,13 @@ def migrate_reviewer_models(mapping) -> dict:
     return out
 
 _REVIEW_OUTPUT_SPEC = (
-    "\n\n请分两部分作答：\n"
+    "\n\n**你只是进言，不做决定**：hub-and-spoke（ADR 0019 v5）——你只向**主模型**进言，最终采纳/反驳/收敛"
+    "全由主模型逐条回复决定。你**建议**的 status/blocking 是给主模型的参考，不会直接改动方案；尤其**不得替方案"
+    "改 current_choice**（那是主模型的权，你只挑问题）。\n"
+    "请分两部分作答：\n"
     "① 先用简洁中文写你的评审意见——针对你有看法的 Decision，说清「当前选择 vs 备选」的问题/风险/建议"
-    "（这是给用户看的讨论，像同行评审一样直说，别客套）；\n"
-    "② 最后另起一行，输出结构化结论 JSON 数组（用 ```json 代码块包裹），每个你评过的 Decision 一项：\n"
+    "（这是给用户与主模型看的讨论，像同行评审一样直说，别客套）；\n"
+    "② 最后另起一行，输出结构化**建议** JSON 数组（用 ```json 代码块包裹），每个你评过的 Decision 一项：\n"
     '```json\n[{"id":"<决策id>","status":"Accepted|Rejected|Deferred|NeedUser",'
     '"add_blocking":["新提的阻塞问题"],"resolve_blocking":["你认为已澄清的旧阻塞"]}]\n```\n'
     "没有意见的决策不要列。JSON 必须是最后一段、可被机器解析（散文里别用方括号）。"
@@ -328,6 +331,113 @@ def build_review_prompt(role_directive: str, decisions) -> str:
             body.append(f"  现存未决：{'; '.join(d.blocking)}")
         body.append(f"  当前状态：{d.status}")
     return role_directive + "\n\n" + "\n".join(body) + _REVIEW_OUTPUT_SPEC
+
+
+# ── 主模型（hub）逐轮回复 directive + prompt + apply（ADR 0019 v5：唯一改 Decision 状态处）────
+# hub-and-spoke：两评审员各自只向主模型进言（build_review_prompt），主模型逐轮读双方意见 → 逐 Decision 表态
+# （采纳/反驳/追问、真做取舍）→ 输出结构化决策 JSON。**这是全流程唯一能改 Decision 的 status/blocking/current_choice
+# 的地方**（决策 A）；评审员的 JSON 只当参考进言（apply_review 从不被 run_review 调用于评审员输出）。
+MAIN_REPLY_DIRECTIVE = (
+    "【主模型收敛】你是这份方案的**主模型（决策者）**。两位评审员（产品镜头、技术镜头）刚对你的方案逐条进言，"
+    "你要**逐一回复**并对每个被点到的 Decision 做出**决定**——这是 hub-and-spoke：评审员只进言，改不改方案由你拍。\n"
+    "硬纪律（否则退化成假讨论，必须遵守）：\n"
+    "① **言之有物**：每条回复必须**绑定具体 Decision id**、可证伪、真做取舍——明说采纳了谁的哪条、反驳了谁的哪条、"
+    "为什么。**禁**「你们说得都有道理 / 综合考虑 / 都很合理」这类空话（同项目既有禁「感觉不错」的可证伪纪律）。\n"
+    "② 采纳某评审员提的问题→把它写进该 Decision 的 add_blocking 或改 status；反驳→在散文里给可证伪理由并 resolve_blocking；"
+    "拿不定的产品/技术方向→status=NeedUser 交用户拍板。\n"
+    "③ 你**可以**调整 current_choice（把方案改得更好，这是你的权），但要在散文里说清为什么改。\n"
+    "④ 停止条件是可数的：不制造无谓的新 blocking 来拖轮次；该收敛就收敛（把已澄清的移进 resolve_blocking）。**禁任何"
+    "共识百分比/评分**。"
+)
+_MAIN_REPLY_OUTPUT_SPEC = (
+    "\n\n请分两部分作答：\n"
+    "① 先用简洁中文**逐条回复**评审员意见——每条点名 Decision id，说清你采纳/反驳/追问了什么、为什么（可证伪、真取舍，"
+    "禁空话）；\n"
+    "② 最后另起一行，输出结构化决策 JSON 数组（用 ```json 代码块包裹），**只列你本轮做了决定的 Decision**：\n"
+    '```json\n[{"id":"<决策id>","current_choice":"<你定的选择，可留原样>",'
+    '"status":"Accepted|Rejected|Deferred|NeedUser|Open",'
+    '"add_blocking":["你决定保留/新增的阻塞问题"],"resolve_blocking":["你判定已澄清的阻塞"]}]\n```\n'
+    "没做决定的 Decision 不要列（保持原状）。JSON 必须是最后一段、可被机器解析（散文里别用方括号）。"
+)
+
+
+def build_main_reply_prompt(decisions, reviewer_outputs) -> str:
+    """组织主模型一轮回复的提示：当前 Decision 快照 + 本轮两评审员的进言（散文+建议 JSON 原文）。
+
+    `reviewer_outputs` = [(name, text), ...]（本轮评审员输出，按序）。主模型读双方意见 + 当前决策，
+    逐条表态并输出结构化决策 JSON（唯一改状态处）。
+    """
+    body = ["以下是当前方案的决策列表：", ""]
+    for d in decisions:
+        body.append(f"- id={d.id} | {d.title}")
+        body.append(f"  当前选择：{d.current_choice or '—'}")
+        if d.alternatives:
+            body.append(f"  备选：{json.dumps(d.alternatives, ensure_ascii=False)}")
+        if d.rationale:
+            body.append(f"  理由：{d.rationale}")
+        if d.blocking:
+            body.append(f"  现存未决：{'; '.join(d.blocking)}")
+        body.append(f"  当前状态：{d.status}")
+    body.append("")
+    body.append("本轮两位评审员的进言如下（这是给你参考的意见，不是已生效的改动）：")
+    for name, text in reviewer_outputs:
+        label = dict(REVIEWERS).get(name, name)
+        # 只取评审员散文意见段（```json 建议块对主模型是噪声，主模型自己重新决策）；无 splitter 依赖，就地截断。
+        prose = text or ""
+        fi = prose.rfind("```json")
+        if fi >= 0:
+            prose = prose[:fi]
+        body.append("")
+        body.append(f"【{name}｜{label}】")
+        body.append(prose.strip() or "（本镜头无意见）")
+    return MAIN_REPLY_DIRECTIVE + "\n\n" + "\n".join(body) + _MAIN_REPLY_OUTPUT_SPEC
+
+
+def apply_main_reply(decisions, reply_text: str) -> list:
+    """把主模型一轮回复的 JSON 决策合并进决策集——**唯一改 Decision 状态处**（决策 A，ADR 0019 v5）。
+
+    与 `apply_review`（评审员进言，禁改 current_choice）的关键区别：主模型**可**改 current_choice。
+    其余（status 校验、add/resolve blocking、优先 fenced 数组解析）沿用同款容错。未提到的决策原样保留。
+    纯函数，返回新列表。
+    """
+    s = reply_text or ""
+    segment = s
+    fi = s.rfind("```json")
+    if fi >= 0:
+        rest = s[fi + len("```json"):]
+        end = rest.find("```")
+        segment = rest if end < 0 else rest[:end]
+    review = _first_json(segment, "[", "]")
+    if not isinstance(review, list):
+        return list(decisions)
+    by_id = {r.get("id"): r for r in review if isinstance(r, dict) and r.get("id")}
+    out = []
+    for d in decisions:
+        r = by_id.get(d.id)
+        if not r:
+            out.append(d)
+            continue
+        new_status = str(r.get("status") or d.status).strip()
+        if new_status not in (_CONSENSUS_STATES + (OPEN,)):
+            new_status = d.status
+        # 决策 A：主模型（且仅主模型）能定稿 current_choice；缺省/空则保留原选择。
+        new_choice = d.current_choice
+        if "current_choice" in r:
+            c = str(r.get("current_choice") or "").strip()
+            if c:
+                new_choice = c
+        blocking = list(d.blocking)
+        for b in (r.get("add_blocking") or []):
+            b = str(b).strip()
+            if b and b not in blocking:
+                blocking.append(b)
+        for b in (r.get("resolve_blocking") or []):
+            b = str(b).strip()
+            if b in blocking:
+                blocking.remove(b)
+        out.append(Decision(d.id, d.title, new_choice, d.alternatives,
+                             d.rationale, new_status, blocking))
+    return out
 
 
 # 评审 verdict 输出天生紧凑（每条决策就 {id,status,blocking} 几十 token），此上限是**防长篇大论的安全网**、
@@ -373,12 +483,21 @@ def escalate_unresolved(decisions) -> list:
     return out
 
 
-def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
-               timeout: int = REVIEW_TIMEOUT_S, on_event=None) -> dict:
-    """跑完整一轮多角色评审直到停止条件命中。
+MAIN = "main"                    # 主模型（hub）在 review_fn seam 里的保留名——接线层据此路由到主模型档
+MAIN_REPLY_TIMEOUT_S = 120       # 主模型逐轮回复超时（比评审员宽：它要读双方意见 + 逐条表态，输出更长）
 
-    `review_fn(name, prompt)->str` 注入式 seam（同 judge 范式）：引擎按 reviewer **名字**调用，
-    **不认识"模型"**——接线层据 name 把不同角色路由到不同模型档案（异构 = 那一个 mapping）。
+
+def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
+               timeout: int = REVIEW_TIMEOUT_S, on_event=None,
+               main_timeout: int = MAIN_REPLY_TIMEOUT_S) -> dict:
+    """跑完整多轮 hub-and-spoke 评审直到停止条件命中（ADR 0019 v5）。
+
+    每轮：两评审员各自**只向主模型进言**（串行流式，避免同 key 并发限流）→ **主模型逐轮回复**（读双方意见、
+    逐 Decision 表态、输出结构化决策 JSON）→ apply 主模型 JSON（**唯一改 Decision 状态处**，决策 A）→ 判停止。
+    评审员的进言**不改 Decision 状态**（apply_review 不在此调用），只作为参考喂给主模型。
+
+    `review_fn(name, prompt)->str` 注入式 seam：引擎按名字调用——评审员名（product/technical）+ 主模型保留名
+    MAIN（"main"）；接线层据 name 路由到不同模型档（异构 = 那一个 mapping）。**每轮一次主模型调用**（决策 B）。
     返回 {decisions, rounds, stop_reason, consensus, gate}。纯编排：不碰网络（review_fn 自理）。
     """
     def _emit(kind, payload):
@@ -397,13 +516,22 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
             break
         round_idx += 1
         _emit("round_start", {"round": round_idx})
-        # 一轮内两个角色**顺序**：都审同一份轮初快照（独立双审），各自超时/故障→空评审跳过。
-        # v4 由并行改顺序——分屏逐个流式打字像"讨论"，且规避同 key 并发被限流（见 _run_reviewers_serial）。
+        # 1) 两评审员**顺序**进言：都审同一份轮初快照（独立双审），各自超时/故障→空进言跳过。
+        #    v4 由并行改顺序——分屏逐个流式打字像"讨论"，且规避同 key 并发被限流（见 _run_reviewers_serial）。
+        #    v5：评审员输出**不 apply**（只进言），逐条 emit 供前端分屏。
         prompts = [(name, build_review_prompt(directive, cur)) for name, directive in reviewers]
         outs = _run_reviewers_serial(review_fn, prompts, timeout=timeout)
-        for (name, _directive), out in zip(reviewers, outs):   # 顺序合并两份评审（apply 只改 status/blocking）
-            cur = apply_review(cur, out)
+        reviewer_outputs = []
+        for (name, _directive), out in zip(reviewers, outs):
+            reviewer_outputs.append((name, out))
             _emit("reviewer_done", {"round": round_idx, "reviewer": name, "verdict": out})
+        # 2) **主模型逐轮回复**（一次调用）：读双方进言 + 当前决策 → 逐条表态 → 结构化决策 JSON。
+        _emit("main_reply_start", {"round": round_idx})
+        main_prompt = build_main_reply_prompt(cur, reviewer_outputs)
+        main_out = _run_reviewers_serial(review_fn, [(MAIN, main_prompt)], timeout=main_timeout)[0]
+        # 3) apply 主模型 JSON —— **唯一改 Decision 状态处**（决策 A：可改 status/blocking/current_choice）。
+        cur = apply_main_reply(cur, main_out)
+        _emit("main_reply_done", {"round": round_idx, "reply": main_out})
         rounds.append(round_snapshot(cur))
     cur = escalate_unresolved(cur)          # 收敛后仍未定的 Open → NeedUser（交用户拍板，不留死状态）
     _emit("converged", {"stop_reason": stop_reason, "rounds": len(rounds) - 1})
@@ -417,12 +545,14 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
 
 
 # ── IO 适配器：把 provider 包成引擎 seam（唯一碰 provider 的地方，IO 在 provider 内）──
-def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=None):
+def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=None,
+                   main_max_tokens: "int | None" = None):
     """把"按 reviewer 名取 provider"的 `provider_for(name)->provider` 包成 seam `review_fn(name, prompt)->str`。
 
     **异构路由的唯一落点**：provider_for 内部据 name 选不同模型档案（如 `build_provider(config, profile)`），
-    Execution 用主模型、Architecture 路由到异构档即可。`provider_for(name)` 返回 None → 该角色跳过（吐空评审）。
-    本函数同 `_make_research_judge` 范式：自身无 IO，IO 在注入的 provider.stream_chat 内。
+    评审员用异构档、主模型（MAIN="main"）路由到主档即可。`provider_for(name)` 返回 None → 该角色跳过（吐空）。
+    主模型逐轮回复（name==MAIN）更长：用 `main_max_tokens`（缺省=不限，走模型单次预算）而非评审员的紧上限，
+    避免逐条回复被从中间切断。本函数同 `_make_research_judge` 范式：自身无 IO，IO 在注入的 provider.stream_chat 内。
     """
     from ..providers.base import Message      # 延迟导入，保持模块 import 期纯净
 
@@ -430,9 +560,10 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
         provider = provider_for(name)
         if provider is None:
             return "[]"                        # 没配该角色的模型 → 无意见，不阻断评审
+        mt = main_max_tokens if name == MAIN else max_tokens   # 主模型逐轮回复放宽上限（更长、别被切断）
         out = []
         for ev in provider.stream_chat([Message("user", prompt)], system=None,
-                                       tools=[], max_tokens=max_tokens):
+                                       tools=[], max_tokens=mt):
             if getattr(ev, "type", None) == "text":
                 out.append(ev.text)
                 if on_delta:                       # 逐 token 推给前端分屏（v4 实时辩论）
@@ -467,8 +598,8 @@ class DesignReviewSession:
     def review(self, review_fn, on_event=None) -> dict:
         """跑一整轮多角色评审（直到停止条件），更新决策集。返回 run_review 结果。
 
-        on_event(kind, payload)：可选，逐轮/逐角色进度回调（round_start / reviewer_done / converged），
-        供 conversation 转成前端事件做实时分屏；缺省=不回调（纯逻辑/单测不受影响）。
+        on_event(kind, payload)：可选，逐轮进度回调（round_start / reviewer_done / main_reply_start /
+        main_reply_done / converged），供 conversation 转成前端事件做实时分屏；缺省=不回调（纯逻辑/单测不受影响）。
         """
         res = run_review(self.decisions, review_fn, self.max_rounds,
                          timeout=self.timeout, on_event=on_event)

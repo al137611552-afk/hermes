@@ -1365,7 +1365,8 @@ def test_run_autonomous_replan_off_continues_plainly(tmp: Path):
 
 
 class _ReviewProvider:
-    """假 provider：拆方案时吐 Decision JSON；扮 reviewer 时按角色吐评审 JSON（不碰网络）。"""
+    """假 provider（v5 hub-and-spoke）：拆方案吐 Decision JSON；扮两评审员各自**进言**；扮主模型（收敛）时
+    **逐条回复并做决定**——只有主模型的 JSON 改状态（决策 A）。不碰网络。"""
     def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
         from agentcore.providers import StreamEvent
         prompt = str(messages[0].content)
@@ -1374,10 +1375,15 @@ class _ReviewProvider:
         elif "拆成" in prompt:                                 # 拆方案 → Decision 列表
             txt = '[{"id":"db","title":"数据库","current_choice":"SQLite","status":"Open"},' \
                   '{"id":"idx","title":"全文检索","current_choice":"先不做","status":"Open"}]'
-        elif "产品评审" in prompt:                              # 产品/市场镜头
-            txt = '[{"id":"idx","status":"Accepted"}]'
-        elif "技术评审" in prompt:                              # 技术镜头：把 db 升级待拍板
-            txt = '[{"id":"db","status":"NeedUser","add_blocking":["SQLite vs DuckDB 需拍板"]}]'
+        elif "主模型收敛" in prompt:                            # 主模型（hub）逐轮回复 = 唯一改状态处
+            # 采纳产品对 idx 的 Accepted、采纳技术对 db 的升级待拍板
+            txt = ('逐条回复：idx 采纳产品意见定为 Accepted；db 采纳技术意见升级 NeedUser。\n'
+                   '```json\n[{"id":"idx","status":"Accepted"},'
+                   '{"id":"db","status":"NeedUser","add_blocking":["SQLite vs DuckDB 需拍板"]}]\n```')
+        elif "产品评审" in prompt:                              # 产品/市场镜头（只进言）
+            txt = '产品：idx 先不做没问题。\n```json\n[{"id":"idx","status":"Accepted"}]\n```'
+        elif "技术评审" in prompt:                              # 技术镜头（只进言）：建议 db 待拍板
+            txt = '技术：db 选型需拍板。\n```json\n[{"id":"db","status":"NeedUser","add_blocking":["SQLite vs DuckDB 需拍板"]}]\n```'
         else:
             txt = "[]"
         yield StreamEvent("text", txt)
@@ -1451,10 +1457,56 @@ def test_run_design_review_is_threaded_and_streams(tmp: Path):
         assert r.get("started") is True and r["ok"] is True   # 立即返回、不阻塞
         conv._review_thread.join(timeout=30)                  # 等后台线程跑完
         assert not conv._review_thread.is_alive()
-        # 流式事件序列：先 seed，中途 delta（逐 token）与逐轮/逐角色，末尾 done
+        # 流式事件序列（v5）：先 seed，中途 delta（逐 token）、逐轮/逐角色，**含主模型逐轮回复事件**，末尾 done
         assert "review_seed" in seen and "review_delta" in seen and "review_done" in seen
+        assert "review_main_reply_start" in seen and "review_main_reply_done" in seen  # hub 逐轮回复
+        assert seen.index("review_reviewer_done") < seen.index("review_main_reply_start")  # 评审员先进言、主模型后回复
         assert seen[-1] == "review_done"
         assert conv.get_design_review()["ok"] is True         # 线程回填了 session
+    finally:
+        convmod.build_provider = orig
+
+
+class _AdviceOnlyReviewProvider:
+    """v5 决策 A 反例 provider：两评审员照旧进言（建议 idx=Accepted、db=NeedUser），但**主模型只吐 "[]"**（不表态）。
+    验证：评审员的进言**不改状态**——收敛后 idx/db 仍应是 Open（进而被 escalate 成 NeedUser），绝不因评审员建议而定。"""
+    def stream_chat(self, messages, system=None, tools=None, max_tokens=None):
+        from agentcore.providers import StreamEvent
+        prompt = str(messages[0].content)
+        if "拆成" in prompt:
+            txt = '[{"id":"db","title":"数据库","current_choice":"SQLite","status":"Open"},' \
+                  '{"id":"idx","title":"全文检索","current_choice":"先不做","status":"Open"}]'
+        elif "主模型收敛" in prompt:            # 主模型不表态 → 状态不该被评审员建议改动
+            txt = "本轮不做决定。[]"
+        elif "产品评审" in prompt:
+            txt = '```json\n[{"id":"idx","status":"Accepted"}]\n```'
+        elif "技术评审" in prompt:
+            txt = '```json\n[{"id":"db","status":"NeedUser","add_blocking":["评审员想拍板"]}]\n```'
+        else:
+            txt = "[]"
+        yield StreamEvent("text", txt)
+        yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+
+
+def test_reviewer_advice_alone_does_not_change_state(tmp: Path):
+    """决策 A（端到端）：主模型不表态时，评审员建议的 Accepted/NeedUser/add_blocking 一概不生效——
+    唯一改状态处是主模型回复。收敛后两决策均无评审员塞的 blocking，且都被 escalate 成 NeedUser（守活性）。"""
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    conv.res.config.agent.design_review = True
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _AdviceOnlyReviewProvider()
+    try:
+        conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
+        r = conv._run_design_review_worker()
+        ids = {d["id"]: d for d in r["decisions"]}
+        # 评审员塞的 blocking 没进来（主模型才是唯一改状态处）
+        assert "评审员想拍板" not in ids["db"]["blocking"]
+        # 两决策收敛后都还是未定 → escalate 成 NeedUser（不是评审员建议的 Accepted）
+        assert ids["idx"]["status"] == "NeedUser" and ids["db"]["status"] == "NeedUser"
+        assert r["gate"]["can_start"] is False
     finally:
         convmod.build_provider = orig
 

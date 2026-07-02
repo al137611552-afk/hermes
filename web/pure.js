@@ -302,6 +302,13 @@
     product: "产品镜头 · 市场/路线图/价值",
     technical: "技术镜头 · 选型/架构/风险",
   };
+  // v5 hub-and-spoke：主模型（hub）逐轮回复——两评审员只进言，采纳/反驳/收敛由主模型逐条回复决定。
+  const DEBATE_MAIN = "main";
+  const DEBATE_MAIN_LABEL = "主模型回复 · 逐条采纳/反驳/收敛";
+  // 主模型逐轮回复的轮标：给整宽回复区一个"第 N 轮 · 主模型回复"小标题。
+  function debateMainRoundLabel(round) {
+    return `第 ${round || 1} 轮 · ${DEBATE_MAIN_LABEL}`;
+  }
   const DEBATE_STATUS_ZH = {
     Accepted: "采纳", Rejected: "否决", Deferred: "后置", NeedUser: "待拍板",
   };
@@ -378,7 +385,8 @@
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
-    DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_STATUS_ZH, splitVerdictProse, verdictTally, debateConvergedText,
+    DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_MAIN, DEBATE_MAIN_LABEL, debateMainRoundLabel,
+    DEBATE_STATUS_ZH, splitVerdictProse, verdictTally, debateConvergedText,
     planSessionList,
     WS_TAB_KEYS, wsTabVisible, resolveWorkspaceTabs,
   };

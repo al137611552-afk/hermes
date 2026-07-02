@@ -112,7 +112,7 @@ agent:
   # 评审收敛成四态共识、开工 gate 卡"未决阻塞==0 且签字"。**只在你点按钮时才跑**，不点零成本（故默认开，
   # 不像 auto_review/auto_test 那样每轮自动触发）。设 false 可彻底关掉这个按钮的功能。
   design_review: true
-  design_review_max_rounds: 3   # 评审最大轮数（防无限互评）
+  design_review_max_rounds: 4   # 评审轮数上限（含初始规划快照）：4 = 最多 3 个讨论轮，与 v5 hub-and-spoke「最多3轮收敛」一致；防无限互评
   design_review_models: {}      # 异构路由：reviewer 名→模型档名，如 {architecture: "openai/gpt-4o"}；
                                 # 空=全用当前主模型（同模型双角色，离线零成本）。大设计才给某角色配异构档降低错误相关性
   # 可编程 hooks（对标 Claude Code PreToolUse/PostToolUse）：在工具调用前/后跑你的命令，做自定义

@@ -917,7 +917,11 @@ class Conversation:
         return self._oneshot(provider, prompt, max_tokens)[0]
 
     def _design_review_provider_for(self):
-        """据 config.agent.design_review_models 把 reviewer 名路由到模型档案；缺省=主模型（异构唯一落点）。"""
+        """据 config.agent.design_review_models 把 reviewer 名路由到模型档案；缺省=主模型（异构唯一落点）。
+
+        v5 hub-and-spoke：除 product/technical 两评审员外，主模型（name=="main"）逐轮回复也走此 seam——
+        缺省即用 self.active_model（当前会话主模型），无需用户额外配置；想给收敛用异构档，config 里加 main 键即可。
+        """
         from ..agent.design_review import migrate_reviewer_models
         cfg = self.res.config
         mapping = migrate_reviewer_models(cfg.agent.design_review_models or {})   # 旧键 execution/architecture 归一
@@ -1021,10 +1025,13 @@ class Conversation:
         逐 token/逐轮 emit，收尾 emit review_done 并返回最终态字典。"""
         from ..agent.design_review import make_review_fn
         try:
-            # 逐 token 推前端分屏（product/technical 两列实时打字机）；on_event 推逐轮/逐角色进度。
+            # 逐 token 推前端分屏（product/technical 两列 + 主模型回复区实时打字机）；on_event 推逐轮进度。
+            # v5 hub-and-spoke：主模型（name==MAIN="main"）逐轮回复更长——放宽其上限（main_max_tokens=None=走模型单次预算），
+            # 避免逐条决策回复被评审员紧上限从中间切断。主模型 provider 由 provider_for("main") 路由（缺省=主档）。
             review_fn = make_review_fn(
                 self._design_review_provider_for(),
                 max_tokens=self.res.config.agent.design_review_verdict_max_tokens,
+                main_max_tokens=None,
                 on_delta=lambda name, text: self.emit("review_delta", {"reviewer": name, "text": text}))
             session, err = self._seed_decisions_from_plan(review_fn)
             if err is not None:
