@@ -51,7 +51,14 @@ def _win_create_job():
         import ctypes
         from ctypes import wintypes
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        k32.CreateJobObjectW.restype = wintypes.HANDLE
+        # **必须声明 argtypes/restype**：64 位 Windows 上 HANDLE 是 64 位，ctypes 默认把参数/返回值当
+        # 32 位 int 会**截断句柄**→ Set/Assign 全失败、job 静默作废退回 taskkill（真机实测记事本仍漏杀）。
+        H = wintypes.HANDLE           # = c_void_p，保住 64 位
+        k32.CreateJobObjectW.restype = H
+        k32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+        k32.SetInformationJobObject.restype = wintypes.BOOL
+        k32.SetInformationJobObject.argtypes = [H, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+        k32.CloseHandle.argtypes = [H]
         job = k32.CreateJobObjectW(None, None)
         if not job:
             return None
@@ -92,20 +99,31 @@ def _win_create_job():
 
 
 def _win_assign_job(job, proc) -> bool:
-    """把进程并入 job（须在它派生子进程前尽早调用；powershell 引擎初始化耗时远大于此，实践中稳）。"""
+    """把进程并入 job（须在它派生子进程前尽早调用；powershell 引擎初始化耗时远大于此，实践中稳）。
+    argtypes 必声明，否则 64 位进程句柄被 ctypes 截断→并入失败。"""
     try:
         import ctypes
+        from ctypes import wintypes
+        H = wintypes.HANDLE
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.AssignProcessToJobObject.restype = wintypes.BOOL
+        k32.AssignProcessToJobObject.argtypes = [H, H]
         return bool(k32.AssignProcessToJobObject(job, int(proc._handle)))
     except Exception:  # noqa: BLE001
         return False
 
 
 def _win_kill_job(job) -> None:
-    """终止 job 内全部进程并关句柄（KILL_ON_JOB_CLOSE 下关句柄本身也会杀，双保险）。"""
+    """终止 job 内全部进程并关句柄（KILL_ON_JOB_CLOSE 下关句柄本身也会杀，双保险）。
+    argtypes 必声明，否则 64 位 job 句柄被截断→杀不到。"""
     try:
         import ctypes
+        from ctypes import wintypes
+        H = wintypes.HANDLE
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.TerminateJobObject.restype = wintypes.BOOL
+        k32.TerminateJobObject.argtypes = [H, wintypes.UINT]
+        k32.CloseHandle.argtypes = [H]
         try:
             k32.TerminateJobObject(job, 1)
         finally:
