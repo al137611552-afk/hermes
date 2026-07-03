@@ -221,6 +221,17 @@
 
   // 工具输出折叠判定（P2）：超过行数/字符阈值时默认只展示前若干行，给「展开」入口。
   // 返回 folded=false 表示短、原样全显；folded=true 时 preview 是截断预览、full 是全文。
+  // 前台实时流输出：把新增量拼到已有 live 缓冲，并只保留尾部 maxChars（长跑命令不撑爆 DOM）。
+  // 截断时前缀 "…（上文已省略）\n"，让用户知道看到的是尾部。返回新缓冲字符串。
+  function appendStreamBuffer(prev, delta, maxChars) {
+    const mc = maxChars || 20000;
+    let buf = (prev == null ? "" : String(prev)) + (delta == null ? "" : String(delta));
+    if (buf.length > mc) {
+      buf = "…（上文已省略）\n" + buf.slice(buf.length - mc);
+    }
+    return buf;
+  }
+
   function foldToolOutput(text, maxLines, maxChars) {
     const ml = maxLines || 20, mc = maxChars || 2000;
     const s = text == null ? "" : String(text);
@@ -399,7 +410,7 @@
     summarize, escapeHtml, sessionRowClasses, isBusyState, composerState,
     computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
     needsKeySetup, validateModelProfile,
-    THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput,
+    THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
     accumulateUsage, estimateCostUsd, MODEL_PRICING,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval,

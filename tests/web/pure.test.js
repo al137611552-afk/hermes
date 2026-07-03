@@ -6,7 +6,7 @@ const {
   summarize, escapeHtml, sessionRowClasses, isBusyState, composerState,
   computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
   needsKeySetup, validateModelProfile,
-  resolveTheme, normFontSize, isHelpKey, foldToolOutput,
+  resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
   accumulateUsage, estimateCostUsd,
   findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
   formatEval,
@@ -374,4 +374,14 @@ test("clampWidth：夹在[min,max]，非数字回落 fallback", () => {
   assert.equal(clampWidth("250", 180, 460), 250);  // 字符串数字
   assert.equal(clampWidth("abc", 180, 460, 230), 230); // 非数字 -> fallback
   assert.equal(clampWidth(null, 180, 460), 180);   // 无 fallback -> min
+});
+
+test("appendStreamBuffer 拼接并按尾部截断", () => {
+  assert.equal(appendStreamBuffer("", "abc"), "abc");
+  assert.equal(appendStreamBuffer("ab", "cd"), "abcd");
+  assert.equal(appendStreamBuffer(null, null), "");
+  const big = appendStreamBuffer("x".repeat(19999), "yyy", 20000);
+  assert.ok(big.length <= 20000 + 20, "应保留尾部约 maxChars");
+  assert.ok(big.includes("上文已省略"), "截断时应标注省略");
+  assert.ok(big.endsWith("yyy"), "应保留最新增量在尾部");
 });

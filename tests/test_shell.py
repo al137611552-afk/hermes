@@ -146,6 +146,25 @@ def test_win_terminate_tree_kills_job_not_just_taskkill():
     assert calls["taskkill"] is True, "job 之外仍要 taskkill /T 兜底"
 
 
+def test_foreground_streams_output_deltas():
+    # 前台实时流输出：run() 传 stream 回调时，应边跑边把 stdout 增量推出，且完整拼接≈最终 stdout。
+    deltas = []
+    out = _tool(timeout=5).run(
+        {"command": "printf 'AAA\\nBBB\\nCCC\\n'", "background": False},
+        stream=lambda kind, delta: deltas.append((kind, delta)),
+    )
+    assert deltas, "应收到至少一段流式增量"
+    joined = "".join(d for k, d in deltas if k == "stdout")
+    assert "AAA" in joined and "CCC" in joined, "流式增量应含命令输出"
+    assert "[exit code] 0" in str(out), "结束仍返回完整结果"
+
+
+def test_foreground_stream_optional_backward_compatible():
+    # 不传 stream（老调用方式）仍照常工作。
+    out = _tool().run({"command": "echo hi", "background": False})
+    assert "hi" in str(out) and "[exit code] 0" in str(out)
+
+
 def test_hardened_env_strips_provider_api_keys():
     # 压测发现：shell 原样透传 os.environ，模型跑 `echo $ARK_API_KEY` 即可把计费密钥打进上下文。
     # 现应在传给子 shell 前剥掉内置 provider 计费密钥（命令用不到、泄露即盗刷）。

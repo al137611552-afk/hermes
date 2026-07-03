@@ -795,7 +795,7 @@ class AgentLoop:
         其它失败 / 成功 → 原样返回。auto_retry 关时退化为直接 `_exec_tool`。
         重试事件经 `tool_retry` 上报（纯观测）。这是第一条 `Need→Decision` 硬规则的执行点。
         """
-        out = self._exec_tool(name, params)
+        out = self._exec_tool(name, params, emit=emit, call=call)
         if not self.auto_retry:
             return out
         from .policy import decide_retry
@@ -813,10 +813,11 @@ class AgentLoop:
                                     "attempt": dec.attempt, "delay": dec.delay,
                                     "reason": dec.reason})
             self._sleep(dec.delay)
-            out = self._exec_tool(name, params)
+            out = self._exec_tool(name, params, emit=emit, call=call)
             attempts += 1
 
-    def _exec_tool(self, name: str, params: dict) -> tuple[str, bool, list[dict]]:
+    def _exec_tool(self, name: str, params: dict, *, emit=None, call=None
+                   ) -> tuple[str, bool, list[dict]]:
         """执行单个工具，返回 (结果文本, 是否成功, 额外内容块)。危险工具先过权限 gate。
 
         普通工具返回 str -> 额外块为空；返回 ToolOutput 的工具（如截屏）-> 带 image 块。
@@ -838,7 +839,14 @@ class AgentLoop:
             return _DENIED, False, []
 
         try:
-            out = tool.run(params)
+            # 支持实时流输出的工具（run_powershell 前台）：给它一个 stream 回调，边跑边把输出增量推前端。
+            # tool_use_id 绑定，前端按 id 把 delta 追加到对应运行中的工具块。推流失败不影响执行。
+            if getattr(tool, "wants_stream", False) and emit is not None and call is not None:
+                def _stream(kind, delta):
+                    emit("tool_stream", {"id": call.id, "name": name, "stream": kind, "delta": delta})
+                out = tool.run(params, stream=_stream)
+            else:
+                out = tool.run(params)
         except ToolError as e:
             return str(e), False, []
         except Exception as e:  # noqa: BLE001 — 工具内部异常也回灌给模型

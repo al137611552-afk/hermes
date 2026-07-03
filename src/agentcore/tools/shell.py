@@ -213,9 +213,10 @@ def _terminate_tree(proc, pgid=None, job=None) -> None:
         pass
 
 
-def _drain(stream, sink) -> None:
+def _drain(stream, sink, on_delta=None) -> None:
     """读线程：把一路输出增量收进 sink（{'parts','total','truncated'}），超上限就丢弃后续但继续读到 EOF
-    —— 若停读，写端会因管道写满而永久阻塞（进程卡在 write 上），所以必须一直排空。"""
+    —— 若停读，写端会因管道写满而永久阻塞（进程卡在 write 上），所以必须一直排空。
+    on_delta(chunk)：可选，前台实时流输出用——每读到一段就回调推给前端（读满 4096 才回一段＝天然节流）。"""
     try:
         while True:
             chunk = stream.read(4096)
@@ -224,6 +225,11 @@ def _drain(stream, sink) -> None:
             if sink["total"] < _MAX_OUTPUT_CHARS:
                 sink["parts"].append(chunk)
                 sink["total"] += len(chunk)
+                if on_delta is not None:
+                    try:
+                        on_delta(chunk)
+                    except Exception:  # noqa: BLE001 — 推流失败绝不影响命令执行/收集
+                        pass
             else:
                 sink["truncated"] = True
     except (OSError, ValueError):
@@ -241,6 +247,7 @@ _SHELLS = {
 
 class RunShellTool(Tool):
     dangerous = True
+    wants_stream = True   # 前台命令支持实时流输出：loop 会给 run() 传 stream 回调，边跑边把输出推前端
     input_schema = {
         "type": "object",
         "properties": {
@@ -277,7 +284,7 @@ class RunShellTool(Tool):
             "shell 留给真正需要执行的命令。**"
         )
 
-    def run(self, params: dict) -> str:
+    def run(self, params: dict, stream=None) -> str:
         command = (params.get("command") or "").strip()
         if not command:
             raise ToolError("命令不能为空")
@@ -327,8 +334,21 @@ class RunShellTool(Tool):
                 pgid = proc.pid
         out_sink = {"parts": [], "total": 0, "truncated": False}
         err_sink = {"parts": [], "total": 0, "truncated": False}
-        t_out = threading.Thread(target=_drain, args=(proc.stdout, out_sink), daemon=True)
-        t_err = threading.Thread(target=_drain, args=(proc.stderr, err_sink), daemon=True)
+        # 前台实时流输出：把每段增量推给前端。共享事件上限，防疯狂刷屏命令灌爆前端（完整输出结束时仍会
+        # 一次性返回，流只是"边跑边看"）；超上限后停止推流但命令照常跑、输出照常收集。
+        _stream_budget = {"n": 0}
+        _STREAM_MAX_EVENTS = 800
+        def _mk_delta(kind):
+            if stream is None:
+                return None
+            def _on(chunk):
+                if _stream_budget["n"] >= _STREAM_MAX_EVENTS:
+                    return
+                _stream_budget["n"] += 1
+                stream(kind, chunk)
+            return _on
+        t_out = threading.Thread(target=_drain, args=(proc.stdout, out_sink, _mk_delta("stdout")), daemon=True)
+        t_err = threading.Thread(target=_drain, args=(proc.stderr, err_sink, _mk_delta("stderr")), daemon=True)
         t_out.start()
         t_err.start()
         # 疑似常驻服务前台跑：先用短探针窗口等，超过它还没退就当服务处理，早杀早提示（不干等满 180s）。

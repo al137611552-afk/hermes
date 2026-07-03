@@ -5,6 +5,7 @@ const EV = {
   CHUNK: "chunk",
   THINKING: "thinking",
   TOOL_USE: "tool_use",
+  TOOL_STREAM: "tool_stream",
   TOOL_RESULT: "tool_result",
   PERMISSION: "permission_request",
   ASK_USER: "ask_user",
@@ -737,7 +738,21 @@ function renderToolUse(v, data) {
   appendRow(v, box);
 }
 
+function renderToolStream(v, data) {
+  // 前台命令实时流：把 delta 追加到对应运行中的工具块，边跑边看（终态由 renderToolResult 覆盖为完整输出）。
+  const box = v.toolBlocks[data.id];
+  if (!box) return;
+  const result = box.querySelector(".tool-result");
+  if (!result) return;
+  if (!box.open) box.open = true;                 // 首段到达时自动展开，让用户看见进度
+  box._streamBuf = appendStreamBuffer(box._streamBuf, data.delta, 20000);
+  result.textContent = box._streamBuf;
+  result.scrollTop = result.scrollHeight;         // 只滚结果框自身（不碰 .chat，避开 WebView2 滚动坑）
+}
+
 function renderToolResult(v, data) {
+  const _b = v.toolBlocks[data.id];
+  if (_b) _b._streamBuf = "";                       // 清掉流缓冲：终态用完整格式化输出重绘
   if (data.name === "delegate") return;  // 同上，委派结果在子任务块里看
   const box = v.toolBlocks[data.id];
   if (!box) return;
@@ -1132,6 +1147,9 @@ window.__onAgentEvent = function (msg) {
     hideWorking(v);
     finalizeThinking(v);
     renderToolUse(v, data);
+    markActivity(v);
+  } else if (event === EV.TOOL_STREAM) {
+    renderToolStream(v, data);
     markActivity(v);
   } else if (event === EV.TOOL_RESULT) {
     renderToolResult(v, data);

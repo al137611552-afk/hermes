@@ -61,7 +61,7 @@ def test_loop_retries_transient_then_succeeds():
     loop = _make_loop()
     n = {"i": 0}
 
-    def fake_exec(name, params):
+    def fake_exec(name, params, **kwargs):
         n["i"] += 1
         if n["i"] < 3:
             return ("[exit code] 1\n[stderr]\nConnection refused", True, [])
@@ -80,7 +80,7 @@ def test_loop_gives_up_after_max_and_returns_last_failure():
     loop = _make_loop(max_attempts=2)
     n = {"i": 0}
 
-    def fake_exec(name, params):
+    def fake_exec(name, params, **kwargs):
         n["i"] += 1
         return ("[exit code] 1\n[stderr]\ntimed out", True, [])
 
@@ -94,7 +94,7 @@ def test_loop_does_not_retry_logic_failure():
     loop = _make_loop()
     n = {"i": 0}
 
-    def fake_exec(name, params):
+    def fake_exec(name, params, **kwargs):
         n["i"] += 1
         return ("==== 1 failed, 2 passed ====\nAssertionError", True, [])
 
@@ -107,7 +107,7 @@ def test_loop_auto_retry_off_executes_once():
     loop = _make_loop(auto_retry=False)
     n = {"i": 0}
 
-    def fake_exec(name, params):
+    def fake_exec(name, params, **kwargs):
         n["i"] += 1
         return ("[exit code] 1\n[stderr]\nConnection refused", True, [])
 
@@ -120,7 +120,7 @@ def test_loop_does_not_retry_success():
     loop = _make_loop()
     n = {"i": 0}
 
-    def fake_exec(name, params):
+    def fake_exec(name, params, **kwargs):
         n["i"] += 1
         return ("[exit code] 0\n[stdout]\nfine", True, [])
 
@@ -134,7 +134,7 @@ def test_loop_retries_hard_toolerror_transient():
     loop = _make_loop()
     n = {"i": 0}
 
-    def fake_exec(name, params):
+    def fake_exec(name, params, **kwargs):
         n["i"] += 1
         return ("连接超时", False, []) if n["i"] == 1 else ("done", True, [])
 
