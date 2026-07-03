@@ -6,19 +6,6 @@
 
 ## [Unreleased]
 
-**修 run_powershell 前台执行 bug（真机：启动 GUI 程序卡住、关不掉、反复几次）**：前台命令原用 `subprocess.run`，超时只杀直接子进程——`&` 启动的 GUI 成孤儿留在屏幕、每次尝试都干等满 60s，模型重试再挂一个。改为 `Popen`：超时时**杀整棵进程树**（Windows `taskkill /T /F`、POSIX `killpg`）连同启动的 GUI 一起关，不留孤儿；超时错误信息改为强指令「启动常驻程序（GUI/dev server/watch）必须用 background:true，别重试前台」。
-
-**压测揪出并修掉另外两类 run_powershell 隐藏死锁/崩溃**（用真实工程命令形态压测前台路径，12 场景）：
-- **疯狂刷屏命令 OOM**：`yes` 等无限刷 stdout 的命令，原 `communicate()` 无上限把输出堆进内存，timeout 没到进程先被 OOM 杀（实测 exit 137）。改为带上限（200KB，同 `procs.py` 思路）的读线程，超限丢弃后续但继续排空管道（防写端阻塞），内存恒定；超上限附截断提示。
-- **后台子进程继承管道致前台挂死**：`sleep 30 & echo started` 这类（dev server 常态：`&` 起服务、前台还 echo），shell 瞬间 echo 完退出，但后台子进程继承了 stdout 管道，`communicate()` 死等管道 EOF → 白挂满 timeout 再被当超时误报、还误杀了守护。改为 `proc.wait(timeout)` **只等直接子进程退出**（不等管道 EOF）：shell 一退即返回；退出后再杀掉继承管道的孤儿（前台契约=同步跑完不留后代，**先杀再 join** 抽干，避免 read 阻塞漏掉短输出）。
-
-**注入非交互硬化环境变量，防"等交互输入/分页器/凭据/编辑器"静默挂死**（调研主流 agent 通病：gemini-cli #24707/#21052、claude-code #46078、zed #42943——`git log` 进 less 等 q、`git push` 私库等账号密码、`git commit`(无 -m) 开 vim、apt 问 y/n 都会让 agent 静默卡死）。`shell.py` 新增 `hardened_env()`，前台（`shell.py`）与后台（`procs.py`）两条 Popen 路径统一注入：`GIT_TERMINAL_PROMPT=0`（git 不弹凭据提示，鉴权失败快速返回而非挂死）、`GIT_PAGER=cat`/`PAGER=cat`（不进分页器）、`GIT_EDITOR=true`/`EDITOR=true`/`VISUAL=true`（不开编辑器干等）、`DEBIAN_FRONTEND=noninteractive`、`PIP_NO_INPUT=1`、`PYTHONUNBUFFERED=1`。只叠加不清空用户环境。Linux 因 `start_new_session` 无控制终端多半已 fail-fast，此硬化主要保 **Windows**（`CREATE_NO_WINDOW` 不脱离控制台，这些提示会真挂）。已知未修：`setsid`/双 fork 逃逸出进程组的守护 `killpg` 够不着（此类进程本就意图脱离，属罕见且有意为之，记录不强修）。
-
-`tests/test_shell.py` 增至 8 条（继承管道秒回、疯狂输出有上限不 OOM、非交互环境已注入、硬化不清空用户环境）。Linux 全回归 59/59 + 前端 55/0 绿；Windows `taskkill /T` 树杀 + 非交互硬化路径待真机验。
-
----
-
-
 **方案评审 v5：hub-and-spoke 真讨论（待 Windows 真机验证，未定版）**——ADR 0019 v5，引擎级重构，让评审从"拼 JSON"变成"我的方案被挑刺、我逐条回应、最后收敛"：
 
 ### Changed
@@ -57,6 +44,21 @@
 - **bug#4：开始编码后评审面板重现/可重复开工**——`Conversation` 加 `_review_applied` 终态，应用落回后 `get_design_review` 返回 `{ok:false, applied:true}`，切换会话再切回不再重弹面板、无法重复开工；`↻` 重跑复活面板。
 
 后续候补：**研究墙·墙钟时间上限**；**目标满足驱动的换源**（把换源触发从"零新域名"补成"目标数据点连续缺席"，价格/数字类先做）；**Learning 运行时接线**（让 active 策略真正影响选路，须再过 Golden）；**UX Tier2 续**（①余：子 agent 角色 的可视化管理，低 ROI 暂缓；②会话「运行中」状态+并发；③diff 行内定向反馈）；**P5 第三波**（G debugger 子角色 / I 回归二分定位，按需）；**自动更新**（分发三件套最后一件，ROI 低、按需）；**macOS GUI 真机验证**（代码已跨平台、Windows 侧已验，待有 Mac 后验 WKWebView 窗口）。
+
+## [3.51.2] - 2026-07-03
+
+**run_powershell / shell 执行健壮性：修四类挂死/崩溃**（真机反馈 + 调研主流 agent 通病 + 真实工程命令压测，无头端到端验证 11/11 通过；`taskkill /T` Windows 分支的 POSIX 等价路径 `killpg` 已验，Windows 原生分支待真机验）。
+
+### Fixed
+- **前台启动 GUI/常驻程序卡住、关不掉、反复几次**（真机）：前台原用 `subprocess.run`，超时只杀直接子进程——`&` 启动的 GUI 成孤儿留在屏幕、每次都干等满 60s、模型重试再挂一个。改为 `Popen` + **只等直接子进程退出**（`proc.wait(timeout)`），超时用 `_terminate_tree` **杀整棵进程树**（Windows `taskkill /T /F`、POSIX `killpg`），连启动的 GUI/子进程一起关不留孤儿；超时错误信息强指令改 `background:true`、别重试前台。
+- **疯狂刷屏命令把 Agent 进程 OOM**：`yes` 等无限刷 stdout 的命令，原 `communicate()` 无上限堆内存、timeout 没到进程先被 OOM 杀（实测 exit 137）。改为带上限（200KB）的读线程，超限丢弃后续但继续排空管道防写端阻塞，内存恒定，超上限附截断提示。
+- **`&` 后台子进程继承管道致前台白挂满 timeout**：`sleep 30 & echo started` 这类（dev server 常态），shell 瞬间退出但后台子进程继承 stdout 管道，`communicate()` 死等管道 EOF → 白挂满 timeout 再被当超时误报、还误杀守护。改为只等直接子进程退出（不等 EOF），shell 一退即返回；退出后**先杀树再 join** 抽干孤儿（次序关键：孤儿占管道时 `read()` 阻塞会漏掉短输出）。
+- **交互/分页/凭据/编辑器静默挂死**（主流 agent 通病：gemini-cli #24707/#21052、claude-code #46078、zed #42943——`git log` 进 less 等 q、`git push` 私库等账号密码、`git commit`(无 -m) 开 vim、apt 问 y/n）：`shell.py` 新增 `hardened_env()`，前台与后台（`procs.py`）两条 Popen 路径统一注入非交互环境 `GIT_TERMINAL_PROMPT=0`/`GIT_PAGER=cat`/`PAGER=cat`/`GIT_EDITOR=true`/`EDITOR=true`/`VISUAL=true`/`DEBIAN_FRONTEND=noninteractive`/`PIP_NO_INPUT=1`/`PYTHONUNBUFFERED=1`（只叠加不清空用户环境）。Linux 因 `start_new_session` 无控制终端多半已 fail-fast，此硬化主要保 Windows（`CREATE_NO_WINDOW` 不脱离控制台，这些提示会真挂）。
+
+### 已知未修
+- `setsid`/双 fork 逃逸出进程组的守护 `killpg`/`taskkill /T` 够不着（此类进程本就意图脱离终端常驻，罕见且有意为之，记录不强修）。
+
+新增 `tests/test_shell.py`（8 条：成功/非零退出/超时终止导向后台/杀树/继承管道秒回/疯狂输出有上限不 OOM/非交互环境已注入/硬化不清空用户环境）。全回归 Python 59/59 + 前端 55/0 绿。
 
 ## [3.51.1] - 2026-07-02
 

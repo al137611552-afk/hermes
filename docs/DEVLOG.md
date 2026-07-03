@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-07-03 — run_powershell / shell 执行健壮性：修四类挂死/崩溃（已验证，定版 3.51.2）
+
+- **背景**：真机反馈"前台启动 GUI 程序卡住、关不掉、反复几次"，由此系统排查命令执行的挂死面。调研主流 agent（gemini-cli、claude-code、zed、cursor、copilot）踩过的坑 + 用真实工程命令形态压测，共识别并修掉**四类**：
+  1. 前台启常驻/GUI 被阻塞 + 孤儿留存 → `subprocess.run`→`Popen`+`proc.wait(timeout)`+`_terminate_tree` 杀整棵进程树；超时错误强指令改 `background:true`。
+  2. 疯狂刷 stdout 命令 OOM（`communicate()` 无上限堆内存，实测 exit 137）→ 带 200KB 上限的读线程，超限丢弃仍排空管道防写端阻塞。
+  3. `&` 后台子进程继承管道致前台白挂满 timeout（`communicate()` 死等管道 EOF）→ 只等直接子进程退出；退出后**先杀树再 join** 抽干孤儿。
+  4. 交互/分页/凭据/编辑器静默挂死 → `hardened_env()` 注入 `GIT_TERMINAL_PROMPT=0`/`GIT_PAGER=cat`/`PAGER=cat`/`GIT_EDITOR=true` 等非交互环境，前台后台两路径统一用。
+- **关键决策**：前台契约=同步跑完不留后代（正是最初 GUI 挂住的根因），故命令退出后清掉其派生孤儿；`should_stop` 等决策内核未涉及；硬化环境"只叠加不清空"用户环境。
+- **自检**：新增 `tests/test_shell.py`（8 条）；压测台 `/tmp/stress_shell.py`（12 场景）+ `/tmp/stress_shell2.py`（交互/分页/凭据/REPL/setsid）；**无头端到端验证 `/tmp/verify_shell_e2e.py` 11/11 通过**（含真连网 `git clone` 私库快速失败不挂）。全回归 Python 59/59 + 前端 55/0 绿。
+- **验证状态**：**已验证通过（无头端到端）**——除 Windows 原生 `taskkill /T` 分支外全部逻辑已跑通，其 POSIX 等价 `killpg` 杀树已验证（孙子/后台子进程确实被杀）。Windows `taskkill /T` 同形态、待真机点验（启动 GUI 前台命令→约 60s 自动关窗）。据此定版 **3.51.2**。
+- **遗留**：`setsid`/双 fork 逃逸进程组的守护杀不到（意图脱离、罕见，不强修）；评审 v4/v5（GUI + 真实模型流式）仍待 Windows 真机验，保留在 CHANGELOG `[Unreleased]`，不随本次定版。
+
+---
+
 ## 2026-07-02 — 方案评审 v5：引擎级重构为 hub-and-spoke 真讨论（待验证）
 
 真机反馈"v4 产物仍像把评审 JSON 拼起来、主模型不下场"驱动的引擎级重构（ADR 0019 v5）。把评审从 arena-lite（两评审员各说各话 + 机械 `apply_review` 折叠 + 机械 `render_consensus` 分组）改成 **hub-and-spoke**：每个评审员只与**主模型**双边对话，主模型逐轮读双方意见、逐条采纳/反驳/追问，**亲自拍板**改方案。
