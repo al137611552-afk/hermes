@@ -5,10 +5,32 @@
 """
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
+import sys
 
 from ..diagnose import with_location
 from .base import Tool, ToolError
+
+
+def _terminate_tree(proc) -> None:
+    """终止进程及其整棵子树（同 procs.ProcessManager._kill_tree）。前台命令超时时连带关掉它启动的 GUI/子进程，
+    别留孤儿：否则启动了不自退的程序（如 GUI）会一直挂着、下次尝试再挂一个（真机反馈"打开程序就卡住、反复几次"）。"""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                           capture_output=True,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)   # start_new_session 建的进程组，整组杀
+    except Exception:  # noqa: BLE001 — 尽力而为，杀不掉退回单进程 kill，别抛
+        try:
+            proc.kill()
+        except Exception:  # noqa: BLE001
+            pass
 
 # config.agent.shell 取值 -> 命令行模板。{cmd} 处填模型给的命令。
 _SHELLS = {
@@ -63,29 +85,40 @@ class RunShellTool(Tool):
             entry = self._procs.start(argv, str(self.workspace), command)
             return (f"已在后台启动进程 #{entry.id}（pid {entry.proc.pid}）：{command}\n"
                     "用 read_process_output 看输出（增量）、list_processes 查看、stop_process 停止。")
+        # Popen（非 subprocess.run）：超时时能拿到 proc 去**杀整棵树**——run() 只杀直接子进程，
+        # `&` 启动的 GUI 会成孤儿留在屏幕上（真机 bug：打开程序就卡住、关不掉、反复几次）。
+        proc = None
+        kwargs: dict = {}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # 防黑窗
+        else:
+            kwargs["start_new_session"] = True    # 独立进程组，便于超时 killpg 整组杀
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 argv,
                 cwd=str(self.workspace),
-                capture_output=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8", errors="replace",   # 必显式 utf-8：Windows 中文环境 text=True 默认 GBK，
-                                                       # 撞命令的 UTF-8 输出会在读取线程 UnicodeDecodeError 崩/卡住
-                stdin=subprocess.DEVNULL,             # 交互式命令（npm create / npm init 等）拿到 EOF 快速失败，
-                                                       # 而非干等输入卡到超时（后台进程那条路已是 DEVNULL）
-                timeout=self.timeout,
+                                                       # 撞命令的 UTF-8 输出会 UnicodeDecodeError 崩/卡住
+                stdin=subprocess.DEVNULL,             # 交互式命令（npm create / npm init 等）拿到 EOF 快速失败
+                **kwargs,
             )
+            stdout, stderr = proc.communicate(timeout=self.timeout)
         except FileNotFoundError:
             raise ToolError(f"找不到 {self.shell} 可执行程序。")
         except subprocess.TimeoutExpired:
+            _terminate_tree(proc)                     # 杀整棵树：连同启动的 GUI/子进程一起关，别留孤儿卡住
             raise ToolError(
-                f"命令超时（>{self.timeout}s）。若是长运行进程（dev server / 安装），改用 background:true 后台启动；"
-                "若是交互式命令（npm create / npm init 等会问 y/n），加非交互参数（如 --yes / -y）。")
+                f"命令超时（>{self.timeout}s）已终止（含其启动的子进程）。"
+                "**若启动的是不会自己退出的常驻程序（GUI 应用 / dev server / watch / 安装向导），必须改用 "
+                "background:true 后台启动**——前台执行会一直等它退出，只会再次超时，别重试前台。"
+                "若是交互式命令（会问 y/n），加非交互参数（如 --yes / -y）。")
 
         parts = [f"[exit code] {proc.returncode}"]
-        if proc.stdout:
-            parts.append(f"[stdout]\n{proc.stdout.rstrip()}")
-        if proc.stderr:
-            parts.append(f"[stderr]\n{proc.stderr.rstrip()}")
+        if stdout:
+            parts.append(f"[stdout]\n{stdout.rstrip()}")
+        if stderr:
+            parts.append(f"[stderr]\n{stderr.rstrip()}")
         # 报错定位（FR-13.B）：输出含指向工作区文件的 traceback 时附加 file:line + 源码上下文
         return with_location("\n".join(parts), self.workspace)

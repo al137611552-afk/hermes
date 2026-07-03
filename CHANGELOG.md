@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+**修 run_powershell 前台执行 bug（真机：启动 GUI 程序卡住、关不掉、反复几次）**：前台命令原用 `subprocess.run`，超时只杀直接子进程——`&` 启动的 GUI 成孤儿留在屏幕、每次尝试都干等满 60s，模型重试再挂一个。改为 `Popen`：超时时**杀整棵进程树**（Windows `taskkill /T /F`、POSIX `killpg`）连同启动的 GUI 一起关，不留孤儿；超时错误信息改为强指令「启动常驻程序（GUI/dev server/watch）必须用 background:true，别重试前台」。新增 `tests/test_shell.py`（成功/非零退出/超时终止/杀树验证 4 条）。
+
+---
+
+
 **方案评审 v5：hub-and-spoke 真讨论（待 Windows 真机验证，未定版）**——ADR 0019 v5，引擎级重构，让评审从"拼 JSON"变成"我的方案被挑刺、我逐条回应、最后收敛"：
 
 ### Changed
