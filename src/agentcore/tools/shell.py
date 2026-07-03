@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -38,6 +39,35 @@ def hardened_env() -> dict:
         "PYTHONUNBUFFERED": "1",      # 子 Python 输出即时刷出（否则块缓冲、超时前看不到进度/挂着像卡死）
     })
     return env
+
+
+# 疑似"常驻/不自退"服务的命令特征：dev server / watch / REPL / 静态服。命中且用户前台跑时，
+# 不再干等满整个 timeout，而是用一个短探针窗口（_PROBE_SECONDS）快速兜底——真是服务就早杀早提示
+# "改 background:true"，把"白等几分钟"压成"等十几秒"；若其实会自退（误判），探针内正常结束、零影响。
+# 只做"缩短等待+更精准的提示"，不改写命令、不硬拦，故对误判安全。
+_LONG_RUNNING_RE = re.compile(
+    r"(?:^|[\s;&|])(?:"
+    r"streamlit\s+run|uvicorn|gunicorn|hypercorn|daphne|"          # Python web/ASGI/WSGI
+    r"flask\s+run|python3?\s+-m\s+(?:http\.server|flask|streamlit)|"  # flask / 内置静态服 / streamlit
+    r"(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|start|serve|watch)|"  # 前端脚本约定
+    r"vite|next\s+dev|nuxt\s+dev|ng\s+serve|"                      # 前端 dev server
+    r"webpack(?:\s+serve|-dev-server)|rollup\s+.*-w\b|"            # 打包器 watch
+    r"nodemon|node\s+--watch|tsc\s+.*(?:-w\b|--watch)|"            # node/ts watch
+    r"jekyll\s+serve|hugo\s+server|mkdocs\s+serve|"               # 静态站点 dev server
+    r"tail\s+-f|watch\s+"                                          # 长跟随
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _looks_long_running(command: str) -> bool:
+    """启发式判断命令是否像"不会自己退出的常驻服务"。命中未必真是（仅缩短前台等待窗口，不改写命令）。"""
+    if re.search(r"(?:^|[\s;&|])(?:--watch|--reload|-w\b)", command, re.IGNORECASE):
+        return True
+    return bool(_LONG_RUNNING_RE.search(command))
+
+
+_PROBE_SECONDS = 12   # 疑似常驻服务前台跑时的探针窗口：超过它还没退就判定为服务，早杀早提示
 
 
 def _win_create_job():
@@ -283,10 +313,18 @@ class RunShellTool(Tool):
         t_err = threading.Thread(target=_drain, args=(proc.stderr, err_sink), daemon=True)
         t_out.start()
         t_err.start()
+        # 疑似常驻服务前台跑：先用短探针窗口等，超过它还没退就当服务处理，早杀早提示（不干等满 180s）。
+        suspected = _looks_long_running(command)
+        wait_timeout = min(self.timeout, _PROBE_SECONDS) if suspected else self.timeout
         try:
-            proc.wait(timeout=self.timeout)
+            proc.wait(timeout=wait_timeout)
         except subprocess.TimeoutExpired:
             _terminate_tree(proc, pgid, job)          # 杀整棵树：连同启动的 GUI/子进程一起关，别留孤儿卡住
+            if suspected:
+                raise ToolError(
+                    f"这条命令看起来是**常驻/不会自己退出的服务**（dev server / watch / REPL），"
+                    f"前台跑 {wait_timeout}s 仍未退出，已终止（含其子进程）。**请改用 background:true 后台启动**，"
+                    "再用 read_process_output 看输出、stop_process 停止——别前台重试，只会再被杀。")
             raise ToolError(
                 f"命令超时（>{self.timeout}s）已终止（含其启动的子进程）。"
                 "**若启动的是不会自己退出的常驻程序（GUI 应用 / dev server / watch / 安装向导），必须改用 "

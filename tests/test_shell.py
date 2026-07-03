@@ -146,6 +146,61 @@ def test_win_terminate_tree_kills_job_not_just_taskkill():
     assert calls["taskkill"] is True, "job 之外仍要 taskkill /T 兜底"
 
 
+def test_looks_long_running_detects_dev_servers_and_watch():
+    from agentcore.tools.shell import _looks_long_running
+    pos = [
+        "streamlit run app.py --server.headless true",
+        "python -m streamlit run app.py",
+        "uvicorn main:app --reload",
+        "flask run",
+        "npm run dev",
+        "pnpm dev",
+        "yarn start",
+        "vite",
+        "next dev",
+        "ng serve",
+        "python -m http.server 8000",
+        "nodemon server.js",
+        "node --watch index.js",
+        "tsc --watch",
+        "tail -f app.log",
+        "mkdocs serve",
+    ]
+    for c in pos:
+        assert _looks_long_running(c), f"应判为常驻服务：{c}"
+    neg = [
+        "echo hi",
+        "ls -la",
+        "npm run build",
+        "npm install",
+        "python script.py",
+        "pytest tests/",
+        "git status",
+        "cat app.py",
+    ]
+    for c in neg:
+        assert not _looks_long_running(c), f"不应判为常驻服务：{c}"
+
+
+def test_suspected_server_foreground_uses_short_probe_not_full_timeout():
+    # 疑似常驻服务前台跑：应在 ~探针窗口内(远小于 timeout)被杀并抛"改 background:true"，不干等满整个 timeout。
+    import agentcore.tools.shell as shell
+    orig_probe = shell._PROBE_SECONDS
+    shell._PROBE_SECONDS = 1                     # 压缩探针窗口，测试要跑得快
+    tool = _tool(timeout=30)                      # 大 timeout：若没走探针会等满 30s
+    t0 = time.time()
+    raised = None
+    try:
+        tool.run({"command": "python3 -m http.server 0", "background": False})
+    except ToolError as e:
+        raised = str(e)
+    finally:
+        shell._PROBE_SECONDS = orig_probe
+    elapsed = time.time() - t0
+    assert raised is not None and "background:true" in raised, "疑似服务应被探针兜底并强指向 background:true"
+    assert elapsed < 10, f"应在探针窗口内(~1s)被杀，而非等满 timeout；实测 {elapsed:.1f}s"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0
