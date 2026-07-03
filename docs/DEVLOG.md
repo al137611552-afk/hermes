@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-07-03 — shell 杀树第 5 类：Start-Process 重定父 GUI 逃逸（待验证）
+
+- **背景**：Windows 真机验第 1 类修复时暴露新 bug——`run_powershell {"command":"Start-Process notepad; Start-Sleep 120"}`，120s 超时后 powershell 被 hermes 关掉，**记事本却残留没关**。
+- **根因**：`taskkill /PID <ps> /T` 靠父子 PID 链遍历子树；`Start-Process`/ShellExecute 会把启动的 GUI **重定父**出 powershell 子树（不再是其子进程），遍历就抓不到 → 逃逸。
+- **做了什么**：引入 Windows **Job Object**（`_win_create_job/_win_assign_job/_win_kill_job`，ctypes，`KILL_ON_JOB_CLOSE`）。Popen 后尽早把 shell 并入 job——子孙自动入 job 且**重定父后仍留 job 内**——收尾/超时 `TerminateJobObject` 整组杀（含被重定父的 GUI），`taskkill /T` 保留兜底；并入失败回收空 job 退回 taskkill。前台 `shell.py`（`_terminate_tree` 加 `job` 形参）+ 后台 `procs.py`（`_Entry.job` + `_kill_tree`）一致应用。业界通用做法（Chromium/VSCode/pytest-timeout）。
+- **关键决策**：job 为主、taskkill 兜底（双保险，无回归）；ctypes 全在 `sys.platform=='win32'` 守卫内，Linux 不执行；job 句柄用裸 int，不会被 GC 误关（KILL_ON_JOB_CLOSE 下误关＝误杀）。
+- **自检**：`tests/test_shell.py` 加第 9 条（模拟 win32 校验 job 优先杀 + taskkill 兜底 + 透传）；全回归 Python 全绿 + 前端 57/57。
+- **验证状态**：**待 Windows 真机验**——重跑 `Start-Process notepad; Start-Sleep 120`，超时后记事本应被一并关掉；再验后台 `stop_process` 停掉 `Start-Process` 起的 GUI。Linux 走 taskkill 分支覆盖不到 job 逻辑。
+- **遗留**：`setsid`/双 fork（POSIX）或显式 `CREATE_BREAKAWAY_FROM_JOB`（Windows）主动脱离的守护仍够不着（本就意图脱离，罕见且有意为之）。
+
+---
+
 ## 2026-07-03 — 应用内更新 T1：源码自更新（ADR 0020，待验证）
 
 - **背景**：用户每出新版都要手动"下载代码→本地 python→本地打包"，繁琐；想要主流程序"提示更新→一键更新"体验。用户使用分两场景：T1 自用（源码装，本机有 git+python）、T2 分发给他人（已自建 GitHub 下载链接）。本次只做 **T1**。

@@ -40,15 +40,92 @@ def hardened_env() -> dict:
     return env
 
 
-def _terminate_tree(proc, pgid=None) -> None:
+def _win_create_job():
+    """建 kill-on-close 的 Windows Job Object，返回句柄（失败/非 Windows 返回 None）。归入 job 的进程，
+    其子孙**自动入同一 job**，且**被 ShellExecute/Start-Process 重定父后仍留在 job 内**——这正是
+    `taskkill /PID <ps> /T` 靠父子 PID 链遍历会漏掉 `Start-Process notepad` 的根因（真机实测：powershell
+    被杀、记事本逃逸）。job 一键 TerminateJobObject 全杀，是 Chromium/VSCode/pytest-timeout 的通用做法。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateJobObjectW.restype = wintypes.HANDLE
+        job = k32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+
+        class _LIMIT(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", wintypes.LARGE_INTEGER),
+                ("PerJobUserTimeLimit", wintypes.LARGE_INTEGER),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class _IOC(ctypes.Structure):
+            _fields_ = [(n, ctypes.c_ulonglong) for n in
+                        ("Read", "Write", "Other", "ReadT", "WriteT", "OtherT")]
+
+        class _EXT(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", _LIMIT), ("IoInfo", _IOC),
+                ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        info = _EXT()
+        info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        # 9 = JobObjectExtendedLimitInformation
+        if not k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
+            k32.CloseHandle(job)
+            return None
+        return job
+    except Exception:  # noqa: BLE001 — 任何环境不支持都退回 taskkill
+        return None
+
+
+def _win_assign_job(job, proc) -> bool:
+    """把进程并入 job（须在它派生子进程前尽早调用；powershell 引擎初始化耗时远大于此，实践中稳）。"""
+    try:
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        return bool(k32.AssignProcessToJobObject(job, int(proc._handle)))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _win_kill_job(job) -> None:
+    """终止 job 内全部进程并关句柄（KILL_ON_JOB_CLOSE 下关句柄本身也会杀，双保险）。"""
+    try:
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        try:
+            k32.TerminateJobObject(job, 1)
+        finally:
+            k32.CloseHandle(job)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _terminate_tree(proc, pgid=None, job=None) -> None:
     """终止进程及其整棵子树（同 procs.ProcessManager._kill_tree）。前台命令收尾/超时时连带关掉它启动的
     GUI/后台子进程，别留孤儿：否则启动了不自退的程序（GUI / `&` 起的守护）会一直挂着、下次尝试再挂一个
-    （真机反馈"打开程序就卡住、反复几次"）。POSIX 传入建组时抓好的 pgid——直接子进程一旦被 wait 回收，
-    getpgid(pid) 会失败，但用一开始存下的 pgid 仍能把整组（含继承管道的孤儿）杀干净。"""
+    （真机反馈"打开程序就卡住、反复几次"）。Windows 优先用传入的 job 整体杀（含被重定父的 GUI，taskkill
+    /T 会漏），再 taskkill 兜底；POSIX 用建组时抓好的 pgid——直接子进程一旦被 wait 回收，getpgid(pid) 会
+    失败，但用一开始存下的 pgid 仍能把整组（含继承管道的孤儿）杀干净。"""
     if proc is None:
         return
     try:
         if sys.platform == "win32":
+            if job is not None:
+                _win_kill_job(job)   # 整个 job 全杀：含 Start-Process/ShellExecute 重定父的 GUI 进程
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                            capture_output=True,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -146,6 +223,7 @@ class RunShellTool(Tool):
         # 输出走带上限的读线程，避免疯狂刷屏命令把内存撑爆（OOM）。
         proc = None
         pgid = None
+        job = None
         kwargs: dict = {}
         if sys.platform == "win32":
             kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # 防黑窗
@@ -165,7 +243,12 @@ class RunShellTool(Tool):
             )
         except FileNotFoundError:
             raise ToolError(f"找不到 {self.shell} 可执行程序。")
-        if sys.platform != "win32":
+        if sys.platform == "win32":
+            job = _win_create_job()                   # 尽早把 shell 并入 job，其子孙（含 Start-Process
+            if job is not None and not _win_assign_job(job, proc):  # 起的 GUI）自动入 job，重定父也跑不掉
+                _win_kill_job(job)                    # 并入失败：回收空 job（内无进程，不误杀），退回 taskkill
+                job = None
+        else:
             try:
                 pgid = os.getpgid(proc.pid)           # 趁子进程还活着抓好进程组号，供收尾/超时整组杀
             except OSError:
@@ -179,7 +262,7 @@ class RunShellTool(Tool):
         try:
             proc.wait(timeout=self.timeout)
         except subprocess.TimeoutExpired:
-            _terminate_tree(proc, pgid)               # 杀整棵树：连同启动的 GUI/子进程一起关，别留孤儿卡住
+            _terminate_tree(proc, pgid, job)          # 杀整棵树：连同启动的 GUI/子进程一起关，别留孤儿卡住
             raise ToolError(
                 f"命令超时（>{self.timeout}s）已终止（含其启动的子进程）。"
                 "**若启动的是不会自己退出的常驻程序（GUI 应用 / dev server / watch / 安装向导），必须改用 "
@@ -189,7 +272,7 @@ class RunShellTool(Tool):
         # 不该还有它派生的进程存活（正是最初 GUI 挂住的根因）。**必须先杀再 join**：孤儿占着管道写端时
         # 读线程的 read() 会一直阻塞等 EOF（读不到 shell 已写入的短输出如 "started"）；杀掉孤儿→写端全关
         # →管道 EOF，读线程读完 OS 缓冲里的残余输出后自然结束。已写入缓冲的数据不会因杀进程而丢。
-        _terminate_tree(proc, pgid)
+        _terminate_tree(proc, pgid, job)
         t_out.join(timeout=1.0)
         t_err.join(timeout=1.0)
         stdout = "".join(out_sink["parts"])

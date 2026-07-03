@@ -122,6 +122,30 @@ def test_hardening_does_not_wipe_user_env():
         os.environ.pop("HERMES_STRESS_MARK", None)
 
 
+def test_win_terminate_tree_kills_job_not_just_taskkill():
+    # 真机 bug：`Start-Process notepad; Start-Sleep 120` 超时后 powershell 被杀、记事本残留——taskkill /T
+    # 靠父子 PID 链遍历，抓不到被 Start-Process 重定父的 GUI。修法：把 shell 并入 Job Object，_terminate_tree
+    # 须优先 TerminateJobObject 整组杀（含重定父进程），再 taskkill 兜底。此处模拟 win32 校验分支与 job 透传。
+    import agentcore.tools.shell as shell
+
+    class _P:
+        pid = 4242
+        def poll(self):
+            return 0            # 已退出，跳过 proc.kill 兜底
+
+    calls = {"job": None, "taskkill": False}
+    orig_plat, orig_kill, orig_run = shell.sys.platform, shell._win_kill_job, shell.subprocess.run
+    shell.sys.platform = "win32"
+    shell._win_kill_job = lambda j: calls.__setitem__("job", j)
+    shell.subprocess.run = lambda *a, **k: calls.__setitem__("taskkill", a and a[0][0] == "taskkill")
+    try:
+        shell._terminate_tree(_P(), pgid=None, job="JOB#1")
+    finally:
+        shell.sys.platform, shell._win_kill_job, shell.subprocess.run = orig_plat, orig_kill, orig_run
+    assert calls["job"] == "JOB#1", "Windows 收尾必须先按 job 整组杀（否则重定父的 GUI 漏杀）"
+    assert calls["taskkill"] is True, "job 之外仍要 taskkill /T 兜底"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0

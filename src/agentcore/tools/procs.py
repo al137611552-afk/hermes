@@ -19,7 +19,7 @@ import threading
 import time
 
 from .base import Tool, ToolError
-from .shell import hardened_env
+from .shell import hardened_env, _win_create_job, _win_assign_job, _win_kill_job
 
 MAX_BUF_CHARS = 200_000   # 每进程输出环形缓冲上限
 MAX_READ_CHARS = 50_000   # 单次 read_process_output 返回上限
@@ -68,10 +68,11 @@ def url_from_command(command: str) -> "str | None":
 class _Entry:
     """一个后台进程：Popen + 输出缓冲 + 增量读游标。"""
 
-    def __init__(self, pid_id: int, command: str, proc: subprocess.Popen) -> None:
+    def __init__(self, pid_id: int, command: str, proc: subprocess.Popen, job=None) -> None:
         self.id = pid_id
         self.command = command
         self.proc = proc
+        self.job = job          # Windows Job Object 句柄（含被 Start-Process 重定父的 GUI，taskkill 会漏）
         self.buffer = ""        # 环形缓冲（超限丢最旧）
         self.read_upto = 0      # 增量读游标（相对当前 buffer）
         self.trimmed = False    # 是否丢过最旧输出
@@ -115,9 +116,15 @@ class ProcessManager:
             )
         except FileNotFoundError:
             raise ToolError(f"找不到可执行程序：{argv[0]}")
+        job = None
+        if os.name == "nt":
+            job = _win_create_job()               # 并入 job：子孙（含 Start-Process 起的 GUI）重定父也跑不掉
+            if job is not None and not _win_assign_job(job, proc):
+                _win_kill_job(job)                # 并入失败：回收空 job，退回 taskkill
+                job = None
         with self._lock:
             self._seq += 1
-            entry = _Entry(self._seq, command, proc)
+            entry = _Entry(self._seq, command, proc, job)
             self._procs[entry.id] = entry
         threading.Thread(target=self._reader, args=(entry,), daemon=True).start()
         return entry
@@ -191,6 +198,8 @@ class ProcessManager:
             return
         try:
             if os.name == "nt":
+                if entry.job is not None:
+                    _win_kill_job(entry.job)      # 整个 job 全杀：含被重定父的 GUI（taskkill /T 会漏）
                 subprocess.run(
                     ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                     capture_output=True,
