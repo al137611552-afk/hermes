@@ -78,6 +78,31 @@ def test_apply_update_pull_failure_does_not_stash():
     assert r["ok"] is False and "stash" in r["message"]  # 明确让用户手动处理，绝不自动丢改动
 
 
+def test_repo_root_walks_up_to_dot_git():
+    # repo_root 应向上逐级找到含 .git 的目录，而非写死层级。
+    import agentcore.updater as u
+    root = tempfile.mkdtemp()
+    (Path(root) / ".git").mkdir()
+    deep = Path(root) / "src" / "agentcore"
+    deep.mkdir(parents=True)
+    fake = deep / "updater.py"
+    fake.write_text("x")
+    orig = u.__file__
+    u.__file__ = str(fake)
+    try:
+        assert u.repo_root() == Path(root).resolve(), "应回溯到含 .git 的根目录"
+    finally:
+        u.__file__ = orig
+
+
+def test_apply_update_git_missing_message():
+    # git 未安装（rc 127 + FileNotFoundError 文案）时，报错要点出「未安装 git」而非误导为「非 git 仓库」。
+    def run(argv, cwd):
+        return 127, "找不到命令：git（请确认已安装 git / python）"
+    r = updater.apply_update("/tmp/x", run=run)
+    assert r["ok"] is False and "未安装 git" in r["message"]
+
+
 def test_default_run_git_pull_real_integration():
     # 真 git：建 origin → clone → 在 origin 加提交 → _default_run 走 git pull --ff-only（用硬化环境）应拉到。
     origin = tempfile.mkdtemp()

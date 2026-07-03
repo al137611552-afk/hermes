@@ -50,9 +50,14 @@ def current_version() -> str:
 
 
 def repo_root() -> Path:
-    """源码安装的仓库根（src/agentcore/updater.py -> parents[2]）。打包 exe 下此路径不是 git 仓库，
-    由 apply_update 首步 git 判定优雅兜底。"""
-    return Path(__file__).resolve().parents[2]
+    """定位源码仓库根：从本文件位置**向上逐级找含 `.git` 的目录**（比写死 parents[2] 稳——不同解压/
+    嵌套层级都能找到）。找不到（打包 exe / 下载 ZIP 解压无 `.git`）则回退 parents[2]，由 apply_update
+    首步 git 判定优雅兜底。"""
+    here = Path(__file__).resolve()
+    for d in here.parents:
+        if (d / ".git").exists():
+            return d
+    return here.parents[2] if len(here.parents) > 2 else here.parent
 
 
 # ---- IO：查 GitHub / 跑命令（可注入替身）----------------------------------
@@ -119,8 +124,14 @@ def apply_update(repo_dir, run=None) -> dict:
         return rc
 
     if do(["git", "rev-parse", "--is-inside-work-tree"]) != 0:
+        last = (steps[-1].get("output") or "") if steps else ""
+        gitmissing = "找不到命令：git" in last
+        why = ("检测到本机未安装 git 或不在 PATH——请先装 git 再重试。"
+               if gitmissing else
+               f"目录 {repo_dir} 不是 git 仓库。若你是**下载 ZIP 解压**的（不是 git clone），"
+               "源码自更新用不了——请改用 `git clone` 该仓库后再 `pip install -e .`，或用下载页更新。")
         return {"ok": False, "steps": steps,
-                "message": "当前不是 git 仓库，无法源码自更新（可能是打包版）——请用下载页更新。"}
+                "message": "无法源码自更新：" + why}
     if do(["git", "pull", "--ff-only"]) != 0:
         return {"ok": False, "steps": steps,
                 "message": "git pull 失败：本地可能有未提交改动或分叉。请先手动 `git stash` 或提交后重试（不会自动丢弃你的改动）。"}
