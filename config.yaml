@@ -189,7 +189,8 @@ storage:
 # 持久化历史不受影响（DB 始终完整）。token 为启发式估算（无需额外依赖）。
 context:
   enabled: true
-  max_input_tokens: 32000   # 喂给模型的输入预算（含 system）；按你的模型上下文窗口调整
+  max_input_tokens: 96000   # 喂给模型的输入预算（含 system）；按你的模型上下文窗口调整
+                            # （kimi-k2.6 窗口 128K，96K 留足余量；换更小窗口模型记得下调，别超窗）
   keep_recent_turns: 6      # 至少保留最近多少个用户回合
   model_summary: true       # 压缩摘要由模型生成（更高质量，对标 /compact）；摘要按覆盖范围缓存、
                             # 切点前移才增量调用一次，失败自动回退启发式截断
