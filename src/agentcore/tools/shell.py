@@ -192,8 +192,9 @@ def _terminate_tree(proc, pgid=None, job=None) -> None:
             if job is not None:
                 _win_kill_job(job)   # 整个 job 全杀：含 Start-Process/ShellExecute 重定父的 GUI 进程
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                           capture_output=True,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           capture_output=True, timeout=10,   # **必须带 timeout**：taskkill 本身也是子进程，
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))  # 机器满载时它自己会卡，
+                           # 无 timeout 就把收尾整个挂死→工具永不返回、UI 一直"运行中"（真机 >5min 未返回的根因之一）
         else:
             gid = pgid
             if gid is None:
@@ -203,8 +204,8 @@ def _terminate_tree(proc, pgid=None, job=None) -> None:
                     gid = None
             if gid is not None:
                 os.killpg(gid, signal.SIGKILL)   # start_new_session 建的进程组，整组杀（含孤儿）
-    except (OSError, ProcessLookupError):
-        pass
+    except (OSError, ProcessLookupError, subprocess.TimeoutExpired):
+        pass   # taskkill 超时也别卡死收尾：下面还有 proc.kill() 兜底
     try:
         if proc.poll() is None:
             proc.kill()          # 兜底：组杀没覆盖到就单杀直接子进程

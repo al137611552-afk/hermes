@@ -202,13 +202,13 @@ class ProcessManager:
                     _win_kill_job(entry.job)      # 整个 job 全杀：含被重定父的 GUI（taskkill /T 会漏）
                 subprocess.run(
                     ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                    capture_output=True,
+                    capture_output=True, timeout=10,   # 带 timeout：满载时 taskkill 自己会卡，无它则收尾挂死
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
             else:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (OSError, ProcessLookupError):
-            pass
+        except (OSError, ProcessLookupError, subprocess.TimeoutExpired):
+            pass   # taskkill 超时也别卡死：下面 proc.wait/kill 兜底
         try:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:

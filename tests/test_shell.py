@@ -226,6 +226,34 @@ def test_suspected_server_foreground_uses_short_probe_not_full_timeout():
     assert elapsed < 10, f"应在探针窗口内(~1s)被杀，而非等满 timeout；实测 {elapsed:.1f}s"
 
 
+def test_win_terminate_tree_survives_hanging_taskkill():
+    # 真机 >5min 未返回的根因之一：满载时 taskkill 自己卡住，且原 subprocess.run 无 timeout → 收尾挂死、
+    # 工具永不返回。现应：taskkill 抛 TimeoutExpired 也不外泄，仍走 proc.kill() 兜底，_terminate_tree 正常返回。
+    import agentcore.tools.shell as shell
+
+    killed = {"proc": False}
+
+    class _P:
+        pid = 5252
+        def poll(self):
+            return None          # 仍存活 → 应触发 proc.kill 兜底
+        def kill(self):
+            killed["proc"] = True
+
+    def _fake_run(*a, **k):
+        assert k.get("timeout") is not None, "taskkill 必须带 timeout"
+        raise shell.subprocess.TimeoutExpired(cmd="taskkill", timeout=k["timeout"])
+
+    orig_plat, orig_run = shell.sys.platform, shell.subprocess.run
+    shell.sys.platform = "win32"
+    shell.subprocess.run = _fake_run
+    try:
+        shell._terminate_tree(_P(), pgid=None, job=None)   # 不应抛、不应挂
+    finally:
+        shell.sys.platform, shell.subprocess.run = orig_plat, orig_run
+    assert killed["proc"] is True, "taskkill 超时后仍须 proc.kill() 兜底"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0
