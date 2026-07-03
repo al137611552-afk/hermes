@@ -6,7 +6,13 @@
 
 ## [Unreleased]
 
-**修 run_powershell 前台执行 bug（真机：启动 GUI 程序卡住、关不掉、反复几次）**：前台命令原用 `subprocess.run`，超时只杀直接子进程——`&` 启动的 GUI 成孤儿留在屏幕、每次尝试都干等满 60s，模型重试再挂一个。改为 `Popen`：超时时**杀整棵进程树**（Windows `taskkill /T /F`、POSIX `killpg`）连同启动的 GUI 一起关，不留孤儿；超时错误信息改为强指令「启动常驻程序（GUI/dev server/watch）必须用 background:true，别重试前台」。新增 `tests/test_shell.py`（成功/非零退出/超时终止/杀树验证 4 条）。
+**修 run_powershell 前台执行 bug（真机：启动 GUI 程序卡住、关不掉、反复几次）**：前台命令原用 `subprocess.run`，超时只杀直接子进程——`&` 启动的 GUI 成孤儿留在屏幕、每次尝试都干等满 60s，模型重试再挂一个。改为 `Popen`：超时时**杀整棵进程树**（Windows `taskkill /T /F`、POSIX `killpg`）连同启动的 GUI 一起关，不留孤儿；超时错误信息改为强指令「启动常驻程序（GUI/dev server/watch）必须用 background:true，别重试前台」。
+
+**压测揪出并修掉另外两类 run_powershell 隐藏死锁/崩溃**（用真实工程命令形态压测前台路径，12 场景）：
+- **疯狂刷屏命令 OOM**：`yes` 等无限刷 stdout 的命令，原 `communicate()` 无上限把输出堆进内存，timeout 没到进程先被 OOM 杀（实测 exit 137）。改为带上限（200KB，同 `procs.py` 思路）的读线程，超限丢弃后续但继续排空管道（防写端阻塞），内存恒定；超上限附截断提示。
+- **后台子进程继承管道致前台挂死**：`sleep 30 & echo started` 这类（dev server 常态：`&` 起服务、前台还 echo），shell 瞬间 echo 完退出，但后台子进程继承了 stdout 管道，`communicate()` 死等管道 EOF → 白挂满 timeout 再被当超时误报、还误杀了守护。改为 `proc.wait(timeout)` **只等直接子进程退出**（不等管道 EOF）：shell 一退即返回；退出后再杀掉继承管道的孤儿（前台契约=同步跑完不留后代，**先杀再 join** 抽干，避免 read 阻塞漏掉短输出）。
+
+`tests/test_shell.py` 增至 6 条（新增：继承管道秒回、疯狂输出有上限不 OOM）。Linux 全回归 59/59 + 前端 55/0 绿；Windows `taskkill /T` 树杀路径待真机验。
 
 ---
 

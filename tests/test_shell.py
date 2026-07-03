@@ -67,6 +67,40 @@ def test_timeout_kills_child_tree():
     assert not alive, f"超时杀树后 grandchild sleep(pid {child_pid}) 不应还活着"
 
 
+def test_bg_daemon_inheriting_pipe_returns_fast():
+    # 压测揪出的隐藏死锁：命令用 `&` 后台起了继承 stdout 的子进程（dev server 常态），shell 本身瞬间
+    # echo 完退出，但老实现 communicate() 等管道 EOF => 白挂满 timeout 再被当超时报错。修后应秒回。
+    tool = _tool(timeout=8)      # timeout 给大，若仍等 EOF 会挂满 8s
+    t0 = time.time()
+    out = tool.run({"command": "sleep 20 & echo started", "background": False})
+    elapsed = time.time() - t0
+    assert "[exit code] 0" in out and "started" in out
+    assert elapsed < 3, f"后台子进程继承管道时应等直接子进程退出即返回，别等 EOF（实际 {elapsed:.1f}s）"
+
+
+def test_runaway_output_is_bounded_not_oom():
+    # 压测揪出的 OOM：疯狂刷 stdout 的命令老实现无上限堆内存 => timeout 前先把进程 OOM。修后应有上限、
+    # timeout 处被终止且能正常返回超时错误（不崩）。用 200MB 内存上限的子进程隔离验证不 OOM。
+    import subprocess as _sp
+    # 用独立子进程跑：无上限内存会被 200MB rlimit 触发 MemoryError/OOM(rc!=0)；有上限则正常抛 ToolError。
+    script = (
+        "import sys, resource\n"
+        "resource.setrlimit(resource.RLIMIT_AS, (200*1024*1024, resource.RLIM_INFINITY))\n"
+        "from pathlib import Path\n"
+        "sys.path.insert(0, str(Path(r'%s').resolve().parents[1] / 'src'))\n"
+        "from agentcore.tools.shell import RunShellTool\n"
+        "from agentcore.tools.base import ToolError\n"
+        "try:\n"
+        "    RunShellTool(Path.cwd(), shell='bash', timeout=3).run({'command':'yes','background':False})\n"
+        "    print('NO_TIMEOUT')\n"
+        "except ToolError:\n"
+        "    print('BOUNDED_OK')\n"
+        % __file__
+    )
+    r = _sp.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30)
+    assert "BOUNDED_OK" in r.stdout, f"疯狂刷屏命令应被上限约束并在 timeout 处终止，不该 OOM/崩溃（stdout={r.stdout!r} rc={r.returncode} err={r.stderr[-200:]!r}）"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0
