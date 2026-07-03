@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+**应用内更新 T1：源码自更新（ADR 0020，待 Windows 真机验证，未定版）**——解"每出新版都要手动下载+本地打包"的繁琐。启动时静默查 GitHub 最新版本 tag（tags API，仅需 push git tag，无需另建 Release）与本地 `importlib.metadata` 版本比对；有新版才在顶栏下弹条幅「发现新版本 vX.Y.Z · 立即更新 / 稍后」。点「立即更新」→ `git pull --ff-only` + `pip install -e .`（复用已加固的非交互环境，`git pull` 不卡凭据/分页）→ 提示重启生效。`--ff-only` 失败（本地有改动/分叉）**明确报错让用户手动处理，绝不自动 stash/丢改动**；打包 exe（非 git 仓库）首步判定后提示"用下载页更新"。纯逻辑（版本解析/比较）与 IO（HTTP/跑命令）分离：新增 `src/agentcore/updater.py`、`Api.check_update/apply_update`、前端条幅（`pure.js` 出 HTML + `app.js` 接线 + `style.css`）。`tests/test_updater.py` 9 条 + 前端 `pure.test.js` 2 条；无头端到端冒烟对真实仓库跑通（读本地版本→查远端 tag→比对）。全回归 Python 60/60 + 前端 57/57 绿。**T2（打包 exe 换文件更新）不在本次范围**（用户已自建 GitHub 下载链接）。
+
 **方案评审 v5：hub-and-spoke 真讨论（待 Windows 真机验证，未定版）**——ADR 0019 v5，引擎级重构，让评审从"拼 JSON"变成"我的方案被挑刺、我逐条回应、最后收敛"：
 
 ### Changed

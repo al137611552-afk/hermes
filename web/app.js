@@ -4036,8 +4036,43 @@ window.addEventListener("pywebviewready", async () => {
   input.focus();
   maybePromptKeySetup();  // 首次无 key 自动引导去设置面板
   maybeResumeBrowserInstall();  // 浏览器穿透上次关窗中断 → 开机静默续装（不必再点、不从零重下）
+  maybeCheckUpdate();     // 应用内更新（ADR 0020）：后台查有无新版，有才弹条幅，网络失败静默
   clog(`初始化完成（总计自导航 ${Math.round(performance.now())}ms）`);
 });
+
+// 应用内更新条幅（ADR 0020 T1）：启动时静默查 GitHub 最新版本；有新版才弹条幅、点「立即更新」跑 git pull + pip install。
+async function maybeCheckUpdate() {
+  try {
+    const info = await window.pywebview.api.check_update();
+    if (!shouldShowUpdate(info)) return;   // 网络失败/无新版 → 静默不打扰
+    const el = document.getElementById("update-banner");
+    if (!el) return;
+    el.innerHTML = updateBannerHtml(info);
+    el.hidden = false;
+    const later = document.getElementById("upd-later");
+    const apply = document.getElementById("upd-apply");
+    if (later) later.onclick = () => { el.hidden = true; };
+    if (apply) apply.onclick = () => applyUpdate(el, apply);
+  } catch (e) { /* 更新检查绝不影响正常使用 */ }
+}
+
+async function applyUpdate(el, btn) {
+  btn.disabled = true;
+  btn.textContent = "更新中…";
+  try {
+    const r = await window.pywebview.api.apply_update();  // 阻塞跑 git pull + pip install，跑完才返回
+    const msg = (r && r.message) || (r && r.ok ? "更新完成，请重启 hermes 生效。" : "更新失败");
+    el.innerHTML = '<span class="upd-text">' + (r && r.ok ? "✅ " : "⚠️ ") + escapeHtml(msg) +
+      '</span><span class="upd-actions"><button id="upd-dismiss" class="upd-btn">知道了</button></span>';
+    const d = document.getElementById("upd-dismiss");
+    if (d) d.onclick = () => { el.hidden = true; };
+    if (r && r.ok) showToast("更新完成，请重启 hermes 生效");
+  } catch (e) {
+    showToast("更新出错：" + ((e && e.message) || e));
+    btn.disabled = false;
+    btn.textContent = "立即更新";
+  }
+}
 
 // 浏览器穿透：若「已启用但没连上」（多半是上次安装被关窗中断），后台续装。
 // install-browser 幂等：已装的秒过、没装完的续上——不会从零重下，也不丢启用状态。

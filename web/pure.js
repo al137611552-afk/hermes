@@ -376,7 +376,26 @@
     return { tabs, active, showStrip: tabs.length > 1 };
   }
 
+  // 应用内更新条幅（ADR 0020）：由 check_update 结果决定是否显示 + 显示什么。纯逻辑，DOM 侧只按结果渲染。
+  function shouldShowUpdate(info) {
+    return !!(info && info.ok && info.newer && info.latest);
+  }
+  function updateBannerHtml(info) {
+    // 前置条件由 shouldShowUpdate 把关；这里只拼展示。版本号转义防注入。
+    const cur = escapeHtml((info && info.current) || "");
+    const latest = escapeHtml((info && info.latest) || "");
+    return (
+      '<span class="upd-text">发现新版本 <b>v' + latest + "</b>" +
+      (cur ? ' <span class="upd-cur">（当前 v' + cur + "）</span>" : "") + "</span>" +
+      '<span class="upd-actions">' +
+      '<button id="upd-apply" class="upd-btn upd-btn-primary">立即更新</button>' +
+      '<button id="upd-later" class="upd-btn">稍后</button>' +
+      "</span>"
+    );
+  }
+
   return {
+    shouldShowUpdate, updateBannerHtml,
     summarize, escapeHtml, sessionRowClasses, isBusyState, composerState,
     computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
     needsKeySetup, validateModelProfile,

@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-07-03 — 应用内更新 T1：源码自更新（ADR 0020，待验证）
+
+- **背景**：用户每出新版都要手动"下载代码→本地 python→本地打包"，繁琐；想要主流程序"提示更新→一键更新"体验。用户使用分两场景：T1 自用（源码装，本机有 git+python）、T2 分发给他人（已自建 GitHub 下载链接）。本次只做 **T1**。
+- **做了什么**：`updater.py`（纯逻辑版本解析/比较 + IO 查 GitHub tags/跑命令，可注入替身）；`Api.check_update/apply_update`；前端顶栏下条幅（`pure.js` `shouldShowUpdate/updateBannerHtml` + `app.js` `maybeCheckUpdate/applyUpdate` + `style.css`）。启动静默查 tag，有新版才弹；一键更新 = `git pull --ff-only` + `pip install -e .`（复用 shell 硬化环境防卡凭据）。
+- **关键决策**：`--ff-only` **不自动 stash**，本地有改动/分叉时明确报错让用户手动处理；非 git 仓库（打包版）优雅提示用下载页；网络失败静默不打扰；`apply_update` 同步返回值、内部不 evaluate_js（不触 WebView2 死锁坑）；MVP 只提示重启不自动重启。
+- **自检**：`tests/test_updater.py` 9/9（含真 git pull 集成）+ 前端 `pure.test.js` 2 条；**无头端到端冒烟对真实仓库跑通**（current_version 3.51.2 → 查远端 tag → newer 判定）。全回归 Python 60/60 + 前端 57/57 绿。
+- **验证状态**：**待 Windows 真机验**——GUI 条幅显示、点「立即更新」真跑 git pull+pip install、重启生效。验证通过后 ADR 0020 转正并定版（次版本 3.52.0）。
+- **遗留**：自动重启（MVP 只提示手动重启）；T2 打包 exe 换文件更新（用户已有下载链接，暂缓）。
+
+---
+
 ## 2026-07-03 — run_powershell / shell 执行健壮性：修四类挂死/崩溃（已验证，定版 3.51.2）
 
 - **背景**：真机反馈"前台启动 GUI 程序卡住、关不掉、反复几次"，由此系统排查命令执行的挂死面。调研主流 agent（gemini-cli、claude-code、zed、cursor、copilot）踩过的坑 + 用真实工程命令形态压测，共识别并修掉**四类**：

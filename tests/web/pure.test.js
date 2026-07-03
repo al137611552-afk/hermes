@@ -13,7 +13,27 @@ const {
   reviewGateLabel, decisionsByStatus, decisionNeedsUser,
   DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_MAIN, DEBATE_MAIN_LABEL, debateMainRoundLabel,
   splitVerdictProse, verdictTally, debateConvergedText,
+  shouldShowUpdate, updateBannerHtml,
 } = require("../../web/pure.js");
+
+test("shouldShowUpdate 仅在有新版且 ok 时为真", () => {
+  assert.equal(shouldShowUpdate({ ok: true, newer: true, latest: "3.51.3" }), true);
+  assert.equal(shouldShowUpdate({ ok: true, newer: false, latest: "3.51.2" }), false);
+  assert.equal(shouldShowUpdate({ ok: false, error: "x" }), false);  // 网络失败 → 不弹
+  assert.equal(shouldShowUpdate(null), false);
+  assert.equal(shouldShowUpdate({ ok: true, newer: true }), false);   // 缺 latest → 不弹
+});
+
+test("updateBannerHtml 含版本号与按钮，且转义版本串防注入", () => {
+  const html = updateBannerHtml({ current: "3.51.2", latest: "3.51.3" });
+  assert.match(html, /v3\.51\.3/);
+  assert.match(html, /当前 v3\.51\.2/);
+  assert.match(html, /id="upd-apply"/);
+  assert.match(html, /id="upd-later"/);
+  const evil = updateBannerHtml({ current: "1.0.0", latest: "<img src=x>" });
+  assert.ok(!evil.includes("<img src=x>"), "版本串应被转义");
+  assert.match(evil, /&lt;img/);
+});
 
 test("reviewGateLabel：可数文案、绝不百分比（守 ADR 0019 禁 score）", () => {
   assert.deepEqual(reviewGateLabel(null), { enabled: false, text: "尚未评审" });

@@ -1432,3 +1432,35 @@ body.plan-on .composer::before {
 /* 顶部设置 / 主题切换按钮：去掉常驻背景框，仅 hover 时淡底高亮暗示可点击 */
 #settings-btn, #theme-toggle { background: transparent; border-color: transparent; }
 #settings-btn:hover, #theme-toggle:hover { background: var(--panel-2); border-color: transparent; color: var(--text); }
+
+/* 应用内更新条幅（ADR 0020）：顶栏下方一条，有新版才显示 */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text);
+}
+.update-banner .upd-cur { color: var(--muted); }
+.update-banner .upd-actions { display: flex; gap: 8px; flex: none; }
+.upd-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.upd-btn:hover { background: var(--hover-bg); }
+.upd-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.upd-btn-primary:hover { background: var(--accent-hover); }
+.upd-btn:disabled { opacity: .6; cursor: default; }

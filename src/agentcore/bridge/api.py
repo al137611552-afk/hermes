@@ -402,6 +402,24 @@ class Api:
                 "node": bool(shutil.which("npx") or shutil.which("node")),
                 "connected": bool(bt), "tools": len(bt)}
 
+    def check_update(self) -> dict:
+        """应用内更新（ADR 0020 T1）：查 GitHub 最新版本 tag 与本地比对。前端启动时静默调，有新版才弹条幅。
+        返回 {ok, current, latest?, newer?, notes_url?, error?}；网络失败 ok=False（前端不打扰）。"""
+        from ..updater import check_update as _chk
+        try:
+            return _chk()
+        except Exception as e:  # noqa: BLE001 — 更新检查绝不影响正常使用
+            return {"ok": False, "error": str(e)}
+
+    def apply_update(self) -> dict:
+        """一键源码自更新：git pull --ff-only + pip install -e .（复用非交互硬化环境）。返回 {ok, steps, message}。
+        同步阻塞跑完才返回（内部不 evaluate_js，不触 WebView2 死锁坑）；完成后前端提示重启生效。"""
+        from ..updater import apply_update as _apply, repo_root
+        try:
+            return _apply(repo_root())
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "steps": [], "message": f"更新出错：{e}"}
+
     def get_feature_flags(self) -> dict:
         """GUI「功能开关」面板：返回当前生效的可切换 agent 开关。
 
