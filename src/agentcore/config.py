@@ -66,7 +66,7 @@ class AgentConfig(BaseModel):
     workspace: str | None = None  # 显式固定工作区；设了则全局用它、并关闭"按会话隔离"
     per_session_workspace: bool = True   # 每个会话用独立文件夹（隔离不同项目，避免互相污染）
     workspaces_root: str | None = None   # 会话工作区根；None -> ROOT/data/workspaces
-    max_steps: int = 25
+    max_steps: int = 200  # 防跑飞上限（非正常任务边界）：正常任务靠"模型停止调工具"自然收敛，到这个数多半在打转
     model_max_tokens: int = 0     # 主模型输出上限覆盖（0=跟随模型档 max_tokens）。长任务被截断时在设置里调高
     token_budget: int = 0         # 会话累计 token 预算总额（0=不设）。顶部用量芯片据此显示已用百分比、还剩多少
     shell: Literal["powershell", "pwsh", "cmd", "bash", "zsh"] = "powershell"
@@ -520,8 +520,8 @@ LIMITS_SPEC = (
     # 主模型 / 主循环
     {"key": "agent.model_max_tokens", "group": "主模型 / 主循环", "label": "输出上限 max_tokens",
      "hint": "0 = 跟随模型档；长任务被截断时调高", "type": "int", "min": 0, "max": 200000},
-    {"key": "agent.max_steps", "group": "主模型 / 主循环", "label": "单轮最多工具步数",
-     "hint": "一轮对话内最多工具调用步数，防死循环", "type": "int", "min": 1, "max": 500},
+    {"key": "agent.max_steps", "group": "主模型 / 主循环", "label": "防跑飞上限（工具步数）",
+     "hint": "安全阈值而非正常任务边界：正常任务靠模型自然收敛，到这个数多半在打转。默认 200，一般不用改", "type": "int", "min": 1, "max": 1000},
     {"key": "agent.shell_timeout", "group": "主模型 / 主循环", "label": "前台命令超时（秒）",
      "hint": "装依赖/编译等慢命令的上限；长服务用 background:true", "type": "int", "min": 5, "max": 3600},
     # 委派 / 子 Agent

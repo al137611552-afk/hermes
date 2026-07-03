@@ -1,8 +1,9 @@
 """Agent 主循环：plan → act → observe。
 
 每一轮调用 provider 跑一次模型；若模型要求调用工具，则（危险工具过权限
-gate 后）执行，把 tool_result 回灌，再进入下一轮；直到模型不再调用工具或
-达到 max_steps 上限。
+gate 后）执行，把 tool_result 回灌，再进入下一轮；直到模型不再调用工具
+（= 自然收敛，正常出口）。max_steps 只是防跑飞的安全阈值（默认 200，非正常
+任务边界）——正常任务到不了，撞到多半是原地打转，此时强制收尾一轮。
 
 事件通过注入的 emit(event, data) 回调推给上层（bridge -> 前端）：
 - chunk        文本增量（data: str）
@@ -661,8 +662,9 @@ class AgentLoop:
             # 避免两条连续 user 破坏交替。
             if cancel is None or not cancel.is_set():
                 hint = {"type": "text", "text": (
-                    "[系统] 已达到步数上限，不能再调用任何工具。请立即基于上面已经收集到的信息，"
-                    "给出尽可能有用的总结/结论：包含已获得的关键数据/发现，以及尚未完成的部分。不要再请求工具。"
+                    "[系统] 已达到防跑飞步数上限（工具调用次数过多，疑似在原地打转）。现在不能再调用任何工具。"
+                    "请立即基于上面已经收集到的信息，给出尽可能有用的总结/结论：包含已获得的关键数据/发现、"
+                    "尚未完成的部分，以及若要继续该换的思路。不要再请求工具。"
                 )}
                 last = messages[-1] if messages else None
                 if last is not None and last.role == "user" and isinstance(last.content, list):
@@ -687,7 +689,8 @@ class AgentLoop:
                     final_text = ""
                 if final_text.strip():
                     messages.append(Message("assistant", final_text))
-            emit("error", f"已达到最大步数上限（{self.max_steps}），已基于已收集信息收尾。")
+            emit("error", f"工具调用已达防跑飞上限（{self.max_steps} 步，疑似原地打转），已基于已收集信息收尾。"
+                          f"如确属超长任务，可在设置调高「防跑飞上限」或改用委派拆分。")
 
         # 回合末上报用量（FR-11.8）：tokens 全 0（端点没回传用量）则不发，避免噪音
         if total["input"] or total["output"]:
