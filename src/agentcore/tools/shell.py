@@ -199,8 +199,12 @@ class RunShellTool(Tool):
             "command": {"type": "string", "description": "要执行的命令"},
             "background": {
                 "type": "boolean",
-                "description": "后台启动长进程（dev server/watch 等），立即返回进程编号；"
-                               "之后用 read_process_output 看输出、stop_process 停止。默认 false",
+                "description": "后台启动**常驻/不会自己退出**的进程，立即返回进程编号；之后用 "
+                               "read_process_output 看输出、stop_process 停止。默认 false。"
+                               "**判据：命令是否会自己结束？会 dev server/watch/REPL 就设 true。**"
+                               "典型必须 true：streamlit run、uvicorn/gunicorn、flask run、npm/pnpm/yarn "
+                               "run dev、vite、next dev、python -m http.server、任何带 --watch/--reload 的。"
+                               "前台（false）跑这些只会一直等它退出、白白卡到超时再被杀。",
             },
         },
         "required": ["command"],
@@ -217,7 +221,9 @@ class RunShellTool(Tool):
         self.name = f"run_{shell}"
         self.description = (
             f"在工作区目录下执行一条 {shell} 命令并返回输出。"
-            "长时间运行的命令（dev server、watch）传 background:true 后台启动。"
+            "**启动常驻/不自退的进程（dev server、watch、REPL：如 streamlit run、uvicorn、flask run、"
+            "npm run dev、vite、next dev、http.server、带 --watch/--reload 的命令）必须一开始就传 "
+            "background:true——别前台跑，前台会一直等它退出、白白卡到超时才被杀。**"
             "**读/看文件内容请用 read_file、列目录用 list_dir（它们受工作区与已授权目录约束）；"
             "不要用本工具的 type/cat/Get-Content/dir 去读文件、也不要访问工作区外的路径——"
             "shell 留给真正需要执行的命令。**"
