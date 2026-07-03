@@ -12,7 +12,9 @@
 - **疯狂刷屏命令 OOM**：`yes` 等无限刷 stdout 的命令，原 `communicate()` 无上限把输出堆进内存，timeout 没到进程先被 OOM 杀（实测 exit 137）。改为带上限（200KB，同 `procs.py` 思路）的读线程，超限丢弃后续但继续排空管道（防写端阻塞），内存恒定；超上限附截断提示。
 - **后台子进程继承管道致前台挂死**：`sleep 30 & echo started` 这类（dev server 常态：`&` 起服务、前台还 echo），shell 瞬间 echo 完退出，但后台子进程继承了 stdout 管道，`communicate()` 死等管道 EOF → 白挂满 timeout 再被当超时误报、还误杀了守护。改为 `proc.wait(timeout)` **只等直接子进程退出**（不等管道 EOF）：shell 一退即返回；退出后再杀掉继承管道的孤儿（前台契约=同步跑完不留后代，**先杀再 join** 抽干，避免 read 阻塞漏掉短输出）。
 
-`tests/test_shell.py` 增至 6 条（新增：继承管道秒回、疯狂输出有上限不 OOM）。Linux 全回归 59/59 + 前端 55/0 绿；Windows `taskkill /T` 树杀路径待真机验。
+**注入非交互硬化环境变量，防"等交互输入/分页器/凭据/编辑器"静默挂死**（调研主流 agent 通病：gemini-cli #24707/#21052、claude-code #46078、zed #42943——`git log` 进 less 等 q、`git push` 私库等账号密码、`git commit`(无 -m) 开 vim、apt 问 y/n 都会让 agent 静默卡死）。`shell.py` 新增 `hardened_env()`，前台（`shell.py`）与后台（`procs.py`）两条 Popen 路径统一注入：`GIT_TERMINAL_PROMPT=0`（git 不弹凭据提示，鉴权失败快速返回而非挂死）、`GIT_PAGER=cat`/`PAGER=cat`（不进分页器）、`GIT_EDITOR=true`/`EDITOR=true`/`VISUAL=true`（不开编辑器干等）、`DEBIAN_FRONTEND=noninteractive`、`PIP_NO_INPUT=1`、`PYTHONUNBUFFERED=1`。只叠加不清空用户环境。Linux 因 `start_new_session` 无控制终端多半已 fail-fast，此硬化主要保 **Windows**（`CREATE_NO_WINDOW` 不脱离控制台，这些提示会真挂）。已知未修：`setsid`/双 fork 逃逸出进程组的守护 `killpg` 够不着（此类进程本就意图脱离，属罕见且有意为之，记录不强修）。
+
+`tests/test_shell.py` 增至 8 条（继承管道秒回、疯狂输出有上限不 OOM、非交互环境已注入、硬化不清空用户环境）。Linux 全回归 59/59 + 前端 55/0 绿；Windows `taskkill /T` 树杀 + 非交互硬化路径待真机验。
 
 ---
 

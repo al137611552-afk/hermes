@@ -101,6 +101,27 @@ def test_runaway_output_is_bounded_not_oom():
     assert "BOUNDED_OK" in r.stdout, f"疯狂刷屏命令应被上限约束并在 timeout 处终止，不该 OOM/崩溃（stdout={r.stdout!r} rc={r.returncode} err={r.stderr[-200:]!r}）"
 
 
+def test_noninteractive_env_is_injected():
+    # 主流 agent 通病：git log 进 less 等 q / git push 私库等凭据 / git commit 开 vim / apt 问 y/n 静默挂死。
+    # 硬化做法=注入非交互环境变量。此处验证子进程确实拿到这些变量（Windows 上正是靠它们避免真挂死）。
+    out = _tool().run({"command":
+        "for v in GIT_TERMINAL_PROMPT GIT_PAGER PAGER GIT_EDITOR EDITOR DEBIAN_FRONTEND PIP_NO_INPUT; do "
+        "echo \"$v=$(printenv $v)\"; done", "background": False})
+    for expect in ("GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "PAGER=cat",
+                   "GIT_EDITOR=true", "EDITOR=true", "DEBIAN_FRONTEND=noninteractive", "PIP_NO_INPUT=1"):
+        assert expect in out, f"未注入非交互硬化变量 {expect}；实际输出：\n{out}"
+
+
+def test_hardening_does_not_wipe_user_env():
+    # 硬化是"叠加"不是"清空"：用户原有环境（如 PATH、模型 key 所在的变量）必须仍在，否则命令找不到程序。
+    os.environ["HERMES_STRESS_MARK"] = "keep-me-42"
+    try:
+        out = _tool().run({"command": "printenv HERMES_STRESS_MARK", "background": False})
+        assert "keep-me-42" in out, "硬化环境把用户原有变量清掉了（应叠加而非替换）"
+    finally:
+        os.environ.pop("HERMES_STRESS_MARK", None)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0

@@ -19,6 +19,7 @@ import threading
 import time
 
 from .base import Tool, ToolError
+from .shell import hardened_env
 
 MAX_BUF_CHARS = 200_000   # 每进程输出环形缓冲上限
 MAX_READ_CHARS = 50_000   # 单次 read_process_output 返回上限
@@ -108,7 +109,9 @@ class ProcessManager:
         try:
             proc = subprocess.Popen(
                 argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace", **kwargs,
+                stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
+                env=hardened_env(),   # 同前台：非交互硬化，防后台 dev server 因分页/凭据/编辑器提示卡住
+                **kwargs,
             )
         except FileNotFoundError:
             raise ToolError(f"找不到可执行程序：{argv[0]}")

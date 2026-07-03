@@ -19,6 +19,27 @@ from .base import Tool, ToolError
 _MAX_OUTPUT_CHARS = 200_000
 
 
+def hardened_env() -> dict:
+    """在用户环境基础上叠加"非交互硬化"变量，防命令因等交互输入/分页器/凭据/编辑器而静默挂死——这是
+    主流 agent（gemini-cli #24707/#21052、claude-code #46078、zed #42943）的通病：`git log` 进 less 等 q、
+    `git push` 私库等账号密码、`git commit`(无 -m) 开 vim、apt 问 y/n。Linux 上 start_new_session 无控制
+    终端多半 fail-fast，但 **Windows 的 CREATE_NO_WINDOW 不脱离控制台，这些提示会真挂住**，故必须显式压成
+    非交互。只叠加不清空用户环境（模型 key 等仍在）。"""
+    env = dict(os.environ)
+    env.update({
+        "GIT_TERMINAL_PROMPT": "0",   # git 绝不弹账号/密码提示：私库/需鉴权时快速失败而非静默挂死
+        "GIT_PAGER": "cat",           # git 分页命令（log/diff/branch/show）不进 less 等 q
+        "PAGER": "cat",               # 通用分页器兜底（git 未覆盖的命令 & 其它工具）
+        "GIT_EDITOR": "true",         # git commit(无 -m)/rebase -i 不开 vim 干等，空操作快速返回
+        "EDITOR": "true",             # 通用编辑器兜底
+        "VISUAL": "true",
+        "DEBIAN_FRONTEND": "noninteractive",  # apt/dpkg 不弹交互配置界面
+        "PIP_NO_INPUT": "1",          # pip 不等输入
+        "PYTHONUNBUFFERED": "1",      # 子 Python 输出即时刷出（否则块缓冲、超时前看不到进度/挂着像卡死）
+    })
+    return env
+
+
 def _terminate_tree(proc, pgid=None) -> None:
     """终止进程及其整棵子树（同 procs.ProcessManager._kill_tree）。前台命令收尾/超时时连带关掉它启动的
     GUI/后台子进程，别留孤儿：否则启动了不自退的程序（GUI / `&` 起的守护）会一直挂着、下次尝试再挂一个
@@ -139,6 +160,7 @@ class RunShellTool(Tool):
                 encoding="utf-8", errors="replace",   # 必显式 utf-8：Windows 中文环境 text=True 默认 GBK，
                                                        # 撞命令的 UTF-8 输出会 UnicodeDecodeError 崩/卡住
                 stdin=subprocess.DEVNULL,             # 交互式命令（npm create / npm init 等）拿到 EOF 快速失败
+                env=hardened_env(),                   # 非交互硬化：防 git 分页器/凭据/编辑器、apt y/n 等挂死
                 **kwargs,
             )
         except FileNotFoundError:
