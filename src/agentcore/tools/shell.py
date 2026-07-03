@@ -20,13 +20,30 @@ from .base import Tool, ToolError
 _MAX_OUTPUT_CHARS = 200_000
 
 
+# hermes 自身模型 provider 的计费密钥（从 .env 经 load_dotenv 进了 os.environ）。这些是给 hermes 调
+# 大模型用的，**shell 命令永远用不到**；若原样透传给子 shell，模型跑一句 `env`/`echo $ARK_API_KEY`
+# 就能把明文计费密钥打进对话上下文（→ 可能被日志/模型服务端留存＝盗刷风险）。故执行外部命令前剥掉。
+# 只剥内置 6 家 provider 的 key（自定义 provider 若用别的 env 名不覆盖，见 CHANGELOG 说明）。
+_PROVIDER_KEY_ENVS = frozenset({
+    "ARK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "MOONSHOT_API_KEY",
+})
+
+
+def _strip_secrets(env: dict) -> dict:
+    """从将传给子 shell 的环境里剥掉 hermes 的模型 provider 计费密钥（命令用不到、泄露即盗刷）。"""
+    for name in _PROVIDER_KEY_ENVS:
+        env.pop(name, None)
+    return env
+
+
 def hardened_env() -> dict:
     """在用户环境基础上叠加"非交互硬化"变量，防命令因等交互输入/分页器/凭据/编辑器而静默挂死——这是
     主流 agent（gemini-cli #24707/#21052、claude-code #46078、zed #42943）的通病：`git log` 进 less 等 q、
     `git push` 私库等账号密码、`git commit`(无 -m) 开 vim、apt 问 y/n。Linux 上 start_new_session 无控制
     终端多半 fail-fast，但 **Windows 的 CREATE_NO_WINDOW 不脱离控制台，这些提示会真挂住**，故必须显式压成
-    非交互。只叠加不清空用户环境（模型 key 等仍在）。"""
-    env = dict(os.environ)
+    非交互。只叠加不清空用户环境；但会剥掉 hermes 自己的模型 provider 计费密钥（见 _strip_secrets）。"""
+    env = _strip_secrets(dict(os.environ))
     env.update({
         "GIT_TERMINAL_PROMPT": "0",   # git 绝不弹账号/密码提示：私库/需鉴权时快速失败而非静默挂死
         "GIT_PAGER": "cat",           # git 分页命令（log/diff/branch/show）不进 less 等 q

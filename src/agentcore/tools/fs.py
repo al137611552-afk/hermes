@@ -9,6 +9,7 @@ FR-10.2 读写精度（对标 Claude Code 的 Read/Edit/MultiEdit 惯例）：
 """
 from __future__ import annotations
 
+import os
 import re
 
 from .base import Tool, ToolError, make_diff_block, output_with_diff
@@ -16,6 +17,42 @@ from .base import Tool, ToolError, make_diff_block, output_with_diff
 MAX_READ_CHARS = 200_000  # 单次输出字符上限（防灌爆上下文；可用 offset 续读）
 MAX_READ_LINES = 2000     # 单次最多行数（默认与上限）
 MAX_LINE_CHARS = 2000     # 超长单行截断
+MAX_DIR_ENTRIES = 1000    # list_dir 单次最多列出条目（防大目录灌爆上下文）
+
+
+def _read_text_or_die(p, path_label: str) -> str:
+    """严格 UTF-8 读文本；遇二进制/非 UTF-8 抛可操作 ToolError（而非裸 UnicodeDecodeError 灌给模型）。
+    编辑类工具用：按文本 count/replace 二进制内容会产出乱码替换字符、把文件写坏，故直接拒绝并指路。"""
+    try:
+        return p.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise ToolError(f"{path_label} 疑似二进制或非 UTF-8 文本，无法按文本编辑；"
+                        "如确要改，请用 write_file 整体覆盖，或用 shell 处理。")
+
+
+def _safe_read_for_diff(p) -> str:
+    """读旧内容仅用于生成 diff 展示；不可解码（二进制）时返回 ''，绝不让 diff 这种“锦上添花”功能
+    把一次合法的覆盖写整个搞崩（原 write_file 覆盖二进制文件即因此裸崩 UnicodeDecodeError）。"""
+    try:
+        return p.read_text(encoding="utf-8") if p.is_file() else ""
+    except (UnicodeDecodeError, OSError):
+        return ""
+
+
+def _atomic_write(p, content: str) -> None:
+    """原子写：先写同目录临时文件再 os.replace 换名——写到一半崩溃/断电不会留下半截损坏文件
+    （原实现直接 write_text 覆盖，大文件中途失败即毁原文件）。临时文件与目标同目录，保证同盘可原子 rename。"""
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.parent / (p.name + ".hermes.tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, p)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
 
 # read_file 行号前缀的说明（edit 工具描述里也要提醒别带入）
 _LINE_PREFIX_RE = re.compile(r"(?m)^\s*\d+\t")
@@ -166,12 +203,11 @@ class WriteFileTool(Tool):
     def run(self, params: dict):
         p = self.resolve(params["path"])
         rel = str(p.relative_to(self.workspace))
-        before = p.read_text(encoding="utf-8") if p.is_file() else ""
+        before = _safe_read_for_diff(p)
         if self._tracker:
             self._tracker(rel)
-        p.parent.mkdir(parents=True, exist_ok=True)
         content = params.get("content", "")
-        p.write_text(content, encoding="utf-8")
+        _atomic_write(p, content)
         msg = f"已写入 {params['path']}（{len(content)} 字符）"
         return output_with_diff(_with_verify(msg, self._verifier, rel),
                                 make_diff_block(rel, before, content))
@@ -205,7 +241,7 @@ class EditFileTool(Tool):
         p = self.resolve(params["path"])
         if not p.is_file():
             raise ToolError(f"文件不存在：{params['path']}")
-        text = p.read_text(encoding="utf-8")
+        text = _read_text_or_die(p, params["path"])
         old = params["old_string"]
         if not old:
             raise ToolError("old_string 不能为空")
@@ -223,7 +259,7 @@ class EditFileTool(Tool):
         else:
             after = text.replace(old, params["new_string"], 1)
             msg = f"已编辑 {params['path']}"
-        p.write_text(after, encoding="utf-8")
+        _atomic_write(p, after)
         return output_with_diff(_with_verify(msg, self._verifier, rel),
                                 make_diff_block(rel, text, after))
 
@@ -266,12 +302,12 @@ class MultiEditTool(Tool):
         p = self.resolve(params["path"])
         if not p.is_file():
             raise ToolError(f"文件不存在：{params['path']}")
-        text = p.read_text(encoding="utf-8")
+        text = _read_text_or_die(p, params["path"])
         new_text, total = apply_edits(text, params.get("edits"))  # 失败在此抛出，不落盘
         rel = str(p.relative_to(self.workspace))
         if self._tracker:
             self._tracker(rel)
-        p.write_text(new_text, encoding="utf-8")
+        _atomic_write(p, new_text)
         n = len(params["edits"])
         msg = f"已对 {params['path']} 应用 {n} 处编辑（共替换 {total} 处）"
         return output_with_diff(_with_verify(msg, self._verifier, rel),
@@ -294,5 +330,10 @@ class ListDirTool(Tool):
         entries = sorted(p.iterdir(), key=lambda x: (x.is_file(), x.name.lower()))
         if not entries:
             return "(空目录)"
-        lines = [f"{'📄' if e.is_file() else '📁'} {e.name}" for e in entries]
+        total = len(entries)
+        shown = entries[:MAX_DIR_ENTRIES]      # 大目录截断，防一次列几千项灌爆上下文
+        lines = [f"{'📄' if e.is_file() else '📁'} {e.name}" for e in shown]
+        if total > MAX_DIR_ENTRIES:
+            lines.append(f"…（共 {total} 项，仅列出前 {MAX_DIR_ENTRIES} 项；"
+                         "用更具体的子目录或 grep/glob 缩小范围）")
         return "\n".join(lines)

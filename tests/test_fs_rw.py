@@ -174,6 +174,49 @@ def test_pure_helpers():
         pass
 
 
+# ---- 压测发现的短板回归：二进制安全 / 原子写 / 大目录截断 ----------------------
+
+def test_write_file_can_overwrite_binary(tmp: Path):
+    # 压测发现：write_file 覆盖非 UTF-8 文件曾裸崩 UnicodeDecodeError（因 diff 基线用严格读）。
+    # 现应能正常覆盖（diff 读不了就跳过 diff，不阻断合法覆盖写）。
+    (tmp / "b.bin").write_bytes(b"\xff\xfe\x00hello\x80")
+    out = _reg(tmp).get("write_file").run({"path": "b.bin", "content": "now text"})
+    assert "已写入" in str(out)
+    assert (tmp / "b.bin").read_text(encoding="utf-8") == "now text"
+
+
+def test_edit_binary_gives_actionable_error_not_raw_decode(tmp: Path):
+    # 压测发现：edit/multi_edit 编辑二进制曾把裸 UnicodeDecodeError 回灌模型。现应是可操作 ToolError。
+    (tmp / "b.bin").write_bytes(b"\xff\xfehello\x80")
+    for tool, params in [
+        ("edit_file", {"path": "b.bin", "old_string": "hello", "new_string": "HI"}),
+        ("multi_edit", {"path": "b.bin", "edits": [{"old_string": "hello", "new_string": "HI"}]}),
+    ]:
+        raised = None
+        try:
+            _reg(tmp).get(tool).run(params)
+        except ToolError as e:
+            raised = str(e)
+        assert raised is not None and "二进制" in raised, f"{tool} 应抛可操作 ToolError，实际：{raised!r}"
+
+
+def test_write_is_atomic_no_partial_temp_left(tmp: Path):
+    # 原子写：落盘后目录里不应残留 .hermes.tmp 临时文件。
+    _reg(tmp).get("write_file").run({"path": "sub/a.txt", "content": "x" * 10000})
+    assert (tmp / "sub" / "a.txt").read_text(encoding="utf-8") == "x" * 10000
+    assert not list((tmp / "sub").glob("*.hermes.tmp")), "原子写不应残留临时文件"
+
+
+def test_list_dir_caps_huge_directory(tmp: Path):
+    from agentcore.tools.fs import MAX_DIR_ENTRIES
+    big = tmp / "big"; big.mkdir()
+    for i in range(MAX_DIR_ENTRIES + 50):
+        (big / f"f{i:05d}.txt").touch()
+    out = str(_reg(tmp).get("list_dir").run({"path": "big"}))
+    assert out.count("\n") <= MAX_DIR_ENTRIES + 1, "大目录应被截断"
+    assert f"共 {MAX_DIR_ENTRIES + 50} 项" in out, "应提示总数与已截断"
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

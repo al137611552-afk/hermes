@@ -146,6 +146,31 @@ def test_win_terminate_tree_kills_job_not_just_taskkill():
     assert calls["taskkill"] is True, "job 之外仍要 taskkill /T 兜底"
 
 
+def test_hardened_env_strips_provider_api_keys():
+    # 压测发现：shell 原样透传 os.environ，模型跑 `echo $ARK_API_KEY` 即可把计费密钥打进上下文。
+    # 现应在传给子 shell 前剥掉内置 provider 计费密钥（命令用不到、泄露即盗刷）。
+    import agentcore.tools.shell as shell
+    saved = {k: os.environ.get(k) for k in
+             ("ARK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "PATH")}
+    os.environ["ARK_API_KEY"] = "sk-should-not-leak"
+    os.environ["OPENAI_API_KEY"] = "sk-openai-secret"
+    try:
+        env = shell.hardened_env()
+        assert "ARK_API_KEY" not in env, "provider 计费密钥必须从子 shell 环境剥掉"
+        assert "OPENAI_API_KEY" not in env
+        assert env.get("PATH") == os.environ.get("PATH"), "普通环境变量不能误删"
+        assert env.get("GIT_TERMINAL_PROMPT") == "0", "非交互硬化仍要生效"
+        # 端到端：跑 echo 拿不到明文
+        out = str(_tool().run({"command": "echo v=$ARK_API_KEY", "background": False}))
+        assert "sk-should-not-leak" not in out, "实跑 echo 不应回显密钥"
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def test_looks_long_running_detects_dev_servers_and_watch():
     from agentcore.tools.shell import _looks_long_running
     pos = [
