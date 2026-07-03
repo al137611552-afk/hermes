@@ -215,6 +215,34 @@ def test_main_reply_is_only_thing_that_changes_state():
     assert d.current_choice == "X"                           # 评审员碰不到 current_choice
 
 
+def test_run_review_cancel_stops_before_any_model_call():
+    # 真机 bug：关面板/退规划后评审仍与开发并发。修法＝协作式取消：cancel() 为真时 run_review 在轮首即收场，
+    # 一次 review_fn 都不发起，stop_reason=cancelled。
+    calls = []
+
+    def rf(name, prompt):
+        calls.append(name)
+        return "[]"
+    res = run_review([_d("d1", OPEN)], rf, max_rounds=4, cancel=lambda: True)
+    assert res["stop_reason"] == "cancelled"
+    assert calls == [], "取消后不该再发起任何评审/主模型调用"
+
+
+def test_run_review_cancel_after_first_round_stops_early():
+    # 第 1 轮跑完后置取消位：应在进入第 2 轮前中止，而非跑满 max_rounds。
+    from agentcore.agent.design_review import MAIN
+    flag = {"cancel": False}
+
+    def rf(name, prompt):
+        if name == MAIN:
+            flag["cancel"] = True          # 本轮主模型回复完 → 请求取消
+        return "[]"
+    res = run_review([_d("d1", OPEN)], rf, max_rounds=5,
+                     cancel=lambda: flag["cancel"])
+    assert res["stop_reason"] == "cancelled"
+    assert len(res["rounds"]) - 1 == 1, "应只跑 1 个讨论轮就被取消，而非 max_rounds"
+
+
 def test_main_reply_can_change_current_choice():
     # 决策 A：主模型（且仅主模型）能改 current_choice。
     from agentcore.agent.design_review import MAIN

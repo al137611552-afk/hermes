@@ -214,6 +214,7 @@ class Conversation:
         self._review_applying = False     # 正在落回（重排耗时中）：一置位 get_design_review 即转终态，堵住"切走再切回二次开工"
         self._review_thread: "threading.Thread | None" = None  # ADR 0019 v4：评审跑在独立后台线程（否则同步占用 JS-API 通道，WebView2 下 evaluate_js 分屏事件要等整轮跑完才渲染）
         self._review_thread_lock = threading.Lock()
+        self._review_cancel = threading.Event()  # 协作式取消评审：退出规划/关面板/开工时置位，评审 worker 据此提前收场，别与开发并发
         self._pending_review_plan = None  # start 已确认可评审的方案原文，交 run 让评审模型直接读取抽决策
         self.crazy_mode = False           # 自主/crazy 模式（无人值守外层循环），运行时态不持久化
         self._last_turn_hit_max = False   # 上一轮 send_message 是否撞步数上限（crazy 外层据此强制续命）
@@ -262,6 +263,10 @@ class Conversation:
         """
         if (not text or not text.strip()) and not attachments:
             return {"ok": False, "error": "空消息"}
+        # 兜底：一旦开始新一轮对话/开发，就取消可能仍在跑的评审——评审属于规划阶段，绝不该与开发并发
+        # （真机 bug：关面板+退规划后评审与开发同时继续）。前端 set_plan_mode(false) 已取消，这里是双保险。
+        if self._review_thread is not None and self._review_thread.is_alive():
+            self.cancel_design_review()
         # 调用此刻是否已有一轮在跑（snapshot）：决定这条是「追加/排队」还是「全新任务」。
         # 必须在 put + _ensure_worker 之前判断——否则新启的 worker 会抢先把 state 改成 running，
         # 令空闲时发的新消息被误判成"排队"（bug：任务已结束却提示"已排队，当前任务完成后处理"）。
@@ -344,10 +349,14 @@ class Conversation:
         并清理本对话的全部后台进程（FR-10.3，dev server 等不残留）。"""
         self._stop = True
         self._cancel.set()
+        self._review_cancel.set()      # 评审 worker 也一并收场，别在退出后成孤儿线程继续跑模型调用
         self.gate.reset()
         w = self._worker
         if w is not None and w.is_alive():
             w.join(timeout)
+        rt = self._review_thread
+        if rt is not None and rt.is_alive():
+            rt.join(timeout)
         try:
             self.procs.kill_all()
         except Exception:  # noqa: BLE001 — 清理尽力而为
@@ -877,8 +886,11 @@ class Conversation:
         return ""
 
     def set_plan_mode(self, on: bool) -> bool:
-        """切换规划模式（FR-11.5），返回新状态。"""
+        """切换规划模式（FR-11.5），返回新状态。退出规划模式即进入开发——此时必须取消可能仍在跑的评审，
+        否则评审 worker 会与开发 worker 并发（真机 bug：关面板+退规划后评审与开发同时继续）。"""
         self.plan_mode = bool(on)
+        if not self.plan_mode:
+            self.cancel_design_review()
         return self.plan_mode
 
     # ---- ADR 0019：规划模式方案评审（Review Mode）------------------
@@ -1016,9 +1028,19 @@ class Conversation:
         with self._review_thread_lock:
             if self._review_thread is not None and self._review_thread.is_alive():
                 return {"ok": False, "error": "评审进行中，请稍候"}
+            self._review_cancel.clear()   # 新一轮评审：清掉上一轮可能残留的取消位
             self._review_thread = threading.Thread(target=self._run_design_review_worker, daemon=True)
             self._review_thread.start()
         return {"ok": True, "started": True}
+
+    def cancel_design_review(self) -> dict:
+        """取消正在跑的评审（退出规划模式 / 关闭评审栏 / 开始编码时调用）。置取消位让评审 worker 在下一
+        个角色/轮次边界收场，并立刻 emit review_done 让前端解除 busy（不必等 worker 真正退出）。幂等。"""
+        running = self._review_thread is not None and self._review_thread.is_alive()
+        self._review_cancel.set()
+        if running:
+            self.emit("review_done", {"ok": False, "cancelled": True, "error": "评审已取消"})
+        return {"ok": True, "cancelled": True, "was_running": running}
 
     def _run_design_review_worker(self) -> dict:
         """评审同步核心（后台线程体，也供无头/自检直接调）：抽决策→逐轮逐角色评审→四态共识，
@@ -1036,15 +1058,22 @@ class Conversation:
                 max_tokens=self.res.config.agent.design_review_verdict_max_tokens,
                 main_max_tokens=None,
                 on_delta=lambda name, text: self.emit("review_delta", {"reviewer": name, "text": text}))
+            if self._review_cancel.is_set():   # 抽取前已被取消（用户点了就走）：别再发起模型调用
+                return {"ok": False, "cancelled": True}
             session, err = self._seed_decisions_from_plan(review_fn)
             if err is not None:
                 self.emit("review_done", err)   # 抽取阶段失败（无决策/截断/nojson）：让前端清 busy + 提示
                 return err
             self._review_session = session
             self._review_applied = False      # 重新跑评审（含 ↻ 重跑）→ 复活面板，撤销上一轮终态
+            if self._review_cancel.is_set():
+                return {"ok": False, "cancelled": True}
             # 抽好的决策先推给前端把两列骨架搭起来，再开始逐轮辩论
             self.emit("review_seed", {"decisions": [self._decision_brief(d) for d in session.decisions]})
-            session.review(review_fn, on_event=lambda kind, payload: self.emit("review_" + kind, payload))
+            session.review(review_fn, on_event=lambda kind, payload: self.emit("review_" + kind, payload),
+                           cancel=self._review_cancel.is_set)
+            if self._review_cancel.is_set():   # 被取消：cancel_design_review 已 emit 过 review_done，这里不再重复发终态
+                return {"ok": False, "cancelled": True}
             state = self._review_state(ok=True)
             self.emit("review_done", state)
             return state

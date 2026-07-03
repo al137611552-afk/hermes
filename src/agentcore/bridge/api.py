@@ -1038,6 +1038,10 @@ class Api:
         """第二阶段：对已拆解会话跑多角色评审，回填四态共识 + gate。"""
         return self.active.run_design_review()
 
+    def cancel_design_review(self) -> dict:
+        """取消正在跑的评审（关闭评审栏 / 退出规划模式）；幂等。"""
+        return self.active.cancel_design_review()
+
     def get_design_review(self) -> dict:
         """取当前评审状态（共识/gate/决策），未开始则 ok=False。"""
         return self.active.get_design_review()

@@ -446,7 +446,7 @@ REVIEW_MAX_TOKENS = 2048
 REVIEW_TIMEOUT_S = 90             # 单个角色单次调用超时（秒）：慢/卡的调用不无限等，超时按空评审跳过
 
 
-def _run_reviewers_serial(review_fn, prompts, timeout: int = REVIEW_TIMEOUT_S) -> list:
+def _run_reviewers_serial(review_fn, prompts, timeout: int = REVIEW_TIMEOUT_S, cancel=None) -> list:
     """**顺序**跑一轮的多个角色评审（产品先说、技术再回应——像两个模型轮流讨论）；各自带独立超时；
     返回与 prompts 同序的评审文本（故障/超时→"[]"）。
 
@@ -458,6 +458,9 @@ def _run_reviewers_serial(review_fn, prompts, timeout: int = REVIEW_TIMEOUT_S) -
     outs = []
     partial = getattr(review_fn, "partial", {})   # review_fn 增量存的已流式内容（见 make_review_fn）
     for name, prompt in prompts:
+        if cancel and cancel():   # 用户已取消评审（退规划/关面板/进开发）：剩下的角色不再发起模型调用，直接空手跳过
+            outs.append("[]")
+            continue
         with ThreadPoolExecutor(max_workers=1) as ex:   # 仅用于施加单角色超时；顺序执行=逐个流式
             f = ex.submit(review_fn, name, prompt)
             try:
@@ -492,7 +495,7 @@ MAIN_REPLY_TIMEOUT_S = 120       # 主模型逐轮回复超时（比评审员宽
 
 def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
                timeout: int = REVIEW_TIMEOUT_S, on_event=None,
-               main_timeout: int = MAIN_REPLY_TIMEOUT_S, min_rounds: int = 1) -> dict:
+               main_timeout: int = MAIN_REPLY_TIMEOUT_S, min_rounds: int = 1, cancel=None) -> dict:
     """跑完整多轮 hub-and-spoke 评审直到停止条件命中（ADR 0019 v5）。
 
     每轮：两评审员各自**只向主模型进言**（串行流式，避免同 key 并发限流）→ **主模型逐轮回复**（读双方意见、
@@ -515,6 +518,9 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
     round_idx = 0
     eff_min = max(0, min(min_rounds, max_rounds - 1))   # 讨论轮下限，但不越过 max_rounds 硬顶
     while True:
+        if cancel and cancel():          # 协作式取消：用户退出规划/关面板/开工时中止，别把评审跑到底（与开发并发）
+            stop_reason = "cancelled"
+            break
         stop, stop_reason = should_stop(rounds, max_rounds)
         # 用户明确要"评审员基于主模型回复再讨论"：**提前收敛**（no_new_blocking/wording_only 等非 max_rounds 原因）
         # 在跑满 eff_min 个讨论轮前不生效，保证 hub 至少来回 eff_min 轮（评审员→主模型→评审员…）。max_rounds 仍是硬顶。
@@ -529,15 +535,18 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
         #    v4 由并行改顺序——分屏逐个流式打字像"讨论"，且规避同 key 并发被限流（见 _run_reviewers_serial）。
         #    v5：评审员输出**不 apply**（只进言），逐条 emit 供前端分屏。
         prompts = [(name, build_review_prompt(directive, cur)) for name, directive in reviewers]
-        outs = _run_reviewers_serial(review_fn, prompts, timeout=timeout)
+        outs = _run_reviewers_serial(review_fn, prompts, timeout=timeout, cancel=cancel)
         reviewer_outputs = []
         for (name, _directive), out in zip(reviewers, outs):
             reviewer_outputs.append((name, out))
             _emit("reviewer_done", {"round": round_idx, "reviewer": name, "verdict": out})
+        if cancel and cancel():          # 评审员跑完后再确认一次：取消就别再发起主模型那次（更长的）调用
+            stop_reason = "cancelled"
+            break
         # 2) **主模型逐轮回复**（一次调用）：读双方进言 + 当前决策 → 逐条表态 → 结构化决策 JSON。
         _emit("main_reply_start", {"round": round_idx})
         main_prompt = build_main_reply_prompt(cur, reviewer_outputs)
-        main_out = _run_reviewers_serial(review_fn, [(MAIN, main_prompt)], timeout=main_timeout)[0]
+        main_out = _run_reviewers_serial(review_fn, [(MAIN, main_prompt)], timeout=main_timeout, cancel=cancel)[0]
         # 3) apply 主模型 JSON —— **唯一改 Decision 状态处**（决策 A：可改 status/blocking/current_choice）。
         cur = apply_main_reply(cur, main_out)
         _emit("main_reply_done", {"round": round_idx, "reply": main_out})
@@ -623,14 +632,14 @@ class DesignReviewSession:
         """从模型 proposal 输出抽 Decision 列表建会话。"""
         return cls(parse_decisions(proposal_text), max_rounds, timeout, min_rounds)
 
-    def review(self, review_fn, on_event=None) -> dict:
+    def review(self, review_fn, on_event=None, cancel=None) -> dict:
         """跑一整轮多角色评审（直到停止条件），更新决策集。返回 run_review 结果。
 
         on_event(kind, payload)：可选，逐轮进度回调（round_start / reviewer_done / main_reply_start /
         main_reply_done / converged），供 conversation 转成前端事件做实时分屏；缺省=不回调（纯逻辑/单测不受影响）。
         """
         res = run_review(self.decisions, review_fn, self.max_rounds,
-                         timeout=self.timeout, on_event=on_event, min_rounds=self.min_rounds)
+                         timeout=self.timeout, on_event=on_event, min_rounds=self.min_rounds, cancel=cancel)
         self.decisions = res["decisions"]
         self.signed = False                    # 决策集变了 → 旧签字作废
         self.last_result = res

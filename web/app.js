@@ -1537,7 +1537,13 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
     const t = e.target.closest("[data-rv]");
     if (!t || !window.pywebview) return;
     const act = t.getAttribute("data-rv");
-    if (act === "close") { renderReviewPanel(null); return; }
+    if (act === "close") {
+      // 关闭评审栏 = 放弃本轮评审：必须取消后台评审 worker，否则它会继续跑、甚至与开发并发（真机 bug）
+      try { await window.pywebview.api.cancel_design_review(); } catch (_) {}
+      if (reviewBtn) reviewBtn.classList.remove("busy");
+      renderReviewPanel(null);
+      return;
+    }
     if (act === "rerun") {
       const cur = await window.pywebview.api.get_design_review();
       if (cur && cur.ok) renderReviewPanel(cur, { running: true });
