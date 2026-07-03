@@ -2738,6 +2738,12 @@ function renderProviderList() {
     row.addEventListener("click", () => { provSelected = p.key; renderProviderList(); renderProviderDetail(); });
     provListEl.appendChild(row);
   });
+  // 添加模型（自定义服务）：紧跟在默认模型下面，符合"模型列表末尾加一个"的直觉
+  const add = document.createElement("button");
+  add.className = "prov-add";
+  add.textContent = "+ 添加模型";
+  add.addEventListener("click", addCustomProvider);
+  provListEl.appendChild(add);
   // 浏览器穿透（特殊项：一键开关，深度调研用）
   const br = document.createElement("button");
   br.className = "prov-item prov-special" + (provSelected === "__browser__" ? " active" : "");
@@ -2774,11 +2780,6 @@ function renderProviderList() {
   lm.innerHTML = '<span class="prov-name">📊 限额与预算</span>';
   lm.addEventListener("click", () => { provSelected = "__limits__"; renderProviderList(); renderProviderDetail(); });
   provListEl.appendChild(lm);
-  const add = document.createElement("button");
-  add.className = "prov-add";
-  add.textContent = "+ 自定义服务";
-  add.addEventListener("click", addCustomProvider);
-  provListEl.appendChild(add);
 }
 
 async function renderBrowserPane() {
@@ -3321,7 +3322,7 @@ async function saveProvider(key, patch) {
 }
 
 async function addCustomProvider() {
-  const key = (prompt("自定义服务标识（英文，如 my-llm）：") || "").trim();
+  const key = (prompt("添加自定义模型服务，输入标识（英文，如 my-llm）：") || "").trim();
   if (!key) return;
   provSelected = key;
   await saveProvider(key, {
