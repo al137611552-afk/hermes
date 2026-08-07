@@ -385,3 +385,117 @@ test("appendStreamBuffer 拼接并按尾部截断", () => {
   assert.ok(big.includes("上文已省略"), "截断时应标注省略");
   assert.ok(big.endsWith("yyy"), "应保留最新增量在尾部");
 });
+
+// ---- 🧩 技能面板纯逻辑（FR-13.S2）---------------------------------------
+const {
+  skillGradeBadge, installConfirmLevel, filterMarketEntries,
+  groupSkillsBySource, SOURCE_LABELS, SKILL_GRADES,
+} = require("../../web/pure.js");
+
+test("skillGradeBadge：三档各有图标与文案，未知档不炸", () => {
+  assert.equal(skillGradeBadge("clean").cls, "sg-clean");
+  assert.equal(skillGradeBadge("review").cls, "sg-review");
+  assert.equal(skillGradeBadge("warn").cls, "sg-warn");
+  assert.equal(skillGradeBadge("nope").cls, "sg-unknown");
+  assert.equal(skillGradeBadge(undefined).label, "未扫描");
+});
+
+test("skillGradeBadge：措辞不承诺'安全'（扫描是启发式的）", () => {
+  for (const g of Object.values(SKILL_GRADES)) {
+    assert.ok(!g.label.includes("安全"), `档位文案不该出现"安全"：${g.label}`);
+  }
+});
+
+test("installConfirmLevel：绿档直接装 / 黄档确认 / 红档危险确认", () => {
+  assert.equal(installConfirmLevel("clean").needConfirm, false);
+  assert.equal(installConfirmLevel("review").needConfirm, true);
+  assert.equal(installConfirmLevel("review").danger, false);
+  const warn = installConfirmLevel("warn");
+  assert.equal(warn.needConfirm, true);
+  assert.equal(warn.danger, true);
+  assert.equal(warn.text, "仍要安装"); // 红档措辞要让人意识到在冒险
+  // 未知分级按最保守处理（不能因为分级缺失就直接装）
+  assert.equal(installConfirmLevel(undefined).needConfirm, false);
+});
+
+test("filterMarketEntries：按名称/描述/分类/关键词匹配，空查询全返回", () => {
+  const entries = [
+    { name: "pr-review", description: "评审 PR", category: "development", keywords: ["git"] },
+    { name: "seo-writer", description: "写 SEO 文案", category: "marketing", keywords: ["content"] },
+  ];
+  assert.equal(filterMarketEntries(entries, "").length, 2);
+  assert.equal(filterMarketEntries(entries, "  ").length, 2);
+  assert.equal(filterMarketEntries(entries, "pr")[0].name, "pr-review");
+  assert.equal(filterMarketEntries(entries, "评审")[0].name, "pr-review");
+  assert.equal(filterMarketEntries(entries, "marketing")[0].name, "seo-writer");
+  assert.equal(filterMarketEntries(entries, "content")[0].name, "seo-writer");
+  assert.equal(filterMarketEntries(entries, "PR").length, 1); // 大小写不敏感
+  assert.equal(filterMarketEntries(entries, "zzz").length, 0);
+  assert.deepEqual(filterMarketEntries(null, "x"), []);
+});
+
+test("groupSkillsBySource：按来源分组，未知来源自建一组不丢", () => {
+  const g = groupSkillsBySource([
+    { name: "a", source: "builtin" }, { name: "b", source: "project" },
+    { name: "c", source: "builtin" }, { name: "d", source: "weird" },
+  ]);
+  assert.deepEqual(g.builtin.map((s) => s.name), ["a", "c"]);
+  assert.deepEqual(g.project.map((s) => s.name), ["b"]);
+  assert.deepEqual(g.weird.map((s) => s.name), ["d"]);
+  assert.deepEqual(g.global, []);
+  assert.ok(SOURCE_LABELS.builtin && SOURCE_LABELS.project);
+});
+
+const { skillCountLabel } = require("../../web/pure.js");
+
+test("skillCountLabel：未深扫不显示 / 有技能显数量 / 零技能标明", () => {
+  assert.equal(skillCountLabel(null), "");
+  assert.equal(skillCountLabel(undefined), "");
+  assert.equal(skillCountLabel(3), "3 个技能");
+  assert.equal(skillCountLabel(0), "不含技能");
+});
+
+test("filterMarketEntries：深扫后滤掉不含技能的条目（实测官方市场 13 个里只有 4 个含技能）", () => {
+  const entries = [
+    { name: "has-skills", description: "", skill_count: 2 },
+    { name: "commands-only", description: "", skill_count: 0 },
+    { name: "not-scanned", description: "", skill_count: null },
+  ];
+  // 未深扫（hideEmpty=false）：全都列出来
+  assert.equal(filterMarketEntries(entries, "", false).length, 3);
+  // 深扫后：滤掉 0 技能的，未数过的保留（宁可多列也不误删）
+  const kept = filterMarketEntries(entries, "", true).map((e) => e.name);
+  assert.deepEqual(kept, ["has-skills", "not-scanned"]);
+  // 过滤与搜索可叠加
+  assert.deepEqual(filterMarketEntries(entries, "has", true).map((e) => e.name), ["has-skills"]);
+});
+
+const { updateStatusLabel, summarizeUpdateCheck } = require("../../web/pure.js");
+
+test("updateStatusLabel：四种状态各有文案，未知状态不炸", () => {
+  assert.equal(updateStatusLabel("update").text, "有新版本");
+  assert.equal(updateStatusLabel("current").text, "已是最新");
+  assert.equal(updateStatusLabel("no_source").text, "无来源记录");
+  assert.equal(updateStatusLabel("gone").text, "上游已移除");
+  assert.equal(updateStatusLabel("zzz").text, "");
+  assert.equal(updateStatusLabel(undefined).text, "");
+});
+
+test("summarizeUpdateCheck：如实分类计数，不把查不了的算成'已是最新'", () => {
+  const results = [
+    { status: "update" }, { status: "update" },
+    { status: "current" },
+    { status: "no_source" },
+    { status: "gone" },
+  ];
+  const s = summarizeUpdateCheck(results);
+  assert.ok(s.includes("2 个有新版本"));
+  assert.ok(s.includes("1 个已是最新"));
+  // 关键：手动放进来的技能查不了，必须说出来，不能含糊成"都是最新"
+  assert.ok(s.includes("1 个无来源记录（查不了）"), s);
+  assert.ok(s.includes("1 个上游已移除"), s);
+  assert.equal(summarizeUpdateCheck([]), "没有可检查的已装技能");
+  assert.equal(summarizeUpdateCheck(null), "没有可检查的已装技能");
+  // 全部最新时也不该出现误导性的绝对说法
+  assert.equal(summarizeUpdateCheck([{ status: "current" }]), "1 个已是最新");
+});

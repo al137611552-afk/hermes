@@ -1,0 +1,19 @@
+{
+  "_comment": "内置精选技能市场清单（FR-13.S2）。用户在 🧩技能 面板一键添加后即可浏览安装其中的技能。每一条都经过实际访问核实（见 verified 字段的日期与当时条目数），不是凭印象罗列；条目数会随上游更新变化，仅供参考。用户也可自行添加任意 GitHub 市场仓库。",
+  "marketplaces": [
+    {
+      "repo": "anthropics/claude-code",
+      "title": "Anthropic 官方插件市场",
+      "note": "Claude Code 官方随附的插件，含 PR 评审、提交流程、Agent SDK 开发等。来源最可信，建议先从这里看起。",
+      "trust": "official",
+      "verified": { "date": "2026-08-07", "market_name": "claude-code-plugins", "entries": 13 }
+    },
+    {
+      "repo": "alirezarezvani/claude-skills",
+      "title": "社区技能合集（Alireza Rezvani）",
+      "note": "社区维护的大合集，覆盖工程、市场、产品、合规、调研等多个领域，技能数量最多。第三方来源——装之前请看安全扫描结果。",
+      "trust": "community",
+      "verified": { "date": "2026-08-07", "market_name": "claude-code-skills", "entries": 88 }
+    }
+  ]
+}

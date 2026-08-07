@@ -2787,6 +2787,12 @@ function renderProviderList() {
   hk.innerHTML = '<span class="prov-name">🪝 Hooks</span>';
   hk.addEventListener("click", () => { provSelected = "__hooks__"; renderProviderList(); renderProviderDetail(); });
   provListEl.appendChild(hk);
+  // 技能（特殊项：已装技能管理 + 从市场浏览/扫描/安装）
+  const sk = document.createElement("button");
+  sk.className = "prov-item prov-special" + (provSelected === "__skills__" ? " active" : "");
+  sk.innerHTML = '<span class="prov-name">🧩 技能</span>';
+  sk.addEventListener("click", () => { provSelected = "__skills__"; renderProviderList(); renderProviderDetail(); });
+  provListEl.appendChild(sk);
   // 外观（特殊项：浅色主题 + 字号，纯客户端）
   const ap = document.createElement("button");
   ap.className = "prov-item prov-special" + (provSelected === "__appearance__" ? " active" : "");
@@ -3075,6 +3081,312 @@ async function renderMcpPane() {
   });
 }
 
+// ---- 设置面板：🧩 技能（FR-13.S2）------------------------------------------
+// 两段式：上=已装技能（按来源分组，可查看/删除）；下=从市场浏览安装。
+// **安装前必看安全扫描**：绿档直接装、黄档一次确认、红档二次确认且默认不装。
+let skillMarketRepo = "";   // 当前展开浏览的市场
+let skillMarketQuery = "";
+let skillUpdates = {};      // 技能名 -> 检查更新的结果（重绘面板时保留，免得一刷新就没了）
+
+async function renderSkillsPane() {
+  const [me, markets] = await Promise.all([
+    window.pywebview.api.get_skills(),
+    window.pywebview.api.get_skill_markets(),
+  ]);
+  const groups = groupSkillsBySource((me && me.skills) || []);
+  const errors = (me && me.errors) || [];
+
+  const card = (s) => {
+    const u = skillUpdates[s.name];
+    const st = u ? updateStatusLabel(u.status) : null;
+    return `<div class="skill-card" data-name="${escapeHtml(s.name)}">` +
+      `<div class="skill-head"><span class="skill-name">${escapeHtml(s.name)}</span>` +
+      (st && st.text ? `<span class="skill-upd ${st.cls}" title="${escapeHtml(u.note || "")}">${escapeHtml(st.text)}</span>` : "") +
+      `<span class="skill-acts">` +
+      (u && u.status === "update"
+        ? `<button class="skill-update" data-name="${escapeHtml(s.name)}">更新</button>` : "") +
+      `<button class="skill-view" data-name="${escapeHtml(s.name)}">查看</button>` +
+      (s.source === "builtin" ? "" :
+        `<button class="skill-del" data-name="${escapeHtml(s.name)}" title="删除">✕</button>`) +
+      `</span></div>` +
+      `<div class="skill-desc">${escapeHtml(s.description)}</div></div>`;
+  };
+
+  const section = (key) => {
+    const list = groups[key] || [];
+    if (!list.length) return "";
+    return `<div class="skill-group"><div class="skill-group-title">${escapeHtml(SOURCE_LABELS[key] || key)}` +
+      `<span class="skill-count">${list.length}</span></div>${list.map(card).join("")}</div>`;
+  };
+
+  const marketRow = (m, removable) =>
+    `<div class="market-row"><button class="market-open" data-repo="${escapeHtml(m.repo)}">` +
+    `<span class="market-title">${escapeHtml(m.title || m.repo)}</span>` +
+    (m.trust === "official" ? '<span class="market-badge official">官方</span>' :
+      m.trust === "community" ? '<span class="market-badge">社区</span>' : "") +
+    `<span class="market-repo">${escapeHtml(m.repo)}</span>` +
+    (m.note ? `<span class="market-note">${escapeHtml(m.note)}</span>` : "") +
+    `</button>` +
+    (removable ? `<button class="market-del" data-repo="${escapeHtml(m.repo)}" title="移除">✕</button>` : "") +
+    `</div>`;
+
+  provDetailEl.innerHTML =
+    '<div class="prov-d-head"><span class="prov-d-title">🧩 技能</span></div>' +
+    '<p class="settings-hint">技能＝把「某类活怎么干」打包好的说明＋脚本＋模板。hermes 只把技能的名字和' +
+    '适用场景常驻上下文（很省），任务对得上时才读完整说明——装几十个也不会拖慢对话。' +
+    '格式对齐 Agent Skills 公共规范，社区现成技能可直接用。</p>' +
+    (errors.length ? `<div class="skill-errors">⚠ 有技能没能加载：<br>${
+      errors.map((e) => escapeHtml(e)).join("<br>")}</div>` : "") +
+    '<div class="skill-upd-bar"><button id="skill-check-upd">检查更新</button>' +
+    '<span id="skill-upd-note" class="settings-hint"></span></div>' +
+    '<div class="skill-mine">' + ["builtin", "global", "config", "project"].map(section).join("") +
+    (Object.values(groups).every((g) => !g.length)
+      ? '<div class="prov-empty">还没有技能。可以从下面的市场装几个。</div>' : "") +
+    '</div>' +
+    '<div class="prov-d-head skill-sub"><span class="prov-d-title">从市场安装</span></div>' +
+    '<p class="settings-hint">下面是已核实的技能市场。技能来自第三方——hermes 会在安装前' +
+    '<b>本地扫描</b>并把发现的风险摊给你看。注意：扫描是启发式的，不等于保证安全；' +
+    '装进来的技能要执行危险操作时，<b>照常需要你点确认</b>。</p>' +
+    '<div class="market-list">' +
+    ((markets.builtin || []).map((m) => marketRow(m, false)).join("")) +
+    ((markets.user || []).map((m) => marketRow(m, true)).join("")) +
+    '</div>' +
+    '<div class="market-add"><input id="market-repo" placeholder="添加市场：GitHub 仓库，如 owner/repo">' +
+    '<button id="market-add-btn">添加</button></div>' +
+    '<div id="market-detail"></div>';
+
+  const upBtn = provDetailEl.querySelector("#skill-check-upd");
+  const upNote = provDetailEl.querySelector("#skill-upd-note");
+  if (Object.keys(skillUpdates).length && upNote) {
+    upNote.textContent = summarizeUpdateCheck(Object.values(skillUpdates));
+  }
+  upBtn.addEventListener("click", async () => {
+    upBtn.disabled = true; upBtn.textContent = "检查中…";
+    upNote.textContent = "正在从各技能的来源仓库取最新内容比对…";
+    const r = await window.pywebview.api.check_skill_updates();
+    upBtn.disabled = false; upBtn.textContent = "检查更新";
+    if (!r || !r.ok) { upNote.textContent = (r && r.error) || "检查失败"; return; }
+    skillUpdates = {};
+    r.results.forEach((x) => { skillUpdates[x.name] = x; });
+    renderSkillsPane();
+  });
+  provDetailEl.querySelectorAll(".skill-update").forEach((b) =>
+    b.addEventListener("click", () => confirmUpdate(skillUpdates[b.dataset.name])));
+  provDetailEl.querySelectorAll(".skill-view").forEach((b) =>
+    b.addEventListener("click", () => showSkillDetail(b.dataset.name)));
+  provDetailEl.querySelectorAll(".skill-del").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!window.confirm(`删除技能「${b.dataset.name}」？（删的是磁盘上的技能目录）`)) return;
+      const r = await window.pywebview.api.uninstall_skill(b.dataset.name);
+      showToast(r && r.ok ? "🗑 已删除" : (r && r.error) || "删除失败");
+      renderSkillsPane();
+    }));
+  provDetailEl.querySelectorAll(".market-open").forEach((b) =>
+    b.addEventListener("click", () => { skillMarketRepo = b.dataset.repo; skillMarketQuery = ""; openMarket(); }));
+  provDetailEl.querySelectorAll(".market-del").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await window.pywebview.api.remove_skill_market(b.dataset.repo);
+      if (skillMarketRepo === b.dataset.repo) skillMarketRepo = "";
+      showToast("已移除市场"); renderSkillsPane();
+    }));
+  const addBtn = provDetailEl.querySelector("#market-add-btn");
+  const addInput = provDetailEl.querySelector("#market-repo");
+  const doAdd = async () => {
+    const repo = (addInput.value || "").trim();
+    if (!repo) return;
+    addBtn.disabled = true; addBtn.textContent = "检查中…";
+    const r = await window.pywebview.api.add_skill_market(repo);
+    addBtn.disabled = false; addBtn.textContent = "添加";
+    if (r && r.ok) { showToast(`已添加「${r.name}」（${r.entries} 个条目）`); renderSkillsPane(); }
+    else showToast((r && r.error) || "添加失败");
+  };
+  addBtn.addEventListener("click", doAdd);
+  addInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doAdd(); });
+  if (skillMarketRepo) openMarket();
+}
+
+async function openMarket() {
+  const box = document.getElementById("market-detail");
+  if (!box) return;
+  box.innerHTML = '<div class="market-loading">正在读取市场…</div>';
+  const r = await window.pywebview.api.browse_skill_market(skillMarketRepo);
+  if (!r || !r.ok) { box.innerHTML = `<div class="skill-errors">${escapeHtml((r && r.error) || "读取失败")}</div>`; return; }
+  let entries = r.entries;
+  let deep = r.deep;
+  const draw = () => {
+    const list = filterMarketEntries(entries, skillMarketQuery, deep);
+    box.querySelector("#market-entries").innerHTML = list.length ? list.map((e) => {
+      const cnt = skillCountLabel(e.skill_count);
+      return `<div class="market-entry"><div class="me-head">` +
+        `<span class="me-name">${escapeHtml(e.name)}</span>` +
+        (e.category ? `<span class="me-cat">${escapeHtml(e.category)}</span>` : "") +
+        (e.version ? `<span class="me-ver">v${escapeHtml(e.version)}</span>` : "") +
+        (cnt ? `<span class="me-count">${escapeHtml(cnt)}</span>` : "") +
+        (e.supported
+          ? `<button class="me-preview" data-name="${escapeHtml(e.name)}">查看技能</button>`
+          : `<span class="me-unsupported" title="${escapeHtml(e.unsupported_reason)}">暂不支持</span>`) +
+        `</div><div class="me-desc">${escapeHtml(e.description)}</div></div>`;
+    }).join("") : '<div class="prov-empty">没有匹配的条目</div>';
+    box.querySelectorAll(".me-preview").forEach((b) =>
+      b.addEventListener("click", () => previewEntry(r.repo, b.dataset.name, b)));
+    const tip = box.querySelector("#market-scan-tip");
+    if (tip) tip.textContent = deep
+      ? `已列出含技能的条目（${list.length}/${entries.length}；其余条目只含命令/子 agent/hooks，hermes 装不了）`
+      : "正在下载市场内容、数清每个条目含几个技能…";
+  };
+  box.innerHTML =
+    `<div class="market-detail-head"><b>${escapeHtml(r.name)}</b>` +
+    `<span class="market-owner">${escapeHtml(r.owner || "")}</span>` +
+    `<span class="market-count">${r.entries.length} 个条目</span>` +
+    `<button id="market-close">收起</button></div>` +
+    `<div class="market-desc">${escapeHtml(r.description || "")}</div>` +
+    `<input id="market-search" placeholder="搜索条目（名称/描述/分类/关键词）" value="${escapeHtml(skillMarketQuery)}">` +
+    `<div id="market-scan-tip" class="market-scan-tip"></div>` +
+    `<div id="market-entries"></div>`;
+  box.querySelector("#market-close").addEventListener("click", () => { skillMarketRepo = ""; renderSkillsPane(); });
+  const s = box.querySelector("#market-search");
+  s.addEventListener("input", () => { skillMarketQuery = s.value; draw(); });
+  draw();
+
+  // 第二阶段：后台深扫，数清每个条目含几个技能，再重绘（不含技能的条目会被滤掉）。
+  // 分两阶段是因为浅拉几十 KB 秒回、深扫要下载整个仓库归档——不能让用户干等着看空列表。
+  if (!deep) {
+    const repoAtStart = skillMarketRepo;
+    window.pywebview.api.browse_skill_market(r.repo, true).then((d) => {
+      if (!d || !d.ok || skillMarketRepo !== repoAtStart) return;  // 期间切走了就丢弃
+      if (!document.getElementById("market-entries")) return;
+      entries = d.entries; deep = true; draw();
+    });
+  }
+}
+
+async function previewEntry(repo, entryName, btn) {
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = "下载并扫描中…";
+  const r = await window.pywebview.api.preview_skills(repo, entryName);
+  btn.disabled = false; btn.textContent = old;
+  if (!r || !r.ok) { showToast((r && r.error) || "读取失败"); return; }
+
+  const rows = r.skills.map((s) => {
+    if (s.error) return `<div class="sp-row bad">${escapeHtml(s.dir)}：${escapeHtml(s.error)}</div>`;
+    const g = skillGradeBadge(s.grade);
+    const lvl = installConfirmLevel(s.grade);
+    return `<div class="sp-row">` +
+      `<div class="sp-head"><span class="sp-name">${escapeHtml(s.name)}</span>` +
+      `<span class="skill-grade ${g.cls}">${g.icon} ${escapeHtml(g.label)}</span>` +
+      (s.flags || []).map((f) => `<span class="sp-flag">${escapeHtml(f)}</span>`).join("") +
+      (s.installed ? '<span class="sp-installed">已安装</span>'
+        : `<button class="sp-install${lvl.danger ? " danger" : ""}" data-dir="${escapeHtml(s.dir)}"` +
+          ` data-grade="${escapeHtml(s.grade)}" data-name="${escapeHtml(s.name)}">${escapeHtml(lvl.text)}</button>`) +
+      `</div>` +
+      `<div class="sp-desc">${escapeHtml(s.description)}</div>` +
+      (s.grade !== "clean"
+        ? `<pre class="sp-scan ${g.cls}">${escapeHtml(s.summary)}</pre>`
+        : `<div class="sp-scan-ok">${escapeHtml(s.summary)}</div>`) +
+      `</div>`;
+  }).join("");
+
+  showModal(`技能包：${entryName}`,
+    `<div class="sp-list">${rows}</div>`,
+    (modal) => {
+      modal.querySelectorAll(".sp-install").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const grade = b.dataset.grade;
+          const lvl = installConfirmLevel(grade);
+          if (lvl.needConfirm) {
+            const msg = grade === "warn"
+              ? `技能「${b.dataset.name}」的扫描结果是「高风险」。\n\n` +
+                "扫描发现了通常没有正当理由出现在技能包里的模式（详见上面的清单）。\n" +
+                "确定仍要安装吗？"
+              : `技能「${b.dataset.name}」有几处值得过目的信号（详见上面的清单）。\n确认安装吗？`;
+            if (!window.confirm(msg)) return;
+          }
+          b.disabled = true; b.textContent = "安装中…";
+          // 带上 repo/entry 记进安装台账——不记就永远查不了更新
+          const res = await window.pywebview.api.install_skill(b.dataset.dir, false, repo, entryName);
+          if (res && res.ok) { showToast(`✅ 已安装「${b.dataset.name}」，立即可用`); renderSkillsPane(); }
+          else { showToast((res && res.error) || "安装失败"); b.disabled = false; b.textContent = "安装"; }
+        }));
+    });
+}
+
+// 更新＝覆盖安装新版本。**新版本要重新过一遍扫描和三档确认**——良性技能的新版本
+// 可能变坏，这是真实的供应链风险点，不能因为"以前装过"就静默覆盖。
+function confirmUpdate(u) {
+  if (!u || u.status !== "update") return;
+  const g = skillGradeBadge(u.grade);
+  const lvl = installConfirmLevel(u.grade);
+  showModal(`更新技能：${u.name}`,
+    `<div class="sp-row"><div class="sp-head"><span class="sp-name">${escapeHtml(u.name)}</span>` +
+    `<span class="skill-grade ${g.cls}">${g.icon} ${escapeHtml(g.label)}</span>` +
+    (u.flags || []).map((f) => `<span class="sp-flag">${escapeHtml(f)}</span>`).join("") +
+    `<button class="sp-install${lvl.danger ? " danger" : ""}" id="do-update">${escapeHtml(lvl.text === "安装" ? "更新" : lvl.text)}</button>` +
+    `</div>` +
+    `<div class="sp-desc">来源：${escapeHtml(u.repo)}${u.entry ? " · " + escapeHtml(u.entry) : ""}</div>` +
+    `<div class="sp-desc">新版本已重新扫描（更新可能引入首次安装时没有的内容）：</div>` +
+    (u.grade !== "clean" ? `<pre class="sp-scan ${g.cls}">${escapeHtml(u.summary)}</pre>`
+      : `<div class="sp-scan-ok">${escapeHtml(u.summary)}</div>`) +
+    `</div>`,
+    (modal) => {
+      modal.querySelector("#do-update").addEventListener("click", async () => {
+        if (lvl.needConfirm) {
+          const msg = u.grade === "warn"
+            ? `「${u.name}」的**新版本**扫描结果是「高风险」。\n\n` +
+              "这个技能你之前装过，但新版本引入了通常没有正当理由出现的模式（详见上面的清单）。\n" +
+              "确定仍要更新吗？"
+            : `「${u.name}」的新版本有几处值得过目的信号（详见上面的清单）。\n确认更新吗？`;
+          if (!window.confirm(msg)) return;
+        }
+        const btn = modal.querySelector("#do-update");
+        btn.disabled = true; btn.textContent = "更新中…";
+        const res = await window.pywebview.api.install_skill(u.dir, true, u.repo, u.entry || "");
+        if (res && res.ok) {
+          delete skillUpdates[u.name];
+          modal.remove();
+          showToast(`✅ 已更新「${u.name}」`);
+          renderSkillsPane();
+        } else {
+          showToast((res && res.error) || "更新失败");
+          btn.disabled = false; btn.textContent = "更新";
+        }
+      });
+    });
+}
+
+async function showSkillDetail(name) {
+  const r = await window.pywebview.api.read_skill(name);
+  if (!r || !r.ok) { showToast((r && r.error) || "读取失败"); return; }
+  const g = skillGradeBadge(r.grade);
+  showModal(`技能：${r.name}`,
+    `<div class="sd-meta"><span class="skill-grade ${g.cls}">${g.icon} ${escapeHtml(g.label)}</span>` +
+    `<span class="sd-path">${escapeHtml(r.path)}</span></div>` +
+    (r.grade !== "clean" ? `<pre class="sp-scan ${g.cls}">${escapeHtml(r.summary)}</pre>` : "") +
+    `<div class="sd-desc">${escapeHtml(r.description)}</div>` +
+    `<pre class="sd-body">${escapeHtml(r.body)}</pre>` +
+    (r.files && r.files.length
+      ? `<div class="sd-files"><b>附带文件</b><br>${r.files.map((f) => escapeHtml(f)).join("<br>")}</div>`
+      : ""));
+}
+
+// 通用轻量模态（技能预览/详情用；已有的确认走 window.confirm）
+function showModal(title, html, onMount) {
+  const old = document.getElementById("skill-modal");
+  if (old) old.remove();
+  const el = document.createElement("div");
+  el.id = "skill-modal";
+  el.className = "skill-modal";
+  el.innerHTML = `<div class="sm-box"><div class="sm-head"><span>${escapeHtml(title)}</span>` +
+    `<button class="sm-close">✕</button></div><div class="sm-body">${html}</div></div>`;
+  document.body.appendChild(el);
+  const close = () => el.remove();
+  el.querySelector(".sm-close").addEventListener("click", close);
+  el.addEventListener("click", (e) => { if (e.target === el) close(); });
+  document.addEventListener("keydown", function esc(e) {
+    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); }
+  });
+  if (onMount) onMount(el);
+}
+
 async function renderHooksPane() {
   // 🪝 Hooks：工具调用前/后跑自定义命令（守卫/动作），增删改即时生效（下一轮起）。
   const r = (await window.pywebview.api.get_hooks()) || {};
@@ -3247,6 +3559,7 @@ function renderProviderDetail() {
   if (provSelected === "__browser__") { renderBrowserPane(); return; }
   if (provSelected === "__mcp__") { renderMcpPane(); return; }
   if (provSelected === "__hooks__") { renderHooksPane(); return; }
+  if (provSelected === "__skills__") { renderSkillsPane(); return; }
   if (provSelected === "__appearance__") { renderAppearancePane(); return; }
   if (provSelected === "__features__") { renderFeaturePane(); return; }
   if (provSelected === "__limits__") { renderLimitsPane(); return; }

@@ -28,6 +28,8 @@ datas = [
     ("web", "web"),            # 前端
     ("config.yaml", "."),      # 默认配置（首次运行释放到 exe 旁供用户编辑）
     ("scripts", "scripts"),    # mcp_echo_server / check_compression 等
+    ("skills", "skills"),      # 内置技能包（FR-13.S）；用户可在 exe 旁 skills/ 放同名技能覆盖
+    ("skill_catalog.json", "."),  # 内置精选技能市场清单（FR-13.S2）
 ]
 
 a = Analysis(

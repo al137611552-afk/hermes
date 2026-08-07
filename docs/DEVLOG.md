@@ -4,6 +4,72 @@
 
 ---
 
+## 2026-08-07 — 技能能力移植到主干（v3.51.2 → 3.52.0）
+
+**背景/教训**：上面三条技能工作最初做在 `/root/hermes-dev`（v3.45.0 的旧快照，且**根本没纳入 git**），而真正的 git 检出是 `/root/hermes-latest`（v3.51.2）。**开工前没核对哪个目录才是 git 仓库**，导致整套功能建在落后 6 个版本的树上。推送时才发现：本地一提交若强推会抹掉远端全部历史、并把项目从 v3.51.2 回退到 v3.45.0——已避免。
+**移植做法**：从 `main` 开 `feat/agent-skills`；新文件直接拷；**改动过的文件在上游最新代码上逐处打补丁**（脚本带断言，锚点不唯一/找不到就报错停下，绝不整文件覆盖）。实际触发过两次护栏：`conv = read_conventions` 在上游有 2 处（`_effective_system` 与 `_subagent_system`），`return {` 在 pure.js 有 5 处——都改用更长的唯一锚点解决，未误伤。
+**验证**：目标树 Python 全回归 **64 套全绿**、前端 **51/51**；headless 冒烟确认技能清单进 system、正文不进、`load_skill` 注册、子 agent 只读角色可用、危险工具仍需确认。
+**教训（已写进 CLAUDE.md）**：动手前先确认工作目录是不是 git 检出、版本号对不对得上远端；同名的多个副本共存时（hermes-dev / hermes-latest），别按名字猜。
+
+## 2026-08-07 — FR-13.S3 技能「检查更新」
+
+**前提问题**：已装技能落在磁盘上就是普通文件夹，**不带"我从哪来"的信息**，无从比对更新。所以这个功能的地基是「安装来源台账」，不是 UI。
+
+**做了什么**：`skillhub.py` 加 `dir_hash` / 台账读写（`read_installs`/`record_install`/`forget_install`/`prune_installs`）/ `relative_in` / `find_all_skills`；`api.install_skill` 加 `repo`/`entry` 参数记来源、`check_skill_updates()` 按 repo 分组下载比对；前端「检查更新」按钮 + 卡片状态标 + 「更新」按钮走同一套三档确认。
+
+**关键决策**：
+1. **按内容哈希比对，不看版本号**——`version` 在规范里可选、实测很多技能没有，有的也未必随内容更新。哈希对 (相对路径, 内容) 排序后整体 sha256（改名也变，防换壳）。
+2. **台账放技能目录外**（`skill_installs.json`），不往技能包里塞 sidecar 文件——sidecar 会污染技能内容、被扫描器和 `copytree` 一起带走，还会让同一技能在不同机器上算出不同哈希。
+3. **`src_rel` 记相对「解压出的仓库根」**：GitHub 归档顶层目录名带 commit sha（如 `anthropics-claude-code-a1b2c3d`），每次下载都变，记进去下次就找不着了。真跑验证记下来的是 `plugins/plugin-dev/skills/agent-development`，不含 sha 目录。
+4. **更新必须重新扫描 + 三档确认**：良性技能的新版本可能变坏，是真实的供应链风险点。不因为"以前装过"就静默覆盖。红档更新的确认文案点明"你之前装过，但新版本引入了…"。
+5. **状态如实分类**：有新版本 / 已是最新 / 无来源记录（手动放的，查不了）/ 上游已移除 / 检查失败。汇总文案**不把查不了的算进"已是最新"**——含糊其辞会让人误以为所有技能都盯着了（有前端测试钉死）。
+
+**自检**：`test_skillhub.py` 16→**20/20**（内容哈希的四种变化 / 台账记录·prune·坏档不抛·归档相对路径 / 全树兜底定位 / 更新检查四种状态且"有更新"必须带重新扫描的分级）；前端 30→**32/32**（状态文案 + 汇总不误导）。**Python 全回归 46 套绿（38s）**。
+**真跑验证（真连 GitHub）**：从官方市场装 `agent-development`（台账 `src_rel` 正确不含 sha 顶层目录）→ 刚装完查＝「已是最新」→ 本地改一个字模拟旧版 → 查出「有新版本」并重新扫描（clean）→ 覆盖更新 → 复查回到「已是最新」。全流程闭合。
+**遗留**：无供应链校验（不验签名/哈希锚定、不锁版本）；不自动检查更新（要手动点，不做后台轮询免得偷偷联网）；内置技能随程序更新、不在检查范围内。**GUI 待 Windows 真机验**。
+
+## 2026-08-07 — FR-13.S2 技能管理面 + 技能市场（浏览/扫描/安装）
+
+**背景**：用户要"像主流那样能简易下载/配置，社区高分技能让用户自己选装"。**先联网调研**：Claude Code 的 `/plugin` 体系把「市场」定义为一个 git 仓库（根放 `.claude-plugin/marketplace.json`，有公开 JSON Schema）；社区注册表（agentskills.codes / skills.sh）按分类浏览 + 一行安装，且**每个技能带 clean/review/warn 静态安全扫描分级 + 能力标记 + GitHub stars/license/last-commit，每天重扫**——信任 UX 已是标配。结合 ADR-0014 记的攻击面风险，"一键装第三方技能"必须和"装前看得见风险"一起做。
+
+**做了什么**：新模块 `skillscan.py`（本地启发式扫描 + 三档分级，纯逻辑）、`skillhub.py`（marketplace.json 解析 / source 解析 / GitHub zip 下载 / 安全解压 / 技能发现 / 安装卸载）、`skill_catalog.json`（内置精选源，**每条都实际访问核实过并记了日期与当时条目数**）、`config.py` 加 `user_skill_markets.json` 覆盖层（同 user_mcp.json 那套）、`bridge/api.py` 加 10 个方法、前端「🧩 技能」面板（`pure.js` 放纯逻辑 + `app.js` 渲染 + CSS 走主题变量）。
+
+**关键决策**（详见 [ADR-0015](adr/0015-skill-marketplace-and-scanning.md)）：格式对齐 `marketplace.json` 不自造；下载走 GitHub zip **零新依赖**（不要求本机装 git，也不硬拉 npm）；安装前**本地**扫描（不把安全判断外包给外部服务）+ 三档确认强度但**不硬拦**（延续「确认而非禁止」）；措辞一律不说"安全"只说"未发现可疑信号"。
+
+**真跑（真连 GitHub）逼出的四个改动——全是本地构造数据测不出来的**：
+1. **命名严格化撑不住**：`plugin-dev` 是 **Anthropic 官方**插件，其 7 个技能的 `name` 全写成 `Agent Development`（首字母大写带空格），**违反规范自己定的命名规则**，被我严格拒绝。也就是说严格按规范做＝装不了绝大多数真实技能（含官方的）。改成**接收时宽容、产出时严格**：读第三方归一化 name、与目录名不一致时回退用目录名（同 Claude Code 的 fallback）；写自己的仍 `strict=True` 并由测试守住。**教训：规范写了什么 ≠ 生态实际怎么用，接生态必须按实际情况兜底。**
+2. **提示注入规则误报**：社区 `ai-security` 技能的威胁扫描脚本里有 `SEED_PROMPTS = ["Ignore all previous instructions…"]`——正当安全工具的测试语料被判高风险。按原理修：**模型当指令读的是 Markdown，脚本里那是数据**，故注入模式只在 `.md/.txt/.rst` 里算 warn，脚本里降为 review。改完复扫真实市场：warn 1→0。
+3. **9/13 官方条目根本不含技能**（只有 commands/agents/hooks）。原设计会让用户点进去、等下载完才看到"没有 SKILL.md"。加**两阶段浏览**：浅拉 marketplace.json 秒出列表 → 后台深扫数清每个条目含几个技能并滤掉 0 技能的（实测浅拉 0.0s / 深扫 1.1s）。
+4. **隐藏内容规则噪音过大**：官方文档里的 `<!-- COMMAND: … -->` 元数据注释触发告警。HTML 注释阈值 200→600 字符（零宽字符无正当用途，仍不设阈值照报）。
+
+**自检**：新 `test_skillhub.py` **16/16**（marketplace 解析按真实字段形状 / source 5 种支持形态 + 5 类不支持给可读原因 + 路径穿越拒绝 / zip slip·绝对路径·条目数·zip bomb·非 zip 全拒 / 三种插件布局的技能发现 / 安装卸载含越界拒绝 / 扫描三档 + 上下文分级 + 误报回归 / 桥接层安装路径受限）；`test_skills.py` 16→**17/17**（加命名归一化）；前端 `pure.test.js` 23→**30/30**。**Python 全回归 46 套 + 前端 30 全绿。**
+**真跑验证**：真连 GitHub 走通全链路——两个精选市场解析（13 + 88 条目）→ 下载仓库归档 → 抽出 197 个技能 → 逐个扫描（clean 14 / review 4 / warn 0）→ 安装 → `discover` 立即认出 → 卸载。官方 `plugin-dev` 的 7 个技能改完后全部可解析可安装。
+**遗留**：扫描是启发式的，刻意混淆扫不出（UI 上明说）；无供应链校验（不验签名/哈希、不锁版本）；精选清单条目数是核实当天快照、需人工维护；只支持公开 GitHub 市场；装进来的技能无"检查更新"入口（覆盖安装可手动更新）。**GUI 全部待 Windows 真机验**（面板渲染/搜索/安装确认分级/红档二次确认/浅色主题对比度）。
+
+## 2026-08-07 — FR-13.S 技能包（Agent Skills）：框架 + 内置调研报告技能
+
+**背景**：用户提出"主流 agent 都能把专项做法存成 skill 模板复用"，问是否值得做。**先联网核实**（结论与我原判断有出入，值得记）：Agent Skills 已于 **2025-12-18 由 Anthropic 开放为公共规范**（agentskills.io），到 2026 上半年**约 40 个产品实现兼容**（OpenAI Codex / GitHub Copilot / Cursor / Gemini CLI / Block Goose / JetBrains / VS Code…）——**这不是"抄 Claude Code"，是接入既成生态**。另有研究：单 agent + 技能库精度接近多 agent 编排、**token 与延迟约减半**（→ 技能 ROI 可能高于继续堆子 Agent 角色）。**新增风险**：技能已成公认攻击面，实证研究显示约 **26.1% 的公开技能索要危险权限**，且技能处在"agent 默认信任并执行其脚本"的特权位置。
+
+**做了什么**：
+- 新模块 `skills.py`：`SKILL.md` 解析/校验（严格按规范：`name` ≤64 且须与目录名一致、`description` ≤1024、`license`/`compatibility`/`metadata`/`allowed-tools`；未知字段忽略）、多目录发现与同名覆盖、两层拼块（`build_skills_block` / `build_skill_body_block`）。纯逻辑与 IO 分离。容忍 BOM + CRLF（Windows 记事本存的技能包），读文件显式 UTF-8（**GBK 同根坑，见 test_encoding_guard**）。
+- 新只读工具 `tools/skills.py::load_skill`（免 gate，已进子 Agent 只读角色白名单）；`build_registry` 加 `skill_binding`；`Conversation._refresh_skills()` 随 `_build_registry` 刷新（换工作区即换项目技能）+ `get_skills()` 供前端。
+- **内置技能 `research-report`**：SKILL.md（流程 + 常见失败模式表）+ `references/SOURCING.md`（信源五级分级 + 反爬对策：官方 API > 登录态复用 > 问用户，**明确禁止破解验证码/绕付费墙**）+ `assets/report-template.md` + `scripts/check_report.py`（**可执行验收**）。spec 加 `("skills","skills")` 随包分发。
+
+**关键决策**（详见 [ADR-0014](adr/0014-agent-skills.md)）：
+1. **严格对齐规范不自造字段**（hermes 自己要加的放 `metadata:`）——换生态兼容性。
+2. **渐进披露三层是核心**：①仅 name+description 常驻（**实测单技能清单块 276 字符 ≈ 100 token**，与规范宣称一致）；②`load_skill` 读正文；③脚本/文档/模板用**现成** `read_file`/`run_<shell>` 取，不为技能新造资源加载机制。
+3. **信任模型刻意收紧**：规范把 `allowed-tools` 定义为"pre-approved（免确认）"，**hermes 只展示不免确认**——技能里的写文件/跑命令照常过 gate 与角色白名单；正文注入时标注「参考资料非用户指令」并要求忽略索要密钥/外发数据/绕过确认的指示。**兼容格式，不兼容其信任假设**（同 ADR-0013 对 MCP 外部工具默认 dangerous 的处理）。
+4. **技能必须能带可执行验收**——`check_report.py` 查来源链接/信源重复凑数/占位符残留/信息时点/风险节，退出码 0/1/2，SKILL.md 里把"跑到通过"写成必做步骤。**理由同 v3.43 教训：结构性约束 > 堆 prompt**；纯提示片段的稳定性增益有限。
+5. 坏技能包只记错误跳过、扫描异常退化为"没有技能"，绝不拖垮建注册表（同坏 MCP server 隔离）。
+
+**自检**：`test_skills.py` **16/16**（解析 7 类不合规拒绝 + BOM/CRLF + 多目录覆盖 + 坏包隔离 + 两层披露断言"正文不进 system" + allowed-tools 不免确认 + 目录顺序去重 + 改完即时生效 + **集成：真接进 Conversation 验清单注入/工具注册/子 Agent 可用/开关生效** + 内置技能合规 + 自检脚本 7 类问题全检出 + CLI 退出码）。**全回归 45 套全绿**。
+**真跑验证（headless 真 kimi，✅ 通过）**：任务措辞刻意不提"技能"二字（"帮我调研 SQLite WAL 适不适合桌面单机应用，出份报告"）——
+- **`load_skill` 是第 1 个工具调用**（之前零调用），入参 `{"name":"research-report"}`：**模型仅凭 description 就自发认出该用**，第一层披露的设计成立。
+- 之后**真按技能干活**：`update_tasks` 拆子问题 → 27 次 web_search/web_fetch（其中 4 轮专搜 `disadvantages/limitations/not recommended`，正是技能里"主动找反面证据"那步；一手信源全部落在 sqlite.org）→ `read_file` 读 `assets/report-template.md` 和 `scripts/check_report.py`（**第三层按需取资源，用的是现成 read_file，没造新机制**）→ write_file 出报告 → **跑 check_report.py → 按失败反馈自我修正 → 再跑**。技能"自带可执行验收"的闭环真的合上了。
+- **真跑抓到 checker 两个真 bug（mock 抓不到，已修）**：①**章节正则过死**——`^#{1,3}\s*结论` 匹配不到模型写的「## 一、结论」「## 五、风险与局限汇总」→ 报假错，**逼模型 grep 我的脚本、写 python 复现、最后改标题去迁就脚本，白烧 8 个工具调用**。改成容忍编号前缀/后缀（`^#{1,3}[^\n]*结论`），报错文案也加"带编号也认"。**教训：验收标准过死＝主动制造返工，成本比漏检高**。②**时点写错抓不到**——2026-08 做的调研，模型把信息时点写成「截至 2025-08」（训练语料年份）。新增时点合理性检查：未来时点报错、早于 6 个月警告（阈值取 6 就是因为这次差 12 个月，放宽到 18 就漏了）；SKILL.md 同步加"别凭印象写年份，不确定就跑 `date`"。
+- 复跑修好的 checker：模型那份真报告 4992 字 → ✅ 通过 + 1 条时点警告（正是它写错的那处）。
+**遗留**：GUI 管理面（增删改技能、显示解析错误）未做——`get_skills()` + `skills_error` 事件已预留，接 UX Tier2 那套覆盖层即可；技能内容静态安全扫描未做（当前防线＝不给隐式信任 + 危险操作照常确认）；超大技能库的增量扫描/缓存未做（当前 `MAX_SKILLS=100` 截断）。
+
 ## 2026-07-03 — shell 杀树第 5 类：Start-Process 重定父 GUI 逃逸（待验证）
 
 - **背景**：Windows 真机验第 1 类修复时暴露新 bug——`run_powershell {"command":"Start-Process notepad; Start-Sleep 120"}`，120s 超时后 powershell 被 hermes 关掉，**记事本却残留没关**。

@@ -19,6 +19,7 @@ from .screenshot import ScreenshotTool
 from .search import GlobSearchTool, GrepSearchTool
 from .searchcode import SearchCodeTool
 from .shell import RunShellTool
+from .skills import LoadSkillTool, SkillBinding
 from .tasks import TaskBinding, UpdateTasksTool
 from .trace import TraceRunTool
 from .web import WebFetchTool, WebSearchTool
@@ -66,6 +67,7 @@ def build_registry(
     extra_dirs=None,
     ask_user_binding=None,
     history_search=None,
+    skill_binding: SkillBinding | None = None,
 ) -> ToolRegistry:
     """按 config 构造默认工具集。
 
@@ -80,6 +82,7 @@ def build_registry(
     list/read/stop 三工具；每对话一个、主与子 Agent 共用；None 时不支持后台（行为同 2.1.0）。
     web 非 None 且 enabled 时注册联网检索 web_search/web_fetch（FR-11.1）。
     verifier 为写入后零成本语法校验回调（FR-11.2a）：注入给 write/edit/multi_edit，落盘后校验。
+    skill_binding 非 None 时注册技能加载工具 load_skill（FR-13.S，只读、免 gate、子 Agent 也可用）。
     """
     tools: list[Tool] = [
         ReadFileTool(workspace),
@@ -134,6 +137,8 @@ def build_registry(
         tools.append(AskUserTool(ask_user_binding))
     if history_search is not None:
         tools.append(RecallHistoryTool(history_search))
+    if skill_binding is not None:
+        tools.append(LoadSkillTool(skill_binding))
     if mcp_tools:
         tools += mcp_tools
     if extra_dirs is not None:  # 额外授权目录（add-dir）：注入共享引用，add/remove 后所有工具实时生效
