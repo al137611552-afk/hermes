@@ -84,6 +84,10 @@ class AgentConfig(BaseModel):
                                        # 模型按需 load_skill 读正文。false=不扫不注入不注册工具
     skills_dirs: list[str] = []        # 额外技能根目录（绝对路径）；默认已含全局 <APP_DIR>/skills
                                        # 与项目级 <工作区>/.hermes/skills（项目级同名覆盖全局）
+    update_check: bool = False         # 应用内更新检查（ADR 0020 T1）：启动时静默查 GitHub 最新 tag、
+                                       # 有新版弹条幅。**默认关**（2026-08-07 用户要求：不要应用内更新提醒）——
+                                       # 关闭时 check_update 直接返回 disabled、**不发任何网络请求**，条幅永不出现。
+                                       # 想要回来把它设 true 即可（后端与前端逻辑都还在，没删）
     permissions: PermissionsConfig = PermissionsConfig()  # 细粒度权限规则（FR-11.4）
     auto_approve_safe: bool = True     # 智能确认分级（Tier1，对标 Claude Auto mode / Cursor Auto-review）：
                                        # 自动放行「明显安全」的只读/检视/测试 shell 命令（ls/cat/grep/git status/

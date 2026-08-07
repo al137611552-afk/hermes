@@ -118,6 +118,31 @@ def test_default_run_git_pull_real_integration():
     assert (Path(clone) / "f").read_text().count("v2") == 1, "新提交内容应已拉到本地"
 
 
+def test_api_check_update_disabled_by_default_and_makes_no_request():
+    """**应用内更新提醒默认关**（2026-08-07 用户要求）：`Api.check_update` 直接返回 disabled，
+    且**一个网络请求都不发**——这是前端启动时唯一的检查入口，拦在这里就等于整条链路停用。
+    别"顺手"把 `agent.update_check` 改回 true：那会让每次启动又去连 GitHub、又弹条幅。
+    """
+    from agentcore.bridge import api as apimod
+
+    called = []
+    orig = updater.check_update
+    updater.check_update = lambda *a, **k: called.append(1) or {"ok": True, "newer": True}
+    try:
+        class _Cfg:                      # 只需 agent.update_check 这一个字段
+            class agent:
+                update_check = False
+        stub = object.__new__(apimod.Api)     # 不跑 __init__（避免起对话/存储）
+        stub.config = _Cfg
+        assert stub.check_update() == {"ok": False, "disabled": True}
+        assert not called, "关闭时不该调用 updater、更不该发网络请求"
+        _Cfg.agent.update_check = True        # 打开则恢复原行为（能力没删，只是默认关）
+        assert stub.check_update()["newer"] is True
+        assert called
+    finally:
+        updater.check_update = orig
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0

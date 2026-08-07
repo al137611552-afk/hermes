@@ -407,7 +407,13 @@ class Api:
 
     def check_update(self) -> dict:
         """应用内更新（ADR 0020 T1）：查 GitHub 最新版本 tag 与本地比对。前端启动时静默调，有新版才弹条幅。
-        返回 {ok, current, latest?, newer?, notes_url?, error?}；网络失败 ok=False（前端不打扰）。"""
+        返回 {ok, current, latest?, newer?, notes_url?, error?}；网络失败 ok=False（前端不打扰）。
+
+        **默认关**（`agent.update_check=false`）：直接返回 disabled，**不发网络请求**——用户不要应用内
+        更新提醒。这里是唯一的检查入口（前端启动只调它），所以在这一处拦住就等于整条链路停用。
+        """
+        if not getattr(self.config.agent, "update_check", False):
+            return {"ok": False, "disabled": True}
         from ..updater import check_update as _chk
         try:
             return _chk()
