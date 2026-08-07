@@ -243,6 +243,13 @@ mcp:
     #                      #   browser_snapshot/browser_click 等只读浏览工具。
     #   # 登录平台（如蝉妈妈）：先去掉 --headless 人工登一次、配 --storage-state 存登录态，
     #   #   再切回 headless 复用，避免每次重新登录。
+    # 示例：Codex（GPT）——用 ChatGPT 订阅额度干活，无需 OpenAI API key。
+    #   装官方 Codex CLI 后先 `codex login`（走订阅认证），主模型即可把编码活儿委派给 codex。
+    #   trust 默认 false：codex 会自主写文件/跑命令，逐次过权限更稳；信任后可改 true 免确认。
+    # codex:
+    #   command: codex
+    #   args: ["mcp-server"]
+    #   trust: false
 
 # 联网检索（P11 FR-11.1）：web_search + web_fetch 两个只读工具（免 key、零新依赖）
 web:

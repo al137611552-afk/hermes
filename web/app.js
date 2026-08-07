@@ -2971,7 +2971,8 @@ async function renderMcpPane() {
       '<div class="mcp-presets"><span class="mcp-presets-tip">套用模板（点一下自动填好，再改目录即可）：</span>' +
         '<button class="ws-btn mcp-preset" data-p="filesystem" type="button">📁 文件系统</button>' +
         '<button class="ws-btn mcp-preset" data-p="git" type="button">🔧 Git</button>' +
-        '<button class="ws-btn mcp-preset" data-p="fetch" type="button">🌐 网页抓取</button></div>' +
+        '<button class="ws-btn mcp-preset" data-p="fetch" type="button">🌐 网页抓取</button>' +
+        '<button class="ws-btn mcp-preset" data-p="codex" type="button">🤖 Codex (GPT)</button></div>' +
       '<input class="feat-input" id="mcp-f-name" placeholder="名称（如 filesystem）">' +
       '<input class="feat-input" id="mcp-f-cmd" placeholder="启动命令（如 npx / uvx / python）">' +
       '<textarea class="feat-input mcp-ta" id="mcp-f-args" rows="3" placeholder="参数：每行一个（不要带任何说明文字！）&#10;-y&#10;@modelcontextprotocol/server-filesystem&#10;D:\\你的目录"></textarea>' +
@@ -2988,6 +2989,10 @@ async function renderMcpPane() {
     git: { name: "git", cmd: "uvx",
       args: ["mcp-server-git", "--repository", "改成你的git仓库目录"], trust: true },
     fetch: { name: "fetch", cmd: "uvx", args: ["mcp-server-fetch"], trust: true },
+    // Codex CLI 当 MCP server：用 ChatGPT 订阅额度（认证交给 codex 自己，先在终端 `codex login`）。
+    // 主模型（kimi/claude）把编码活儿委派给 codex，无需 OpenAI API key。trust 默认关：
+    // codex 会自主写文件/跑命令，逐次过权限确认更稳，信任后可在列表里开「免确认」。
+    codex: { name: "codex", cmd: "codex", args: ["mcp-server"], trust: false },
   };
   provDetailEl.querySelectorAll(".mcp-preset").forEach((b) => {
     b.addEventListener("click", () => {
@@ -3004,7 +3009,11 @@ async function renderMcpPane() {
       provDetailEl.querySelector("#mcp-f-env").value = "";
       provDetailEl.querySelector("#mcp-f-trust").checked = !!p.trust;
       provDetailEl.querySelector("#mcp-f-args").focus();
-      showToast(wsRoot ? "已套用模板（目录=当前工作区），可直接保存" : "已套用模板——把最后一行改成你的真实目录再保存");
+      if (b.dataset.p === "codex") {
+        showToast("已套用 Codex 模板——先在终端跑 codex login 登录 ChatGPT 订阅，再保存即可");
+      } else {
+        showToast(wsRoot ? "已套用模板（目录=当前工作区），可直接保存" : "已套用模板——把最后一行改成你的真实目录再保存");
+      }
     });
   });
 
