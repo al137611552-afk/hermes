@@ -520,12 +520,25 @@ class Conversation:
 
     # ---- 重新生成 / 编辑重发（覆盖式截断后重跑，FR-易用性 P1）---------------
 
+    @staticmethod
+    def _is_real_user_turn(m: "Message") -> bool:
+        """是否为「真实用户回合」：role==user 且不是 tool_result 回灌消息。
+        工具结果作为 role==user 消息回灌（loop.py，content 为 tool_result 块列表），
+        属于上一条 assistant 工具往返的一部分，不算独立用户轮次——与前端轮次编号一致
+        （前端只为真实用户文本/图片消息递增 userTurns）。"""
+        if getattr(m, "role", None) != "user":
+            return False
+        content = m.content
+        if isinstance(content, list):
+            return not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+        return True
+
     def _nth_user_index(self, n: int) -> "int | None":
-        """返回历史里第 n 条（0-based）user 角色消息的下标；越界返 None。
-        steering 注入工具结果、不产生独立 user 消息，故 user 消息 ≈ 用户轮次 1:1。"""
+        """返回历史里第 n 条（0-based）真实用户轮次的下标；越界返 None。
+        只数真实用户消息，跳过 tool_result 回灌消息，与前端轮次编号保持 1:1。"""
         seen = -1
         for i, m in enumerate(self.history):
-            if m.role == "user":
+            if self._is_real_user_turn(m):
                 seen += 1
                 if seen == n:
                     return i

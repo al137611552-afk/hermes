@@ -2314,6 +2314,7 @@ async function selectSession(id) {
 function syncModelSelect(model) {
   if (!model || !modelSelect) return;
   if ([...modelSelect.options].some((o) => o.value === model)) modelSelect.value = model;
+  updateModelMenuLabel();   // 程序化改 value 不触发 change，需手动同步顶部「模型 ▾」显示名
 }
 
 // 切换/挂载后，按当前活动视图是否在流式中决定「发送 / 停止」按钮
