@@ -162,6 +162,9 @@ agent:
   #     tools: [read_file, list_dir, grep_search, glob_search, code_outline, write_file]
   #                         # 工具白名单（所列即所得）；省略 = 全工具
   #     model: ark-deepseek # 该角色用的模型档案（按角色配模型）；省略 = subagent_model→当前模型
+  update_check: false       # 应用内更新提醒（ADR 0020 T1）：启动静默查 GitHub 最新 tag、有新版弹条幅。
+                            # **默认关**（用户要求不要这个提醒）——关着时不发任何网络请求、条幅永不出现；
+                            # 想要就设 true（前后端逻辑都还在）。自己更新：git pull + pip install -e .
   skills: true              # 技能包（FR-13.S，对齐 Agent Skills 公共规范 agentskills.io）：
                             # 扫描技能目录，把每个技能的 name+description 注入 system（约 100 token/个），
                             # 模型判断吻合时才 load_skill 读正文（渐进披露，装几十个也不撑上下文）。
