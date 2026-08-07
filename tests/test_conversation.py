@@ -19,6 +19,7 @@ from agentcore.config import (  # noqa: E402
     AgentConfig, AppConfig, MCPConfig, MemoryConfig, ModelConfig, StorageConfig,
 )
 from agentcore.providers import Message  # noqa: E402
+from agentcore.tools.base import Tool  # noqa: E402
 
 # set_active_model/set_subagent_model 会把选择写回 APP_DIR/config.yaml（真实项目 config）。
 # 测试里 patch 成 noop，避免污染——持久化逻辑由 test_model_select.py 用临时路径单独覆盖。
@@ -906,47 +907,63 @@ def test_subagent_registry_has_no_delegate_or_tasks(tmp: Path):
     assert "read_file" in reg.names()          # 常规工具仍在
 
 
-def test_researcher_drops_web_tools_when_browser_present(tmp: Path):
-    """浏览器穿透开着时，researcher 去掉 web_fetch+web_search（逼它走浏览器、不跳回外部搜索绕路）。"""
-    from agentcore.tools.base import Tool
-    from agentcore.tools.delegate import resolve_role
+class _BrowserStub(Tool):
+    """假的浏览器穿透工具（browser_navigate / browser_snapshot）。"""
 
-    class BrowserStub(Tool):
-        def __init__(self, name):
-            self.name = name; self.description = "x"; self.input_schema = {"type": "object", "properties": {}}
-        def run(self, p): return "ok"
+    def __init__(self, name, out="ok", log=None):
+        self.name = name; self.description = "x"; self.out = out; self.log = log
+        self.input_schema = {"type": "object", "properties": {}}
+
+    def run(self, p):
+        if self.log is not None:
+            self.log.append((self.name, p))
+        return self.out
+
+
+def test_web_tools_kept_when_browser_present_and_reader_wired(tmp: Path):
+    """**行为变更（v3.53，纠 v3.43）**：浏览器穿透开着时**不再**摘掉 web_search/web_fetch。
+
+    v3.43 的做法是"挂上浏览器就物理摘掉两个 web 工具"，逼一切走浏览器。实测（2026-08-07）
+    搜索引擎对自动化浏览器直接返回空壳结果页（Bing 结果块 0 个、DDG 给验证码、百度给滑块），
+    于是"逼走浏览器"＝把唯一还稳的搜索通道也砍了、搜索场景归零。现在按能力分工：
+    搜索恒走 HTTP；浏览器专职读 HTTP 读不动的页面，且由 web_fetch **自动升级**、模型不选路。
+    """
+    from agentcore.tools.delegate import resolve_role
 
     conv = _api(tmp).active
     researcher = resolve_role("researcher", conv._roles)
-    r0 = conv._subagent_registry(researcher)              # 无浏览器
-    assert "web_search" in r0.names() and "web_fetch" in r0.names()
-    conv.res.mcp_tools = [BrowserStub("browser__browser_navigate"),
-                          BrowserStub("browser__browser_snapshot")]
-    r1 = conv._subagent_registry(researcher)              # 有浏览器穿透
-    assert "web_search" not in r1.names() and "web_fetch" not in r1.names()
-    assert any("browser" in n for n in r1.names())        # 浏览器工具仍在
-    # general/无浏览能力的角色不受影响（仍有 web 工具）：reviewer 不 browse
-    rev = conv._subagent_registry(resolve_role("reviewer", conv._roles))
-    assert "web_search" in rev.names()
-
-
-def test_main_agent_drops_web_tools_when_browser_present(tmp: Path):
-    """主 agent 自己查时，浏览器穿透开着也去掉 web_fetch+web_search——否则它会在浏览器
-    snapshot 一时读不出内容时误判「没加载/要登录」、跳回 web_search 绕路（真机暴露的回归）。"""
-    from agentcore.tools.base import Tool
-
-    class BrowserStub(Tool):
-        def __init__(self, name):
-            self.name = name; self.description = "x"; self.input_schema = {"type": "object", "properties": {}}
-        def run(self, p): return "ok"
-
-    conv = _api(tmp).active
-    assert "web_search" in conv.registry.names() and "web_fetch" in conv.registry.names()  # 无浏览器
-    conv.res.mcp_tools = [BrowserStub("browser__browser_navigate"),
-                          BrowserStub("browser__browser_snapshot")]
+    assert "web_search" in conv.registry.names() and "web_fetch" in conv.registry.names()
+    log = []
+    conv.res.mcp_tools = [_BrowserStub("browser__browser_navigate", log=log),
+                          _BrowserStub("browser__browser_snapshot", out="浏览器读到的正文", log=log)]
     conv._build_registry()                                # 有浏览器穿透后重建主注册表
-    assert "web_search" not in conv.registry.names() and "web_fetch" not in conv.registry.names()
+    assert "web_search" in conv.registry.names()          # 搜索通道保住（关键回归点）
+    assert "web_fetch" in conv.registry.names()
     assert any("browser" in n for n in conv.registry.names())
+    r1 = conv._subagent_registry(researcher)              # 子 agent 同一套分工
+    assert "web_search" in r1.names() and "web_fetch" in r1.names()
+    assert any("browser" in n for n in r1.names())
+    # web_fetch 拿到的是可用的浏览器兜底读取器：navigate 到同一 URL 再 snapshot 取文本
+    reader = conv.registry.get("web_fetch")._browser_reader
+    assert reader is not None
+    assert reader("https://x.example/p") == "浏览器读到的正文"
+    assert log[0] == ("browser__browser_navigate", {"url": "https://x.example/p"})
+
+
+def test_browser_reader_absent_without_browser_or_when_disabled(tmp: Path):
+    """没接浏览器、或配置关掉 browser_fallback 时，不注入兜底读取器（web_fetch 只报受阻）。"""
+    conv = _api(tmp).active
+    assert conv.registry.get("web_fetch")._browser_reader is None    # 没接浏览器
+    assert conv._make_browser_reader() is None
+    conv.res.mcp_tools = [_BrowserStub("browser__browser_navigate"),
+                          _BrowserStub("browser__browser_snapshot")]
+    conv.res.config.web.browser_fallback = False
+    conv._build_registry()
+    assert conv.registry.get("web_fetch")._browser_reader is None    # 开关关掉即不注入
+    # 只有 navigate 没有 snapshot（半套）也不注入，避免半吊子调用
+    conv.res.config.web.browser_fallback = True
+    conv.res.mcp_tools = [_BrowserStub("browser__browser_navigate")]
+    assert conv._make_browser_reader() is None
 
 
 # ---- FR-9.4a：改动台账接入对话/Api ----------------------------------------

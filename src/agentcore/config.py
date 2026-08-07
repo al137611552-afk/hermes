@@ -252,10 +252,13 @@ class MCPConfig(BaseModel):
 class WebConfig(BaseModel):
     """联网检索（FR-11.1）：web_search / web_fetch 两个只读工具。"""
     enabled: bool = True
-    search_engine: str = "auto"   # auto（Bing 优先、DDG 兜底）/ bing / duckduckgo
+    search_engine: str = "auto"   # auto（Bing RSS + DDG lite 并发融合）/ bing / duckduckgo
     timeout: int = 20             # 单次请求超时（秒）
     max_results: int = 5          # 搜索默认条数（硬上限 10）
     fetch_max_chars: int = 20000  # web_fetch 正文输出默认上限
+    # 接了浏览器穿透时，web_fetch 命中反爬/登录墙/JS 空壳就自动改用浏览器读同一 URL。
+    # 关掉则只提示受阻、由模型自己决定要不要开浏览器（注意：浏览器带登录态，读到的可能是私域内容）。
+    browser_fallback: bool = True
 
 
 class AppConfig(BaseModel):
@@ -453,6 +456,14 @@ def set_browser_mcp_state(on: bool, headed: "bool | None" = None,
     p.write_text(json.dumps(cur), encoding="utf-8")
 
 
+# 浏览器穿透默认 UA：Playwright 自带的 UA 里带 `HeadlessChrome` 等自动化特征，是反爬第一道筛子。
+# 实测（2026-08-07，本机 headless Chromium）：默认 UA 打百度 → 「百度安全验证」滑块页；
+# 换成下面这个真实 Chrome UA → 正常返回 10 条结果、无障碍树 28,350 字符。搜索引擎类站点（Bing/DDG）
+# 光换 UA 仍拦得住（那是多层指纹），所以**搜索恒走 HTTP**、浏览器只用来读页面（见 tools/web.py）。
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
+
+
 def browser_mcp_args(headed: bool) -> list:
     """构造 Playwright MCP 启动参数。
 
@@ -465,7 +476,7 @@ def browser_mcp_args(headed: bool) -> list:
         args.append("--headless")
     # 必须用 chrome（@playwright/mcp 的 --browser 合法值只有 chrome/firefox/webkit/msedge，**没有 chromium**）；
     # chrome 通道直接用系统已装的 Google Chrome（多数 Windows 本就有→零下载），缺则由 playwright install chrome 装。
-    args += ["--browser", "chrome"]
+    args += ["--browser", "chrome", "--user-agent", BROWSER_UA]
     return args
 
 

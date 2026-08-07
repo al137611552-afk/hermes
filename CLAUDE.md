@@ -87,6 +87,16 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - **技能安全扫描（FR-13.S2）**：`skillscan.py` 是**启发式**的，文案纪律＝**一律不说"安全"，只说"未发现可疑信号"**（有测试钉死 `SKILL_GRADES` 文案不含"安全"）。改规则时注意两条真跑教训：①提示注入模式只在 `.md` 里算 warn（脚本里那是数据，否则误伤安全工具的测试语料）；②HTML 注释阈值 600 字符（200 会把正当文档元数据全报出来）。分级只决定确认强度，**永远不硬拦**。
 - 本机（开发用 Linux）为跑测装过 anthropic/openai/mcp SDK：`pip install --break-system-packages`。
 - **WebView2 滚动坑（v3.37 踩过）**：对话区 `.chat` 是滚动容器，某些 CSS 会让 WebView2 在内容**异步重排**时把 `scrollHeight` 暂时算塌（→ 滚轮跳回顶部、几轮后自愈），**Chromium/Playwright 复现不出**（WebView2 专属）。已知触发：① 给元素只设 `overflow-x:auto`（`overflow-y` 连带变 `auto`、成滚动容器）；② `<hr>` 用 `border:none;border-top` 重构盒子；③ 嵌套列表加 `margin`（嵌套 margin 合并）；④ 给 `table` 加 `display:block`。**规避**：宽表格用外层 `.table-wrap` div 滚动（别动 table 的 display）；列表只用 `padding` 缩进别用 margin；hr 只改色别重构；`.chat` 已加 `overflow-anchor:none`。改对话区 CSS 后**务必真机滚长对话验**，别只信 Chromium 截图。
+- **检索分工：搜索恒走 HTTP，浏览器只读页面（别改回"挂上浏览器就摘掉 web 工具"）**：v3.43 曾用
+  `_drop_web_when_browser` 把 `web_search`/`web_fetch` 物理摘掉逼一切走浏览器，2026-08-07 实测证明这条
+  是灾难——搜索引擎对自动化浏览器返回**空壳结果页**（Bing 结果块 0 个、DDG 验证码、百度滑块），
+  等于砍掉唯一稳定的搜索通道。现在的结构是 `_make_browser_reader()`：搜索走 HTTP，`web_fetch` 受阻
+  （`looks_blocked`）**自动升级**到浏览器读同一 URL。"不许绕路"的本意靠"模型没有换引擎重搜这个动作"保证，
+  不是靠摘工具。**另**：无障碍快照**抓得到** JS 渲染内容（纯 SPA 文档站实测 19,954 字符），看到空快照
+  先怀疑反爬、别怀疑渲染。
+- **mcp SDK 2.0 改了字段名**：`Tool.inputSchema` → `input_schema`。`manager.tool_input_schema()` 两名都认——
+  别"清理"成只读一个，`pyproject` 写的是 `mcp>=1.2`，新旧机器都可能遇到。踩过的坑是所有 MCP server
+  一起连不上（`AttributeError`），而纯 mock 单测全绿——**MCP 相关改动要连真 server 跑一次**。
 - **动手前先确认工作目录是不是 git 检出**（2026-08-07 踩过）：`/root` 下同时有 `hermes-dev`(旧快照,无 git) 和 `hermes-latest`(真检出)，按名字猜会把功能建在落后好几个版本的树上，最后要整套移植。先 `git rev-parse --is-inside-work-tree` + 比对 `pyproject.toml` 版本与远端 tag。
 
 ## 非目标

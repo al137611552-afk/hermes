@@ -43,7 +43,6 @@ from ..store import make_title
 from ..tools import build_registry
 from ..tools.ask import AskUserBinding
 from ..tools.delegate import (
-    _BROWSE_TOOLS,
     _READ_ONLY_TOOLS,
     SUBAGENT_DIRECTIVE,
     DelegateBinding,
@@ -1983,11 +1982,8 @@ class Conversation:
             ask_user_binding=self._ask,
             history_search=(self.res.store.search_messages if self.res.store else None),
             skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
+            browser_reader=self._make_browser_reader(),
         )
-        # 浏览器穿透开着时，主 agent 也去掉 web_fetch + web_search（同子 agent 的 researcher）：
-        # 断掉「浏览器 snapshot 一时读不出内容 → 误判没加载/要登录 → 跳回 web_search 绕路」的退路。
-        # 实测真机暴露：委派子 agent 不跳（已被结构约束）、主 agent 自己查就跳（之前没约束）。
-        self.registry = self._drop_web_when_browser(self.registry)
 
     def _refresh_skills(self) -> None:
         """扫描技能目录，刷新当前可用技能（FR-13.S 渐进披露第一层的数据来源）。
@@ -2018,14 +2014,29 @@ class Conversation:
             "errors": self._skill_errors,
         }
 
-    @staticmethod
-    def _drop_web_when_browser(reg):
-        """注册表里若已挂上浏览器穿透工具（browser_*），就去掉 web_fetch + web_search，
-        逼「读不动也只能在浏览器里 scroll/wait/点进结果」，不再有 web_search 可退。没开穿透时原样返回。"""
-        has_browser = any(n.split("__", 1)[-1] in _BROWSE_TOOLS for n in reg.names())
-        if has_browser:
-            return reg.filtered(lambda n: n not in ("web_fetch", "web_search"))
-        return reg
+    def _make_browser_reader(self):
+        """接了浏览器穿透（browser_navigate + browser_snapshot）时，返回 `callable(url) -> str`。
+
+        供 web_fetch 在命中反爬/登录墙/JS 空壳时**自动升级**去浏览器读同一 URL——
+        **纠正 v3.43 的做法**（那时是"挂上浏览器就物理摘掉 web_search/web_fetch"）：
+        实测搜索引擎对自动化浏览器返回空壳结果页（Bing 结果块 0 个、DDG 直接验证码），
+        逼一切走浏览器＝把唯一稳定的搜索通道也砍了。现在改成**按能力分工**：
+        搜索恒走 HTTP，浏览器专职读 HTTP 读不动的页面，且由代码自动切换、不让模型选路
+        （v3.43「不许绕路」的本意仍在：模型没有"换个搜索引擎再搜一遍"这个动作可做）。
+
+        没接浏览器就返回 None（web_fetch 照旧只报受阻）。
+        """
+        tools = {t.name.split("__", 1)[-1]: t for t in (self.res.mcp_tools or [])}
+        nav, snap = tools.get("browser_navigate"), tools.get("browser_snapshot")
+        if not (nav and snap):
+            return None
+
+        def read(url: str) -> str:
+            nav.run({"url": url})
+            out = snap.run({})
+            return getattr(out, "text", out) or ""
+
+        return read
 
     # ---- 额外授权目录（add-dir，对标 Claude Code）------------------------
     def add_dir(self, path: str) -> dict:
@@ -2076,14 +2087,11 @@ class Conversation:
             extra_dirs=self._extra_dirs,
             skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
             ask_user_binding=self._ask,   # 子 Agent 也能 ask_user：遇登录墙时暂停、让用户在浏览器登录后再继续
+            browser_reader=self._make_browser_reader(),
         )
-        filtered = reg if role is None or role.allow_all else reg.filtered(role.allows)
-        # 浏览器穿透开着时，让会浏览的角色（researcher）**一切走浏览器**：去掉 web_fetch + web_search——
-        # 没有它们可退，就不会出现「浏览器搜索页读不动→跳回 web_search 绕路瞎逛」（实测真机暴露）。
-        # 它会 navigate 到目标站/搜索引擎、点进具体结果、到内容页 snapshot 读。没开穿透时不动、照常都有。
-        if role is not None and getattr(role, "allow_browse", False):
-            filtered = self._drop_web_when_browser(filtered)
-        return filtered
+        # 子 Agent 与主 Agent 同一套分工（见 _make_browser_reader）：搜索走 HTTP、
+        # 读不动的页面由 web_fetch 自动升级到浏览器；会浏览的角色照常还有 browser_* 可主动下钻。
+        return reg if role is None or role.allow_all else reg.filtered(role.allows)
 
     # ---- 改动评审与回退（FR-9.4a 台账 / FR-10.1 git 语义） ----------------
     # 工作区是 git 仓库时走 git：列全部未提交改动（跨重启、含用户手改），diff 对 HEAD，
