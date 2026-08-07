@@ -105,14 +105,43 @@ def test_parse_rejects_invalid():
         except SkillError:
             continue
         raise AssertionError(f"strict 模式应拒绝：{label}")
-    # 超长 description
+    # 超长 description：**自己的技能**（strict）仍必须报错
     try:
-        parse_skill_md(f"---\nname: a\ndescription: {'x' * 1025}\n---\n")
-        raise AssertionError("应拒绝超长 description")
+        parse_skill_md(f"---\nname: a\ndescription: {'x' * 1025}\n---\n", strict=True)
+        raise AssertionError("strict 应拒绝超长 description")
     except SkillError:
         pass
     assert validate_name("pdf-processing") == "pdf-processing"
     print("✓ 不合规范的 SKILL.md 被拒（5 类基本 + 3 类 strict 命名 + 超长 description）")
+
+
+def test_long_description_truncated_for_third_party():
+    """**第三方超长 description 截断而不是拒收**（接收宽容、产出严格，同 name 的处理）。
+
+    2026-08-07 实测：Anthropic 官方 `anthropics/skills` 里的 `claude-api` 技能 description 超 1024，
+    原来直接 SkillError＝整个技能装不上（官方仓库 17 个技能里被挡掉 1 个）。description 会进
+    system prompt，限长是为守上下文预算——截断同样守得住，没必要把技能整个丢掉。
+    **别改回拒收**。
+    """
+    long_desc = "这是一句说明。" * 200          # 1400 字符，远超 1024
+    s = parse_skill_md(f"---\nname: a\ndescription: {long_desc}\n---\n")
+    assert len(s.description) <= 1024, len(s.description)
+    assert s.description.endswith("…"), "要能看出被裁过"
+    assert s.description.startswith("这是一句说明。")
+    # 在句末断开，不留半截句子
+    assert s.description.rstrip("…").endswith("。")
+    # 没有句末标点可断时也不能崩，硬截即可
+    s2 = parse_skill_md(f"---\nname: b\ndescription: {'x' * 2000}\n---\n")
+    assert len(s2.description) <= 1024 and s2.description.endswith("…")
+    # compatibility 同理（上限 500）：第三方超长截断、自己的报错
+    s3 = parse_skill_md(f"---\nname: c\ndescription: d\ncompatibility: {'y' * 600}\n---\n")
+    assert len(s3.compatibility) <= 501 and s3.compatibility.endswith("…")
+    try:
+        parse_skill_md(f"---\nname: c\ndescription: d\ncompatibility: {'y' * 600}\n---\n",
+                       strict=True)
+        raise AssertionError("strict 应拒绝超长 compatibility")
+    except SkillError:
+        pass
 
 
 def test_name_normalized_for_third_party():
@@ -445,6 +474,7 @@ def main() -> int:
         test_parse_minimal, test_parse_optional_fields, test_parse_rejects_invalid,
         test_parse_tolerates_bom_and_crlf, test_body_truncated,
         test_builtin_skills_valid, test_report_checker, test_name_normalized_for_third_party,
+        test_long_description_truncated_for_third_party,
     ]
     tmp_tests = [
         test_discover_and_override, test_discover_isolates_bad_skill,

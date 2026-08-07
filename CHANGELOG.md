@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [3.53.1] - 2026-08-08
+
+**现成技能装得上：官方技能库进内置精选 + 超长 description 不再拒收**。用户确认定版。
+
+### Added
+- **内置精选市场加入 `anthropics/skills`（Anthropic 官方技能库）**——现成技能里最实用的一批，原来不在清单里、用户得手动添加市场才看得到。实测核实（2026-08-07）：市场名 `anthropic-agent-skills`、3 个条目、**共 17 个技能**，含 `pptx`（做 PPT）/`xlsx`（做表格）/`docx`（做 Word）/`pdf`（表单与拆合），以及 `skill-creator`、`mcp-builder`、`webapp-testing`、前端与视觉设计等。清单里注明这些文档技能自带 Python 脚本，首次用需装 `python-pptx`/`openpyxl`/`pypdf` 等库、部分格式转换还要 LibreOffice。
+
+### Fixed
+- **超长 `description` 从"整个技能拒收"改为"截断并标注"**（接收宽容、产出严格，同 `name` 的处理，见 ADR-0015 §4）——实测 Anthropic 官方仓库里的 `claude-api` 技能 description 超过 1024 字符，原来直接 `SkillError`，**官方 17 个技能被挡掉 1 个**。`description` 会进 system prompt，限长是为守上下文预算，截断同样守得住，没必要把技能整个丢掉。截断在最后一个句末标点处断开、末尾加 `…` 让人看得出被裁过；`compatibility` 同理。**写自己的技能仍走 `strict=True` 严格报错**，有测试钉死两边行为。修完官方仓库 17/17 全部可解析。
+
 ## [3.53.0] - 2026-08-07
 
 **检索质量与分工修正（FR-11.1b）+ mcp SDK 2.0 兼容 + 关掉应用内更新提醒**。用户已在 Windows 真机验证。
