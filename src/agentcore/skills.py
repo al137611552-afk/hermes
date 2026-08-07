@@ -118,6 +118,22 @@ def _as_str(value, field_name: str) -> str:
     raise SkillError(f"{field_name} 必须是字符串")
 
 
+def _clip_desc(desc: str, *, strict: bool) -> str:
+    """description 超长的处理（纯函数）：自己的技能报错，第三方的截断到上限并标注。
+
+    截断在最后一个句末标点处断开（读起来不至于半截），实在找不到就硬截；末尾加 `…` 让人看得出被裁过。
+    """
+    if len(desc) <= MAX_DESC_LEN:
+        return desc
+    if strict:
+        raise SkillError(f"description 超过 {MAX_DESC_LEN} 字符")
+    head = desc[:MAX_DESC_LEN - 1]
+    cut = max(head.rfind(p) for p in ("。", ". ", "! ", "? ", "；", "; "))
+    if cut >= MAX_DESC_LEN // 2:          # 断点太靠前就不用它，宁可硬截
+        head = head[:cut + 1]
+    return head.rstrip() + "…"
+
+
 def parse_skill_md(text: str, *, path: Path | None = None, source: str = "project",
                    strict: bool = False) -> Skill:
     """解析一份 SKILL.md 为 Skill（不含 body 长度截断，纯函数，便于单测）。
@@ -147,12 +163,17 @@ def parse_skill_md(text: str, *, path: Path | None = None, source: str = "projec
     desc = _as_str(data.get("description"), "description")
     if not desc:
         raise SkillError("frontmatter 缺少 description（须说明「做什么」和「何时用」）")
-    if len(desc) > MAX_DESC_LEN:
-        raise SkillError(f"description 超过 {MAX_DESC_LEN} 字符")
+    # 超长 description：**接收时截断、产出时严格**（同 name 的处理，见 ADR-0015 §4）。
+    # 2026-08-07 实测：Anthropic 官方 `anthropics/skills` 里的 claude-api 技能 description 就超了
+    # 1024，原来直接拒收＝整个技能装不上。description 会进 system prompt（渐进披露第一层），
+    # 限长是为了守上下文预算——截断同样能守住，却不必把技能整个丢掉。
+    desc = _clip_desc(desc, strict=strict)
 
     compat = _as_str(data.get("compatibility"), "compatibility")
     if len(compat) > MAX_COMPAT_LEN:
-        raise SkillError(f"compatibility 超过 {MAX_COMPAT_LEN} 字符")
+        if strict:
+            raise SkillError(f"compatibility 超过 {MAX_COMPAT_LEN} 字符")
+        compat = compat[:MAX_COMPAT_LEN].rstrip() + "…"
 
     raw_meta = data.get("metadata") or {}
     if not isinstance(raw_meta, dict):
