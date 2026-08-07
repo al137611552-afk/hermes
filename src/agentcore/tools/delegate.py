@@ -28,6 +28,7 @@ _READ_ONLY_TOOLS = frozenset({
     "git_status", "git_diff", "git_log",
     "list_processes", "read_process_output",  # 看后台进程是只读；stop_process 不在
     "web_search", "web_fetch",                # 联网检索只读（FR-11.1）
+    "load_skill",                             # 读技能包说明（FR-13.S）：只读，子 Agent 照做技能里的既定做法
     "ask_user",                               # 向用户提问/请其登录——非破坏，子 Agent 也可用
 })
 

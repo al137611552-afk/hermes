@@ -36,6 +36,8 @@ from ..longmem import (
     parse_memories,
 )
 from ..multimodal import Limits, build_user_content, describe_image, preprocess_vision
+from ..paths import APP_DIR, BUNDLE_DIR
+from ..skills import Skill, build_skills_block, discover_skills, skill_dirs
 from ..providers import Message, build_provider
 from ..store import make_title
 from ..tools import build_registry
@@ -130,6 +132,7 @@ def _turn_used_tools(msgs) -> bool:
     return False
 from ..tools.procs import ProcessManager
 from ..tools.notes import NotesBinding, build_notes_block
+from ..tools.skills import SkillBinding
 from ..tools.tasks import TaskBinding, build_task_block
 from ..hooks import make_hook_runner
 from ..profile import (
@@ -243,6 +246,9 @@ class Conversation:
         # 情境自启②：按工作区探测出的智能默认（如有测试自动开"改完跑定向测试"）；不覆盖用户面板选择
         self._smart_defaults: dict = {}
         self._smart_ws: "str | None" = None
+        # 技能包（FR-13.S）：随工作区扫描，_build_registry 时刷新
+        self._skills: list[Skill] = []
+        self._skill_errors: list[str] = []
         self.workspace = Path(workspace)
         self.workspace.mkdir(parents=True, exist_ok=True)
         self._extra_dirs: list = []   # 额外授权目录（add-dir，对标 Claude Code）；工具共享此引用
@@ -857,6 +863,12 @@ class Conversation:
                 "要读其中文件/列目录，直接用完整路径调 read_file / list_dir 即可——它们在授权范围内、不会被拒，"
                 "不要因为路径不在工作区就拒绝或臆测「无权限」，先实际调用工具去读。"
             )
+
+        # 可用技能清单（FR-13.S 第一层）：只放 name + description（约 100 token/个），
+        # 正文等模型调 load_skill 时才读——装几十个技能也不撑上下文。
+        skills_block = build_skills_block(self._skills)
+        if skills_block:
+            parts.append(skills_block)
 
         conv = read_conventions(self.workspace, cfg.agent.conventions_file)
         if conv:
@@ -1944,6 +1956,7 @@ class Conversation:
         """
         res = self.res
         self.ledger = ChangeLedger(self.workspace)
+        self._refresh_skills()           # 技能包随工作区走（项目级 .hermes/skills 换项目即换）
         self._refresh_smart_defaults()   # 情境自启②：探测项目、设智能默认（不覆盖用户面板选择）
         verifier = self._make_verifier()
         task_binding = (
@@ -1969,11 +1982,41 @@ class Conversation:
             extra_dirs=self._extra_dirs,
             ask_user_binding=self._ask,
             history_search=(self.res.store.search_messages if self.res.store else None),
+            skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
         )
         # 浏览器穿透开着时，主 agent 也去掉 web_fetch + web_search（同子 agent 的 researcher）：
         # 断掉「浏览器 snapshot 一时读不出内容 → 误判没加载/要登录 → 跳回 web_search 绕路」的退路。
         # 实测真机暴露：委派子 agent 不跳（已被结构约束）、主 agent 自己查就跳（之前没约束）。
         self.registry = self._drop_web_when_browser(self.registry)
+
+    def _refresh_skills(self) -> None:
+        """扫描技能目录，刷新当前可用技能（FR-13.S 渐进披露第一层的数据来源）。
+
+        全局 <APP_DIR>/skills + config 额外目录 + 项目级 <工作区>/.hermes/skills（项目级同名覆盖全局）。
+        坏技能包只记错误、跳过（不拖垮其余）；扫不动/关闭时退化为空列表，行为同没有技能。
+        """
+        cfg = self.res.config.agent
+        if not cfg.skills:
+            self._skills, self._skill_errors = [], []
+            return
+        try:
+            dirs = skill_dirs(self.workspace, APP_DIR, cfg.skills_dirs, BUNDLE_DIR)
+            self._skills, self._skill_errors = discover_skills(dirs)
+        except Exception as e:  # noqa: BLE001 — 技能是增强项，扫描出错绝不能拖垮建注册表
+            self._skills, self._skill_errors = [], [f"扫描技能目录失败：{e}"]
+        if self._skill_errors:
+            self.emit("skills_error", {"errors": self._skill_errors})
+
+    def get_skills(self) -> dict:
+        """当前可用技能（供前端展示/管理面用）。"""
+        return {
+            "skills": [
+                {"name": s.name, "description": s.description, "source": s.source,
+                 "path": str(s.path), "allowed_tools": list(s.allowed_tools)}
+                for s in self._skills
+            ],
+            "errors": self._skill_errors,
+        }
 
     @staticmethod
     def _drop_web_when_browser(reg):
@@ -2031,6 +2074,7 @@ class Conversation:
             web=res.config.web,
             verifier=self._make_verifier(),
             extra_dirs=self._extra_dirs,
+            skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
             ask_user_binding=self._ask,   # 子 Agent 也能 ask_user：遇登录墙时暂停、让用户在浏览器登录后再继续
         )
         filtered = reg if role is None or role.allow_all else reg.filtered(role.allows)

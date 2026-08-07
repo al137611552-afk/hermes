@@ -79,6 +79,11 @@ class AgentConfig(BaseModel):
     subagent_max_steps: int = 15       # 子 Agent 循环步数上限（独立于主循环 max_steps）
     subagent_max_tokens: int = 0       # 子 Agent 输出上限覆盖（0=跟随子模型档 max_tokens）
     roles: dict[str, RoleSpec] = {}    # 自定义子 Agent 角色（FR-10.5）；与内置角色合并、同名覆盖
+    skills: bool = True                # 技能包（FR-13.S，对齐 Agent Skills 公共规范）：扫描技能目录，
+                                       # 把 name+description 清单注入 system（渐进披露第一层，约 100 token/个），
+                                       # 模型按需 load_skill 读正文。false=不扫不注入不注册工具
+    skills_dirs: list[str] = []        # 额外技能根目录（绝对路径）；默认已含全局 <APP_DIR>/skills
+                                       # 与项目级 <工作区>/.hermes/skills（项目级同名覆盖全局）
     permissions: PermissionsConfig = PermissionsConfig()  # 细粒度权限规则（FR-11.4）
     auto_approve_safe: bool = True     # 智能确认分级（Tier1，对标 Claude Auto mode / Cursor Auto-review）：
                                        # 自动放行「明显安全」的只读/检视/测试 shell 命令（ls/cat/grep/git status/
@@ -707,6 +712,46 @@ def remove_user_mcp_server(name: str, path: "Path | None" = None) -> dict:
     servers.pop(name, None)
     write_user_mcp(servers, path)
     return servers
+
+
+# ── 用户在「🧩技能」面板加的技能市场（FR-13.S2）────────────────────────────
+# 同 user_mcp.json 的做法：GUI 增删写它，与内置精选清单（skill_catalog.json）合并展示。
+# 只存"市场地址"，不存技能内容——技能装完就是 skills/ 下的普通文件夹。
+USER_MARKETS_FILE = "user_skill_markets.json"
+
+
+def read_user_markets(path: "Path | None" = None) -> list[dict]:
+    """读用户加的技能市场（[{repo, title?}]）。不存在/坏档返回 []。"""
+    p = path or (APP_DIR / USER_MARKETS_FILE)
+    if not p.is_file():
+        return []
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return [i for i in d if isinstance(i, dict) and i.get("repo")] if isinstance(d, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def write_user_markets(markets: list, path: "Path | None" = None) -> None:
+    p = path or (APP_DIR / USER_MARKETS_FILE)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(markets or [], ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def add_user_market(repo: str, title: str = "", path: "Path | None" = None) -> list[dict]:
+    """加一个技能市场（repo 为 owner/name 或 GitHub 链接）。同名去重。返回全量列表。"""
+    repo = (repo or "").strip()
+    markets = read_user_markets(path)
+    if repo and not any(m.get("repo") == repo for m in markets):
+        markets.append({"repo": repo, "title": (title or "").strip()})
+        write_user_markets(markets, path)
+    return markets
+
+
+def remove_user_market(repo: str, path: "Path | None" = None) -> list[dict]:
+    markets = [m for m in read_user_markets(path) if m.get("repo") != repo]
+    write_user_markets(markets, path)
+    return markets
 
 
 def _apply_user_mcp(data: dict, user: dict) -> dict:

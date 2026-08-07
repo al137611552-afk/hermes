@@ -39,6 +39,9 @@ class Api:
         # 无头入口（FR-11.7 CLI）可注入 emit(event, data, cid) 钩子，替代 evaluate_js 推事件
         self._emit_hook = emit
         self._emit_lock = threading.Lock()  # 串行化 evaluate_js（多对话 worker 并发调用）
+        # 技能市场仓库归档缓存（FR-13.S2）：预览完接着安装时不重复下载
+        self._skill_cache: dict = {}
+        self._skill_cache_lock = threading.Lock()
         self._cid_counter = 0               # 进程内对话 id 计数器
         self.conversations: dict[int, Conversation] = {}  # cid -> 活动运行时（含后台运行中的）
         self._pending_ws_renames: dict[int, str] = {}  # sid->title：运行中/crazy 改标题被跳过，空闲后自动补改文件夹名
@@ -598,6 +601,262 @@ class Api:
         except Exception:  # noqa: BLE001
             pass
         return len(tools)
+
+    # ---- 统一管理面：🧩 技能（FR-13.S2 浏览 / 扫描 / 安装 / 卸载） ---------------
+    # 分工：浏览只拉小小的 marketplace.json（快）；预览/安装才下载仓库归档（慢，带缓存复用）。
+    # **安装前一律先扫描并把结论回给前端**，由前端按 clean/review/warn 决定确认强度——
+    # 后端不自作主张装（见 ADR-0015）。
+
+    def _skills_root(self) -> Path:
+        """用户全局技能目录（<APP_DIR>/skills）。内置技能在 BUNDLE_DIR，不往那儿装。"""
+        from ..paths import APP_DIR
+        root = APP_DIR / "skills"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    def get_skills(self) -> dict:
+        """当前会话可用的技能 + 解析错误（含内置/全局/项目级各自来源）。"""
+        return {"ok": True, **self.active.get_skills()}
+
+    def get_skill_markets(self) -> dict:
+        """技能市场清单：内置精选（随程序分发、已核实）+ 用户自己加的。"""
+        from ..config import read_user_markets
+        from ..paths import APP_DIR, BUNDLE_DIR
+        from ..skillhub import load_catalog
+        builtin = load_catalog(BUNDLE_DIR / "skill_catalog.json")
+        if not builtin and BUNDLE_DIR != APP_DIR:
+            builtin = load_catalog(APP_DIR / "skill_catalog.json")
+        return {"ok": True, "builtin": builtin,
+                "user": [{**m, "trust": "user"} for m in read_user_markets()]}
+
+    def add_skill_market(self, repo: str, title: str = "") -> dict:
+        """加一个技能市场（GitHub `owner/repo` 或链接）。先真拉一次确认它是市场再存。"""
+        from ..config import add_user_market
+        from ..skillhub import HubError, fetch_marketplace
+        try:
+            market, norm = fetch_marketplace(repo)
+        except HubError as e:
+            return {"ok": False, "error": str(e)}
+        add_user_market(norm, title or market.name)
+        return {"ok": True, "repo": norm, "name": market.name, "entries": len(market.entries)}
+
+    def remove_skill_market(self, repo: str) -> dict:
+        from ..config import remove_user_market
+        return {"ok": True, "user": remove_user_market(repo)}
+
+    def browse_skill_market(self, repo: str, deep: bool = False) -> dict:
+        """列出一个市场里的条目。
+
+        `deep=False`：只拉 marketplace.json（几十 KB，秒回）——先把列表显示出来。
+        `deep=True`：再下载一次仓库归档，数清每个条目**实际含几个技能**（`skill_count`）。
+        为什么需要：Claude Code 插件可以只含 commands/agents/hooks 而没有 SKILL.md
+        （实测官方市场 13 个条目里只有 4 个含技能）。不深扫的话，用户要点进去等下载完
+        才发现"这个装不了"。前端先浅拉出列表、再后台深扫更新计数。
+        """
+        from ..skillhub import HubError, fetch_marketplace, find_skills_in_tree, resolve_source
+        try:
+            market, norm = fetch_marketplace(repo)
+            root = self._fetch_repo_cached(norm) if deep else None
+        except HubError as e:
+            return {"ok": False, "error": str(e)}
+        entries = []
+        for e in market.entries:
+            r = resolve_source(e.source)
+            item = {
+                "name": e.name, "description": e.description, "version": e.version,
+                "author": e.author, "category": e.category, "keywords": list(e.keywords),
+                "supported": r.kind != "unsupported", "unsupported_reason": r.reason,
+                "skill_count": None,   # None = 还没数（未深扫）
+            }
+            if root is not None and r.kind == "subdir":
+                d = root / r.path if r.path else root
+                item["skill_count"] = len(find_skills_in_tree(d)) if d.is_dir() else 0
+            entries.append(item)
+        return {"ok": True, "repo": norm, "name": market.name, "deep": bool(deep),
+                "description": market.description, "owner": market.owner,
+                "homepage": market.homepage, "entries": entries}
+
+    def _fetch_repo_cached(self, repo: str):
+        """下载市场仓库归档到缓存目录并复用（预览完接着安装时不重复下载）。"""
+        from ..paths import APP_DIR
+        from ..skillhub import download_repo
+        with self._skill_cache_lock:
+            hit = self._skill_cache.get(repo)
+            if hit is not None and Path(hit).is_dir():
+                return Path(hit)
+            root = download_repo(repo, APP_DIR / "data" / "skill_cache" / repo.replace("/", "__"))
+            self._skill_cache[repo] = str(root)
+            return root
+
+    def preview_skills(self, repo: str, entry_name: str) -> dict:
+        """下载并解析某个市场条目里的技能，**逐个跑本地安全扫描**，回给前端供用户决定。"""
+        from ..skillhub import (
+            HubError, fetch_marketplace, find_skills_in_tree, read_text_files, resolve_source,
+        )
+        from ..skills import SkillError, parse_skill_md
+        from .. import skillscan
+        try:
+            market, norm = fetch_marketplace(repo)
+            entry = next((e for e in market.entries if e.name == entry_name), None)
+            if entry is None:
+                return {"ok": False, "error": f"市场 {norm} 里没有条目「{entry_name}」"}
+            res = resolve_source(entry.source)
+            if res.kind == "unsupported":
+                return {"ok": False, "error": f"这个条目暂不支持自动安装：{res.reason}"}
+            root = self._fetch_repo_cached(res.repo or norm)
+            plugin_dir = root / res.path if res.path else root
+            if not plugin_dir.is_dir():
+                return {"ok": False, "error": f"条目指向的路径在仓库里不存在：{res.path}"}
+            dirs = find_skills_in_tree(plugin_dir)
+        except HubError as e:
+            return {"ok": False, "error": str(e)}
+        if not dirs:
+            return {"ok": False, "error": "这个条目里没有找到 SKILL.md（可能不是技能类插件）"}
+
+        installed = {s["name"] for s in self.active.get_skills().get("skills", [])}
+        out = []
+        for d in dirs:
+            try:
+                skill = parse_skill_md((d / "SKILL.md").read_text(encoding="utf-8", errors="replace"))
+            except (SkillError, OSError) as e:
+                out.append({"dir": d.name, "error": f"SKILL.md 不合规范：{e}"})
+                continue
+            scan = skillscan.merge(skillscan.scan_files(read_text_files(d)),
+                                   skillscan.scan_declared_tools(skill.allowed_tools))
+            out.append({
+                "name": skill.name, "description": skill.description, "dir": str(d),
+                "license": skill.license, "compatibility": skill.compatibility,
+                "allowed_tools": list(skill.allowed_tools),
+                "installed": skill.name in installed,
+                "grade": scan.grade, "grade_label": skillscan.GRADE_LABEL[scan.grade],
+                "flags": list(scan.flags), "summary": skillscan.summarize(scan),
+                "findings": [{"kind": f.kind, "severity": f.severity, "where": f.where,
+                              "excerpt": f.excerpt, "why": f.why} for f in scan.findings],
+            })
+        return {"ok": True, "repo": norm, "entry": entry_name, "skills": out}
+
+    def _install_ledger(self) -> Path:
+        """安装来源台账路径（记「这个技能从哪个市场的哪个条目来的」，供检查更新）。"""
+        from ..paths import APP_DIR
+        return APP_DIR / "skill_installs.json"
+
+    def install_skill(self, src_dir: str, overwrite: bool = False,
+                      repo: str = "", entry: str = "") -> dict:
+        """安装一个已预览过的技能（src_dir 取自 preview_skills 返回的 dir）。
+
+        只允许装缓存目录里的东西——防前端传任意路径把机器上别处的目录拷进技能库。
+        传了 repo/entry 就记进安装台账，之后才能检查更新。
+        """
+        from ..paths import APP_DIR
+        from ..skillhub import HubError, install_skill as do_install, record_install, relative_in
+        try:
+            src = Path(src_dir).resolve()
+            cache_root = (APP_DIR / "data" / "skill_cache").resolve()
+            if cache_root not in src.parents:
+                return {"ok": False, "error": "只能安装从市场下载下来的技能"}
+            target = do_install(src, self._skills_root(), overwrite=bool(overwrite))
+        except HubError as e:
+            return {"ok": False, "error": str(e)}
+        except OSError as e:
+            return {"ok": False, "error": f"安装失败：{e}"}
+
+        if repo:
+            # src_rel 相对**解压出的仓库根**——归档顶层目录名带 commit sha、每次下载都变，
+            # 不能记进去，否则下次更新时按老路径找不到。
+            archive_root = self._skill_cache.get(repo)
+            src_rel = relative_in(Path(archive_root), src) if archive_root else ""
+            record_install(target.name, target, repo=repo, entry=entry, src_rel=src_rel,
+                           version="", installed=target, ledger=self._install_ledger())
+        self.active._refresh_skills()   # 装完立刻可用，不必重启
+        return {"ok": True, "path": str(target), **self.active.get_skills()}
+
+    def uninstall_skill(self, name: str) -> dict:
+        from ..skillhub import forget_install, uninstall_skill as do_uninstall
+        if not do_uninstall((name or "").strip(), self._skills_root()):
+            return {"ok": False, "error": f"没有已安装的技能「{name}」（内置技能不可删）"}
+        forget_install(name, self._install_ledger())
+        self.active._refresh_skills()
+        return {"ok": True, **self.active.get_skills()}
+
+    def check_skill_updates(self) -> dict:
+        """检查已装技能有没有更新（FR-13.S3）。
+
+        比对方式是**内容哈希**而非版本号——`version` 在规范里可选、实测很多技能压根没有。
+        每个来源仓库只下载一次（按 repo 分组 + 缓存复用）。
+
+        找到更新**不会直接装**：把新版本重新跑一遍安全扫描、连分级一起回给前端，
+        走和首次安装同样的三档确认。良性技能的新版本可能变坏，这是真实的供应链风险点。
+        """
+        from ..skillhub import HubError, dir_hash, find_all_skills, prune_installs, read_text_files
+        from .. import skillscan
+        ledger = self._install_ledger()
+        skills_root = self._skills_root()
+        installs = prune_installs(ledger, skills_root)   # 顺手清掉用户手删的
+
+        installed_names = {s["name"] for s in self.active.get_skills().get("skills", [])}
+        results, checked_repos = [], {}
+        for name in sorted(installed_names):
+            local = skills_root / name
+            rec = installs.get(name)
+            if not local.is_dir():
+                continue                    # 内置技能不在这个目录下，跳过（它随程序更新）
+            if not rec or not rec.get("repo"):
+                results.append({"name": name, "status": "no_source",
+                                "note": "手动放进来的，没有来源记录——无法检查更新"})
+                continue
+            repo = rec["repo"]
+            if repo not in checked_repos:
+                try:
+                    checked_repos[repo] = self._fetch_repo_cached(repo)
+                except HubError as e:
+                    checked_repos[repo] = e
+            root = checked_repos[repo]
+            if isinstance(root, HubError):
+                results.append({"name": name, "status": "error", "repo": repo,
+                                "note": f"取不到来源仓库：{root}"})
+                continue
+
+            remote = (root / rec["src_rel"]) if rec.get("src_rel") else None
+            if remote is None or not remote.is_dir():
+                # 上游改了目录结构：退而按技能名在整个仓库里找一次
+                remote = next((d for d in find_all_skills(root) if d.name == name), None)
+            if remote is None or not remote.is_dir():
+                results.append({"name": name, "status": "gone", "repo": repo,
+                                "note": "上游已经找不到这个技能了（可能被删或改名）"})
+                continue
+
+            if dir_hash(remote) == dir_hash(local):
+                results.append({"name": name, "status": "current", "repo": repo})
+                continue
+
+            scan = skillscan.scan_files(read_text_files(remote))
+            results.append({
+                "name": name, "status": "update", "repo": repo, "entry": rec.get("entry", ""),
+                "dir": str(remote), "grade": scan.grade,
+                "grade_label": skillscan.GRADE_LABEL[scan.grade],
+                "flags": list(scan.flags), "summary": skillscan.summarize(scan),
+            })
+        return {"ok": True, "results": results,
+                "updates": sum(1 for r in results if r["status"] == "update")}
+
+    def read_skill(self, name: str) -> dict:
+        """读一个已装技能的 SKILL.md 正文 + 附带文件（面板里"查看"用）。"""
+        from ..skillhub import read_text_files
+        from ..skills import SkillError, list_skill_files, load_skill_body
+        from .. import skillscan
+        skill = next((s for s in self.active._skills if s.name == name), None)
+        if skill is None:
+            return {"ok": False, "error": f"没有名为「{name}」的技能"}
+        try:
+            loaded = load_skill_body(skill)
+        except SkillError as e:
+            return {"ok": False, "error": str(e)}
+        scan = skillscan.merge(skillscan.scan_files(read_text_files(skill.path)),
+                               skillscan.scan_declared_tools(skill.allowed_tools))
+        return {"ok": True, "name": loaded.name, "description": loaded.description,
+                "body": loaded.body, "path": str(loaded.path), "source": loaded.source,
+                "files": list_skill_files(loaded), "grade": scan.grade,
+                "flags": list(scan.flags), "summary": skillscan.summarize(scan)}
 
     # ---- 统一管理面：MCP server 增删改（Tier2-①，不必手编 config.yaml） ----------
     def get_mcp_servers(self) -> dict:

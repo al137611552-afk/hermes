@@ -1464,3 +1464,168 @@ body.plan-on .composer::before {
 }
 .upd-btn-primary:hover { background: var(--accent-hover); }
 .upd-btn:disabled { opacity: .6; cursor: default; }
+
+/* ---- 🧩 技能面板（FR-13.S2）------------------------------------------- */
+/* 颜色一律走主题变量，浅色主题自动跟随（v3.35 收敛过的那套） */
+.skill-mine { margin-bottom: 18px; }
+.skill-group { margin-bottom: 14px; }
+.skill-group-title {
+  font-size: 12px; color: var(--muted); margin: 10px 0 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+.skill-count {
+  background: var(--panel-2); border-radius: 8px; padding: 0 6px; font-size: 11px;
+}
+.skill-card {
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
+  background: var(--panel);
+}
+.skill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.skill-name { font-weight: 600; }
+.skill-acts { display: flex; gap: 6px; flex-shrink: 0; }
+.skill-acts button {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 4px; padding: 1px 8px; cursor: pointer; font-size: 12px;
+}
+.skill-acts button:hover { border-color: var(--accent); color: var(--text); }
+.skill-desc { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.5; }
+.skill-errors {
+  border: 1px solid var(--border-strong); border-left: 3px solid #d08a3a;
+  background: var(--panel-2); border-radius: 4px; padding: 8px 10px;
+  font-size: 12px; margin-bottom: 12px; line-height: 1.6;
+}
+.skill-sub { margin-top: 20px; }
+
+/* 安全分级徽章：绿/黄/红三档，措辞在 JS 里（不说"安全"，只说"未发现可疑信号"） */
+.skill-grade {
+  font-size: 11px; padding: 1px 7px; border-radius: 9px; white-space: nowrap;
+  border: 1px solid var(--border);
+}
+.skill-grade.sg-clean { color: #4caf78; border-color: #4caf78; }
+.skill-grade.sg-review { color: #d08a3a; border-color: #d08a3a; }
+.skill-grade.sg-warn { color: #e05563; border-color: #e05563; background: rgba(224, 85, 99, .08); }
+
+/* 市场列表 */
+.market-list { display: flex; flex-direction: column; gap: 6px; }
+.market-row { display: flex; align-items: stretch; gap: 6px; }
+.market-open {
+  flex: 1; text-align: left; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; cursor: pointer; color: var(--text);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.market-open:hover { border-color: var(--accent); }
+.market-title { font-weight: 600; }
+.market-badge {
+  font-size: 11px; padding: 0 6px; border-radius: 8px;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.market-badge.official { color: var(--accent); border-color: var(--accent); }
+.market-repo { font-size: 11px; color: var(--muted); font-family: monospace; }
+.market-note { flex-basis: 100%; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.market-del {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 6px; padding: 0 10px; cursor: pointer;
+}
+.market-del:hover { border-color: #e05563; color: #e05563; }
+.market-add { display: flex; gap: 6px; margin-top: 10px; }
+.market-add input {
+  flex: 1; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 6px 10px;
+}
+.market-add button {
+  background: var(--accent); border: none; color: #fff; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer;
+}
+.market-add button:disabled { opacity: .6; cursor: default; }
+.market-loading, .market-desc { color: var(--muted); font-size: 12px; padding: 8px 0; }
+.market-detail-head {
+  display: flex; align-items: center; gap: 10px; margin-top: 14px;
+  padding-top: 12px; border-top: 1px solid var(--border);
+}
+.market-owner, .market-count { font-size: 12px; color: var(--muted); }
+.market-detail-head button {
+  margin-left: auto; background: none; border: 1px solid var(--border);
+  color: var(--muted); border-radius: 4px; padding: 2px 10px; cursor: pointer;
+}
+#market-search {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;
+}
+#market-entries { max-height: 320px; overflow-y: auto; }
+.market-entry { border-bottom: 1px solid var(--border); padding: 8px 2px; }
+.me-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.me-name { font-weight: 600; }
+.me-cat, .me-ver { font-size: 11px; color: var(--muted); }
+.me-preview {
+  margin-left: auto; background: none; border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 4px; padding: 1px 10px; cursor: pointer; font-size: 12px;
+}
+.me-preview:disabled { opacity: .6; cursor: default; }
+.me-unsupported { margin-left: auto; font-size: 11px; color: var(--muted); }
+.me-desc { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.5; }
+
+/* 技能预览 / 详情模态 */
+.skill-modal {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+}
+.sm-box {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  width: min(760px, 92vw); max-height: 84vh; display: flex; flex-direction: column;
+}
+.sm-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600;
+}
+.sm-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; }
+.sm-body { padding: 14px 16px; overflow-y: auto; }
+.sp-row { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.sp-row.bad { color: #e05563; font-size: 12px; }
+.sp-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sp-name { font-weight: 600; }
+.sp-flag {
+  font-size: 11px; padding: 0 6px; border-radius: 8px;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.sp-installed { margin-left: auto; font-size: 12px; color: var(--muted); }
+.sp-install {
+  margin-left: auto; background: var(--accent); border: none; color: #fff;
+  border-radius: 4px; padding: 3px 14px; cursor: pointer;
+}
+.sp-install.danger { background: #e05563; }
+.sp-install:disabled { opacity: .6; cursor: default; }
+.sp-desc { color: var(--muted); font-size: 12px; margin: 6px 0; line-height: 1.5; }
+/* 扫描结论用暗底「类终端」表面（同代码块，浅色主题下也保持暗底，见 v3.35 决策） */
+.sp-scan {
+  background: var(--code-bg); color: var(--code-fg); border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.6; white-space: pre-wrap;
+  border-left: 3px solid var(--border); margin: 6px 0 0;
+}
+.sp-scan.sg-review { border-left-color: #d08a3a; }
+.sp-scan.sg-warn { border-left-color: #e05563; }
+.sp-scan-ok { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.sd-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.sd-path { font-size: 11px; color: var(--muted); font-family: monospace; }
+.sd-desc { color: var(--muted); font-size: 12px; margin-bottom: 10px; line-height: 1.5; }
+.sd-body {
+  background: var(--code-bg); color: var(--code-fg); border-radius: 6px;
+  padding: 10px 12px; font-size: 12px; line-height: 1.6; white-space: pre-wrap;
+}
+.sd-files { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.7; }
+.me-count { font-size: 11px; color: var(--accent); }
+.market-scan-tip { font-size: 11px; color: var(--muted); padding: 2px 0 6px; }
+.skill-upd-bar { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.skill-upd-bar button {
+  background: none; border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 12px;
+}
+.skill-upd-bar button:hover:not(:disabled) { border-color: var(--accent); }
+.skill-upd-bar button:disabled { opacity: .6; cursor: default; }
+.skill-upd-bar .settings-hint { margin: 0; }
+.skill-upd { font-size: 11px; padding: 0 7px; border-radius: 9px; border: 1px solid var(--border); }
+.skill-upd.su-update { color: var(--accent); border-color: var(--accent); }
+.skill-upd.su-current { color: #4caf78; border-color: #4caf78; }
+.skill-upd.su-muted { color: var(--muted); }
+.skill-update {
+  background: var(--accent) !important; border: none !important; color: #fff !important;
+}

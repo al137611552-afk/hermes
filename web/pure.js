@@ -405,7 +405,92 @@
     );
   }
 
+  // 技能安全分级 → 徽章展示（FR-13.S2）。分级名沿用社区注册表的 clean/review/warn。
+  // 措辞刻意不说"安全"——扫描是启发式的，只说"未发现可疑信号"。
+  const SKILL_GRADES = {
+    clean: { icon: "✓", label: "未发现可疑信号", cls: "sg-clean" },
+    review: { icon: "⚠", label: "建议过目", cls: "sg-review" },
+    warn: { icon: "⛔", label: "高风险", cls: "sg-warn" },
+  };
+  function skillGradeBadge(grade) {
+    return SKILL_GRADES[grade] || { icon: "?", label: "未扫描", cls: "sg-unknown" };
+  }
+
+  // 安装按钮的确认强度：绿档直接装；黄档需先看一眼（一次确认）；红档二次确认且默认不装。
+  function installConfirmLevel(grade) {
+    if (grade === "warn") return { needConfirm: true, danger: true, text: "仍要安装" };
+    if (grade === "review") return { needConfirm: true, danger: false, text: "确认安装" };
+    return { needConfirm: false, danger: false, text: "安装" };
+  }
+
+  // 市场条目筛选：按名字/描述/分类/关键词子串匹配（空查询返回全部）。
+  // 深扫过（skill_count 已知）后，不含技能的条目直接滤掉——插件可以只有 commands/agents/hooks，
+  // 那些 hermes 装不了，列出来只会让人点进去白等一次下载。
+  function filterMarketEntries(entries, query, hideEmpty) {
+    const q = (query || "").trim().toLowerCase();
+    let list = entries || [];
+    if (hideEmpty) list = list.filter((e) => e.skill_count === null
+      || e.skill_count === undefined || e.skill_count > 0);
+    if (!q) return list;
+    return list.filter((e) => {
+      const hay = [e.name, e.description, e.category, ...(e.keywords || [])]
+        .filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  // 条目上的技能数标记：未深扫时不显示，深扫后显示「N 个技能」或标明不含技能。
+  function skillCountLabel(count) {
+    if (count === null || count === undefined) return "";
+    return count > 0 ? `${count} 个技能` : "不含技能";
+  }
+
+  // 检查更新的结果 → 卡片上的一行状态（FR-13.S3）。
+  const UPDATE_STATUS = {
+    update: { text: "有新版本", cls: "su-update" },
+    current: { text: "已是最新", cls: "su-current" },
+    no_source: { text: "无来源记录", cls: "su-muted" },
+    gone: { text: "上游已移除", cls: "su-muted" },
+    error: { text: "检查失败", cls: "su-muted" },
+  };
+  function updateStatusLabel(status) {
+    return UPDATE_STATUS[status] || { text: "", cls: "" };
+  }
+
+  // 检查更新后的总结文案：有更新说几个，没更新也要说清「检查了什么、什么没法检查」，
+  // 不能只说"全是最新"——手动放进来的技能压根没法检查，含糊其辞会让人误以为都盯着了。
+  function summarizeUpdateCheck(results) {
+    const list = results || [];
+    const n = (s) => list.filter((r) => r.status === s).length;
+    const up = n("update");
+    const parts = [];
+    if (up) parts.push(`${up} 个有新版本`);
+    if (n("current")) parts.push(`${n("current")} 个已是最新`);
+    if (n("no_source")) parts.push(`${n("no_source")} 个无来源记录（查不了）`);
+    if (n("gone")) parts.push(`${n("gone")} 个上游已移除`);
+    if (n("error")) parts.push(`${n("error")} 个检查失败`);
+    if (!parts.length) return "没有可检查的已装技能";
+    return parts.join("，");
+  }
+
+  // 已装技能按来源分组（内置/全局/项目级），供面板分区展示。
+  function groupSkillsBySource(skills) {
+    const groups = { builtin: [], global: [], config: [], project: [] };
+    (skills || []).forEach((s) => {
+      (groups[s.source] || (groups[s.source] = [])).push(s);
+    });
+    return groups;
+  }
+
+  const SOURCE_LABELS = {
+    builtin: "内置（随程序分发）", global: "已安装（全局）",
+    config: "配置目录", project: "本项目（.hermes/skills）",
+  };
+
   return {
+    SKILL_GRADES, skillGradeBadge, installConfirmLevel, filterMarketEntries,
+    groupSkillsBySource, SOURCE_LABELS, skillCountLabel,
+    UPDATE_STATUS, updateStatusLabel, summarizeUpdateCheck,
     shouldShowUpdate, updateBannerHtml,
     summarize, escapeHtml, sessionRowClasses, isBusyState, composerState,
     computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
