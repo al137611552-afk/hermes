@@ -13,7 +13,35 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from agentcore.config import MCPConfig  # noqa: E402
-from agentcore.mcp_client.manager import _decode_best, _flatten_exc  # noqa: E402
+from agentcore.mcp_client.manager import _decode_best, _flatten_exc, tool_input_schema  # noqa: E402
+
+
+def test_tool_input_schema_accepts_both_sdk_field_names():
+    """mcp SDK **2.0 起把 `inputSchema` 改名 `input_schema`**——两个都要认。
+
+    2026-08-07 真跑撞到：装了 mcp 2.0.0 后连 server 直接
+    `AttributeError: 'Tool' object has no attribute 'inputSchema'`，**所有 MCP server 全连不上**
+    （浏览器穿透 / 文件系统 / Codex 模板一起废）。pyproject 只写 `mcp>=1.2`，新装机器拿到的就是新版。
+    """
+    schema = {"type": "object", "properties": {"url": {"type": "string"}}}
+
+    class New:      # mcp >= 2.0
+        input_schema = schema
+
+    class Old:      # mcp 1.x
+        inputSchema = schema
+
+    class Neither:  # 无参工具 / 更古怪的实现
+        pass
+
+    assert tool_input_schema(New()) == schema
+    assert tool_input_schema(Old()) == schema
+    assert tool_input_schema(Neither()) == {"type": "object", "properties": {}}
+    # 空 schema 也要给出合法对象（不能返回 None 让 provider 报错）
+    class Empty:
+        input_schema = None
+        inputSchema = {}
+    assert tool_input_schema(Empty()) == {"type": "object", "properties": {}}
 
 
 def test_decode_best_handles_gbk_and_utf8():

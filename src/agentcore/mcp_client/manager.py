@@ -22,6 +22,24 @@ from ..config import MCPConfig, McpServerConfig
 from .tool import McpTool
 
 
+_EMPTY_SCHEMA = {"type": "object", "properties": {}}
+
+
+def tool_input_schema(t) -> dict:
+    """从 server 通告的 Tool 上取 input schema，**兼容 mcp SDK 新旧字段名**（纯函数，鸭子类型）。
+
+    mcp SDK **2.0 起把 `inputSchema` 改名成 `input_schema`**（2026-08-07 真跑撞到：装了 2.0.0 后
+    `AttributeError: 'Tool' object has no attribute 'inputSchema'` 让**所有 MCP server 一律连不上**，
+    浏览器穿透 / 文件系统 / Codex 模板全废）。pyproject 只写 `mcp>=1.2`，新装机器拿到的就是新版，
+    所以两个名字都要认；都没有时给空 schema（无参工具照样能用），不为字段名让整台 server 挂掉。
+    """
+    for attr in ("input_schema", "inputSchema"):
+        v = getattr(t, attr, None)
+        if v:
+            return v
+    return dict(_EMPTY_SCHEMA)
+
+
 def _decode_best(data: bytes) -> str:
     """server stderr 字节流尽力解码：node 输出多为 UTF-8，Windows 系统/cmd 错误多为本地编码
     （中文 = GBK/cp936）。先试 UTF-8，失败退回本地编码，再兜底 replace——避免 GBK 字节当 UTF-8 读成乱码。"""
@@ -175,7 +193,7 @@ class McpManager:
                         McpTool(
                             server=name, tool_name=t.name,
                             description=t.description or "",
-                            input_schema=t.inputSchema or {"type": "object", "properties": {}},
+                            input_schema=tool_input_schema(t),
                             caller=self.call, trusted=sc.trust,
                         )
                         for t in listed.tools

@@ -688,6 +688,54 @@ DDG html 版 202 反爬不可用。Bing 国内外均可达 → **auto 链路 = B
   来源 URL 点击走系统浏览器（窗口不动）；子 Agent 可联网；web.enabled:false 回退正常。
   ✅ 通过（2026-06-12，**定版 v3.1.0**）。
 
+#### FR-11.1b 检索质量与分工修正（2026-08-07 立项，**纠 v3.43 的结构约束**）
+
+**问题**：用户反馈"浏览器工具链在搜索场景形同虚设，搜了半天几乎一无所获"，并归因为
+"`browser_snapshot` 抓不到 JS 动态渲染内容"。
+
+**实测复核（2026-08-07，本机 Playwright + 真实网络）——归因要改**：
+| 目标 | 默认 headless | 换真实 Chrome UA |
+|---|---|---|
+| playwright.dev 文档（纯 React SPA，全 JS 渲染） | aria 快照 **19,954 字符 / 22 个内容节点** | 同左 |
+| Bing 结果页 | 标题正常、body **35 字符**、结果块 **0 个** | **仍 0 个** |
+| DuckDuckGo | 明文验证码挑战 | 报错页 |
+| 百度 | 「百度安全验证」滑块 | **正常 10 条、快照 28,350 字符** |
+
+→ **无障碍快照抓得到 JS 渲染内容**（SPA 文档站证伪了原假设）；抓不到的是**反爬识别出自动化浏览器后
+返回的空壳结果页**。真正的病根是 **v3.43 的结构约束**：只要挂上 `browser_*` 就把 `web_search` +
+`web_fetch` 物理摘掉（`conversation.py` 主/子注册表两处），逼一切走浏览器——而搜索引擎恰恰是浏览器
+最过不去的一类站，等于把唯一稳定的搜索通道砍了。**主流无一家用浏览器驱动搜索引擎**（Claude Code 走
+Anthropic 服务端 web_search、Gemini CLI 走 Google 搜索 grounding、Codex 走服务端带缓存的 web search），
+业界分层是「官方 API/结构化端点 → 直接 HTTP → 只有需 JS/登录/交互才上浏览器」。
+
+**决策**（本轮范围＝免 key，不引入任何第三方搜索 API key）：
+- **分工按能力固定，且由代码保证而非 prompt**：搜索恒走 HTTP；`web_fetch` 命中
+  `looks_blocked`（反爬/登录墙/JS 空壳）时**自动升级**用浏览器读同一 URL（`browser_reader` 注入），
+  模型没有"换个搜索引擎再搜一遍"这个动作可做 —— v3.43「不许绕路」的本意保留，但不再连快路一起砍。
+- **结构化搜索源**：Bing 优先走 `&format=rss`（实测 10 条干净 XML），HTML 解析降级兜底。
+- **多引擎并发 + RRF 融合**：Bing 与 DDG 并发跑、按 `1/(60+rank)` 融合去重（跨引擎都出现的结果上浮），
+  再走既有 `rerank_results` 控源多样性 —— 取代"第一个有结果就返回"。
+- **正文提取升级**：readability 式主正文抽取（按文本密度/链接密度选块、类名黑白名单），
+  抽不出可信正文则回退整页；新增 `focus` 参数按需摘录相关段落。
+- **浏览器伪装**：`browser_mcp_args` 默认加 `--user-agent`（真实 Chrome UA）。
+- **标签页卫生**：directive 要求读完 `browser_tabs` 关掉（旧标签会让每次 snapshot 都拖一串，白烧上下文）。
+- 配置新增 `web.browser_fallback`（默认开）：关掉则只提示受阻、不自动动用带登录态的浏览器。
+- [x] 实现：`tools/web.py`（parse_bing_rss / canonical_url / fuse_results / extract_main_text /
+  score_node / excerpt_for_query / _clip + 并发 `_gather` + `browser_reader`）；
+  `conversation._make_browser_reader()` 取代 `_drop_web_when_browser`；`build_registry(browser_reader=…)`；
+  `config.BROWSER_UA`；config.yaml 与 researcher 角色 directive 改写。
+- [x] 自检：`test_web.py` 13→**23**、`test_conversation.py` 两条钉旧行为的测试改钉新分工、
+  `test_p6_mcp.py` +1；全回归 Python 全绿 + 前端 67/67。
+- [x] **真跑（真 kimi + 真 MCP 浏览器）**：①联网问答 3 步 89s 出带来源的正确答案，模型**自发用上 `focus`**；
+  ②HTTP 空壳页 → 自动升级 → 真实 Playwright MCP 浏览器渲染读到正文（0.6s）。
+- [ ] **待 Windows 验**：真机搜索质量（国内网络下 Bing RSS 是否稳）、浏览器穿透下 UA 生效、
+  自动升级在有登录态时的表现、标签页是否不再堆积。
+
+**同轮修掉的存量 bug（真跑暴露）**：mcp SDK **2.0 把 `Tool.inputSchema` 改名 `input_schema`**，
+`manager.py` 仍读旧名 → 装了新 SDK 的机器**所有 MCP server 一律连不上**（浏览器穿透/文件系统/Codex
+模板全废）。改 `tool_input_schema()` 两个名字都认、都没有给空 schema；`pyproject` 的 `mcp>=1.2`
+不动（新旧都能跑）。有回归测试钉死。
+
 ### 4''. 4.X 路线：P12 工程深度（2026-06-12 立项）
 
 **背景**：P11 收官后做了一轮真实复杂项目实测（kimi 驱动从零做表达式求值器，28/28 独立对抗测试通过，

@@ -68,6 +68,7 @@ def build_registry(
     ask_user_binding=None,
     history_search=None,
     skill_binding: SkillBinding | None = None,
+    browser_reader=None,
 ) -> ToolRegistry:
     """按 config 构造默认工具集。
 
@@ -114,10 +115,13 @@ def build_registry(
         ]
     if web is not None and getattr(web, "enabled", False):
         # 联网检索（FR-11.1）：只读、免 gate；enabled:false 不注册（行为同 3.0.0）
+        # browser_reader（FR-11.1b）：接了浏览器穿透时注入，web_fetch 受阻自动改走浏览器。
         tools += [
             WebSearchTool(engine=web.search_engine, timeout=web.timeout,
                           max_results=web.max_results),
-            WebFetchTool(timeout=web.timeout, max_chars=web.fetch_max_chars),
+            WebFetchTool(timeout=web.timeout, max_chars=web.fetch_max_chars,
+                         browser_reader=(browser_reader
+                                         if getattr(web, "browser_fallback", True) else None)),
         ]
     if screenshot:
         tools.append(ScreenshotTool(workspace))
