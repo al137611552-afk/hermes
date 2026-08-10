@@ -1896,6 +1896,28 @@ class Conversation:
             return "".join(out)
         return judge_fn
 
+    def _make_search_reranker(self):
+        """FR-11.1c 块2：构造模型语义重排器 rerank_fn(prompt)->str，注入给 web_search。
+
+        与块H 裁判同一套注入模式（provider 注入、单测可喂假重排器），差别在**位置**：
+        裁判是事后检测器（判不对题→提示重搜），重排器在**管线里**——直接决定哪些候选进模型视野。
+
+        **每次调用现读 config + 现建 provider**（同 `_make_verifier` 的闭包做法）：这样
+        `web.model_rerank` 改了即时生效、切模型也跟着换，都不必重建 registry（重建会重置改动台账）。
+        返回 "" 表示"这次不用模型"，由 `rerank_with_model` 退回确定性重排。
+        """
+        def rerank_fn(prompt: str) -> str:
+            cfg = self.res.config
+            if not getattr(cfg.web, "model_rerank", True):
+                return ""
+            provider = build_provider(cfg, self.active_model)
+            out = []
+            for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
+                if getattr(ev, "type", None) == "text":
+                    out.append(ev.text)
+            return "".join(out)
+        return rerank_fn
+
     def _browse_nudge_enabled(self) -> bool:
         """情境自启：项目代码文件数 ≥ 阈值时，启用「浏览太多→提示 search_code」。"""
         n = self.res.config.agent.search_nudge_files
@@ -1989,6 +2011,7 @@ class Conversation:
             skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
             browser_reader=self._make_browser_reader(),
             artifacts=self.artifacts,
+            search_reranker=self._make_search_reranker(),
         )
 
     def _make_artifact_sink(self):
@@ -2107,6 +2130,7 @@ class Conversation:
             ask_user_binding=self._ask,   # 子 Agent 也能 ask_user：遇登录墙时暂停、让用户在浏览器登录后再继续
             browser_reader=self._make_browser_reader(),
             artifacts=self.artifacts,     # 与主 Agent 共用产物集（同一工作区）
+            search_reranker=self._make_search_reranker(),   # 子 Agent 搜索同样走模型重排
         )
         # 子 Agent 与主 Agent 同一套分工（见 _make_browser_reader）：搜索走 HTTP、
         # 读不动的页面由 web_fetch 自动升级到浏览器；会浏览的角色照常还有 browser_* 可主动下钻。

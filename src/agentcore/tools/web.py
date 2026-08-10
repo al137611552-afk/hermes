@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import concurrent.futures
 import html as html_mod
+import json
 import re
 import urllib.parse
 import urllib.request
@@ -48,7 +49,16 @@ def looks_blocked(text: str, is_html: bool) -> "str | None":
     return None
 DEFAULT_FETCH_CHARS = 20_000     # web_fetch 默认输出字符上限
 MAX_RESULTS_CAP = 10             # **返回给模型**的条数硬上限
-_WIDEN_COUNT = 30                # **宽召回**候选池大小（多抓、再重排过滤，治"直吞前 N 噪声"）
+# 宽召回（FR-11.1c）：多抓候选再重排过滤，治"直吞前 N 条噪声"。
+# **2026-08-10 实测纠正**：原来给 Bing 传 `count=30` 是**无效的**——Bing 无视该参数恒回 10 条
+# （RSS/HTML 都是），`first=11/21` 翻页也返回同一批，所以"30 条候选"从未真正生效。
+# 真正能加宽的只有 DDG lite 的 **POST 翻页**（`s=0/20/40`，实测每页 10 条、页间有重叠，
+# 三页去重约 15 条、五页也只到 16 条——它自己就这么多）。故：Bing 保持单页 10 条，
+# DDG 翻 _DDG_PAGES 页，合起来候选池约 23 条。
+_DDG_PAGE_OFFSETS = (0, 20, 40)  # DDG lite 翻页偏移（实测 s=10 与首页重叠 9/10，步长取 20 才划算）
+_DDG_PAGES = 3                   # 默认翻几页（1 = 关掉宽召回，行为同 3.53）
+_READ_TOP_N = 3                  # 搜完顺带读几条正文（FR-11.1c 块3；0 = 关，只回标题+摘要）
+_READ_CHARS = 1500               # 每条正文摘录的字符预算（按 query 摘相关段落，不是从头截）
 _ENGINES = ("bing", "duckduckgo")
 _RRF_K = 60                      # RRF 融合常数（业界惯用 60；越大越看重"多引擎都有"而非单引擎排名）
 
@@ -72,6 +82,23 @@ def _http_get(url: str, timeout: int) -> tuple[str, str, str]:
     except ToolError:
         raise
     except Exception as e:  # noqa: BLE001 — 网络错误统一转可读
+        raise ToolError(f"请求失败（{url[:100]}）：{type(e).__name__}: {e}") from None
+
+
+def _http_post(url: str, form: dict, timeout: int) -> str:
+    """POST 一个表单，返回文本。失败抛 ToolError（可读）。DDG lite 的翻页只认 POST。"""
+    body = urllib.parse.urlencode(form).encode()
+    req = urllib.request.Request(url, data=body, headers={
+        "User-Agent": UA,
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Content-Type": "application/x-www-form-urlencoded",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = r.read(MAX_DOWNLOAD_BYTES)
+            charset = r.headers.get_content_charset() or "utf-8"
+            return data.decode(charset, errors="replace")
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"请求失败（{url[:100]}）：{type(e).__name__}: {e}") from None
 
 
@@ -259,6 +286,24 @@ def _query_terms(query: str) -> "set[str]":
     return terms
 
 
+def merge_pages(pages: "list[list[dict]]") -> list[dict]:
+    """把同一引擎多页结果按页序合并、按 URL 去重（纯函数）。
+
+    DDG lite 的分页页间有重叠（实测 s=20 与首页重叠 7/10），不去重的话候选池会被同一条撑虚，
+    后面 RRF 融合还会因为"出现多次"给它加分——等于自己给自己投票。
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    for page in pages:
+        for r in page or []:
+            u = (r.get("url") or "").strip()
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            out.append(r)
+    return out
+
+
 def rerank_results(query: str, results: list[dict], top_n: int, per_domain_cap: int = 2) -> list[dict]:
     """对宽召回结果做**确定性**重排+去重+控源多样性，返回 top_n（option B 核心）。
 
@@ -285,10 +330,19 @@ def rerank_results(query: str, results: list[dict], top_n: int, per_domain_cap: 
             score = 0
         scored.append((-score, i, r))     # -score：分降序；i：原序稳定兜底
     scored.sort(key=lambda x: (x[0], x[1]))
+    return apply_domain_cap([r for _s, _i, r in scored], top_n, per_domain_cap)
+
+
+def apply_domain_cap(results: list[dict], top_n: int, per_domain_cap: int = 2) -> list[dict]:
+    """按既定顺序取 top_n，每域名最多 per_domain_cap 条；配额没填满再用被压的补足（纯函数）。
+
+    抽成共用助手：确定性重排与模型重排（FR-11.1c 块2）都要这一层——模型完全可能一口气挑 5 条
+    同站的，控源多样性这道闸不能因为"换了个更聪明的排序器"就没了。
+    """
     out: list[dict] = []
     overflow: list[dict] = []
     per_domain: dict[str, int] = {}
-    for _s, _i, r in scored:
+    for r in results or []:
         d = _domain_of(r.get("url", ""))
         if per_domain.get(d, 0) >= max(1, per_domain_cap):
             overflow.append(r)           # 同域超额：先压住，配额不够再补
@@ -302,6 +356,84 @@ def rerank_results(query: str, results: list[dict], top_n: int, per_domain_cap: 
             break
         out.append(r)
     return out
+
+
+# ---- 模型语义重排（FR-11.1c 块2）--------------------------------------------
+# 确定性重排只看**关键词覆盖度**——它治得了"多词只覆盖一个"的跑偏，治不了语义：
+# 「2026 显卡 价格」的头名实测是个韩文 wiki 年份页（标题含 2026、就被算作命中）。
+# 所以在候选池和最终结果之间加一道模型闸：让模型看标题+摘要挑真正对题的。
+# 纪律同块H 裁判：**故障即降级**——解析不出/调用失败/返回空，一律退回确定性重排，绝不让搜索挂掉。
+
+_RERANK_JSON_RE = re.compile(r"\{.*\}", re.S)
+
+
+def build_rerank_prompt(query: str, candidates: list[dict], top_n: int) -> str:
+    """构造重排 prompt：编号候选（标题/域名/摘要），要模型只回紧凑 JSON。"""
+    lines = []
+    for i, r in enumerate(candidates):
+        snip = (r.get("snippet") or "").strip().replace("\n", " ")
+        lines.append(f"[{i}] {r.get('title', '')}\n    {_domain_of(r.get('url', ''))}"
+                     + (f"\n    {snip[:200]}" if snip else ""))
+    return (
+        "你是搜索结果相关性排序器。下面是用户的查询，和一批候选结果（标题/域名/摘要）。\n"
+        f"挑出**最能回答该查询**的至多 {top_n} 条，按相关性从高到低排列。\n"
+        "判据：是否真正针对查询主题（不是只碰巧含关键词）、内容像不像有实质信息、"
+        "来源是否可靠、时效是否对得上（查询含年份/最新时尤其看重）。\n"
+        "宁缺毋滥：明显不对题的别硬凑数；但也别过度保守，够格的都可以留。\n"
+        '只回 JSON，不要解释：{"pick": [编号, …], "why": "一句话说明挑选依据"}\n\n'
+        f"【查询】{query}\n\n【候选】\n" + "\n".join(lines)
+    )
+
+
+def parse_rerank(raw: str, n_candidates: int) -> list[int]:
+    """从模型输出里解析出候选编号列表（纯函数）。解析不出返回空列表＝调用方降级。"""
+    m = _RERANK_JSON_RE.search(raw or "")
+    if not m:
+        return []
+    try:
+        data = json.loads(m.group(0))
+    except (ValueError, TypeError):
+        return []
+    picked = data.get("pick") if isinstance(data, dict) else None
+    if not isinstance(picked, list):
+        return []
+    out: list[int] = []
+    for v in picked:
+        try:
+            i = int(v)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= i < n_candidates and i not in out:   # 越界/重复的编号丢掉（模型会瞎编）
+            out.append(i)
+    return out
+
+
+def rerank_with_model(query: str, candidates: list[dict], top_n: int, rerank_fn,
+                      per_domain_cap: int = 2) -> "tuple[list[dict], str]":
+    """模型语义重排。返回 (结果, 用了哪种排序)；任何异常/空结果都降级到确定性重排。
+
+    模型挑得不够 top_n 时，用确定性顺序补足——宁可多给两条，也别因为模型保守而让模型
+    自己后面又发起一轮重搜（那更贵）。
+    """
+    fallback = rerank_results(query, candidates, top_n, per_domain_cap)
+    if not rerank_fn or not candidates:
+        return fallback, "确定性"
+    try:
+        raw = rerank_fn(build_rerank_prompt(query, candidates, top_n))
+    except Exception:  # noqa: BLE001 — 重排是增值项，出错绝不能让搜索失败
+        return fallback, "确定性(模型重排失败)"
+    if not raw:                          # 闭包现读 config 发现开关关了 → 就是普通的确定性重排
+        return fallback, "确定性"
+    idx = parse_rerank(raw, len(candidates))
+    if not idx:
+        return fallback, "确定性(模型未给出有效结果)"
+    # 模型选中的排前面，模型没选的按确定性顺序垫在后面，**最后统一过一次控源配额**。
+    # 这个顺序很关键：先截断再补足的话，模型一口气全挑同站时会把多样性配额吃光
+    # （补足只能从它自己挑的同站溢出里拿），单测钉住了这一点。
+    ordered = [candidates[i] for i in idx]
+    seen = {r.get("url") for r in ordered}
+    ordered += [r for r in fallback if r.get("url") not in seen]
+    return apply_domain_cap(ordered, top_n, per_domain_cap), "模型语义重排"
 
 
 class _TextExtractor(HTMLParser):
@@ -512,6 +644,22 @@ def extract_main_text(page: str) -> tuple[str, str]:
     return title, main
 
 
+def _window_around_match(paras: list[str], terms: set, max_chars: int) -> str:
+    """段落长过预算时，在第一处命中附近开一个窗口截取（纯函数）。
+
+    比"从头截 max_chars"强：命中点常在正文中段（价格、结论、报错都在中间），从头截正好错过。
+    """
+    for p in paras:
+        low = p.lower()
+        pos = min((low.find(t) for t in terms if t in low), default=-1)
+        if pos < 0:
+            continue
+        start = max(0, pos - max_chars // 3)        # 命中点前留三分之一预算做上文
+        seg = p[start:start + max_chars]
+        return ("…" if start > 0 else "") + seg + ("…" if start + max_chars < len(p) else "")
+    return "\n".join(paras)[:max_chars]
+
+
 def excerpt_for_query(text: str, focus: str, max_chars: int) -> str:
     """按 `focus` 从正文里摘相关段落（纯函数）——治"整页灌进上下文"。
 
@@ -532,6 +680,11 @@ def excerpt_for_query(text: str, focus: str, max_chars: int) -> str:
     scored.sort(key=lambda x: (x[0], x[1]))
     if not scored or scored[0][0] == 0:            # 一个词都没命中
         return text[:max_chars]
+    # **段落比预算还长时开窗**（2026-08-10 修）：抽出来的正文经常整页就一个长段落
+    # （没有换行），原来这种情况每个候选段落都因 `len(p) > max_chars` 被跳过，
+    # 最后 picked 为空 → 返回空摘录。web_fetch 带 focus 抓这类页面时模型收到的是**一段空白**。
+    if all(len(p) > max_chars for _h, _i, p in scored if _h < 0):
+        return _window_around_match(paras, terms, max_chars)
     picked: set[int] = set()
     used = 0
     for neg_hits, i, p in scored:
@@ -560,8 +713,10 @@ def excerpt_for_query(text: str, focus: str, max_chars: int) -> str:
 class WebSearchTool(Tool):
     name = "web_search"
     description = (
-        "联网搜索（只读，免确认）：返回若干条「标题/URL/摘要」（已宽召回后按相关性重排、控源多样、去重）。"
-        "适合查文档、报错信息、库用法、近期事实。拿到结果后用 web_fetch 读具体页面正文。"
+        "联网搜索（只读，免确认）：宽召回一大批候选 → 按相关性重排、控源多样、去重 → 返回若干条"
+        "「标题/URL/摘要」，并**已自动抓取前几条的正文、按你的查询摘录**（结果里 ↳ 开头的部分）。"
+        "适合查文档、报错信息、库用法、近期事实。**先看 ↳ 摘录再决定要不要 web_fetch 读全文**，"
+        "多数问题看摘录就够了；摘录标了「未读到正文」的才需要 web_fetch（它会自动改用浏览器）。"
     )
     input_schema = {
         "type": "object",
@@ -572,10 +727,27 @@ class WebSearchTool(Tool):
         "required": ["query"],
     }
 
-    def __init__(self, *, engine: str = "auto", timeout: int = 20, max_results: int = 5) -> None:
+    def __init__(self, *, engine: str = "auto", timeout: int = 20, max_results: int = 5,
+                 widen_pages: int = 1, reranker=None,
+                 read_top_n: int = 0, read_chars: int = _READ_CHARS,
+                 artifacts=None) -> None:
+        # 注意构造器默认＝**老行为**（不宽召回、不读正文、不重排），产品默认由 registry 从
+        # config 注入（widen_pages=3 / read_top_n=3 / reranker）。同 research_judge 的做法：
+        # 直接 new 出来的实例（存量单测、脚本）行为零变化，也不会在离线测试里偷偷连网。
         self._engine = engine
         self._timeout = timeout
         self._max_results = max_results
+        self._widen_pages = max(1, min(int(widen_pages or 1), len(_DDG_PAGE_OFFSETS)))
+        # 模型语义重排器 rerank_fn(prompt)->str（FR-11.1c 块2），由 registry 注入。
+        # None = 只用确定性重排（行为同 3.54）。故障一律降级，不影响搜索可用性。
+        self._reranker = reranker
+        # 块3：搜完顺带读前 K 条正文，直接回「带来源摘录」的结果。
+        # 为什么整合进 web_search 而不是单开一个深度工具：反复验证过的规律是**强模型在能凑合时
+        # 会绕开新工具**（trace_run / search_code 都中招），而"直吞标题摘要"正是要治的病根——
+        # 靠 prompt 劝不动，得由结构保证（同 v3.43 的教训）。
+        self._read_top_n = max(0, int(read_top_n or 0))
+        self._read_chars = max(200, int(read_chars or _READ_CHARS))
+        self._artifacts = artifacts   # 读到的完整正文超 cap 时落产物（ADR 0021）
 
     def _search_one(self, engine: str, query: str) -> list[dict]:
         """跑一个引擎。**Bing 先走 RSS 结构化端点**，解析不出再降级啃 HTML。"""
@@ -583,19 +755,42 @@ class WebSearchTool(Tool):
         if engine == "bing":
             try:
                 _, rss, _ = _http_get(
-                    f"https://www.bing.com/search?q={q}&format=rss&count={_WIDEN_COUNT}",
-                    self._timeout)
+                    f"https://www.bing.com/search?q={q}&format=rss", self._timeout)
                 items = parse_bing_rss(rss)
                 if items:
                     return items
             except ToolError:
                 pass                       # RSS 不通 → 降级 HTML，不让整条链路挂掉
-            # 宽召回：count=N 多抓候选，交给 rerank_results 重排过滤，而非直吞前几条
-            _, page, _ = _http_get(
-                f"https://www.bing.com/search?q={q}&count={_WIDEN_COUNT}", self._timeout)
+            # 注意：不再传 count/first——实测 Bing 无视它们（恒 10 条、翻页返回同一批），
+            # 传了只是自欺欺人。加宽候选靠 DDG 翻页（见 _DDG_PAGE_OFFSETS）。
+            _, page, _ = _http_get(f"https://www.bing.com/search?q={q}", self._timeout)
             return parse_bing(page)
-        _, page, _ = _http_get(f"https://lite.duckduckgo.com/lite/?q={q}", self._timeout)
+        return self._search_ddg(query)
+
+    def _ddg_page(self, query: str, offset: int) -> list[dict]:
+        """DDG lite 一页。offset=0 走 GET（最快、最不像自动化），翻页只能 POST。"""
+        if offset <= 0:
+            _, page, _ = _http_get(
+                f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(query)}", self._timeout)
+        else:
+            page = _http_post("https://lite.duckduckgo.com/lite/",
+                              {"q": query, "s": str(offset)}, self._timeout)
         return parse_ddg_lite(page)
+
+    def _search_ddg(self, query: str) -> list[dict]:
+        """DDG 宽召回：并发翻 N 页再合并去重。**翻页失败不影响已拿到的页**（部分结果照用）。"""
+        offsets = list(_DDG_PAGE_OFFSETS[:max(1, self._widen_pages)])
+        if len(offsets) == 1:
+            return self._ddg_page(query, 0)
+        pages: dict = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(offsets)) as pool:
+            futs = {pool.submit(self._ddg_page, query, o): o for o in offsets}
+            for fut in concurrent.futures.as_completed(futs):
+                try:
+                    pages[futs[fut]] = fut.result()
+                except Exception:  # noqa: BLE001 — 某一页翻不动就少那一页，别拖垮整次搜索
+                    pages[futs[fut]] = []
+        return merge_pages([pages.get(o, []) for o in offsets])   # 按页序合并，首页优先
 
     def _gather(self, engines: "tuple[str, ...]", query: str) -> tuple[list, list[str]]:
         """**并发**跑多个引擎，返回 ([(engine, results)…], 错误说明)。
@@ -641,21 +836,75 @@ class WebSearchTool(Tool):
         if not got:
             errors += [f"{e}: 无结果或页面结构无法解析" for e, rs in per if not rs]
             raise ToolError("搜索失败：" + ("；".join(errors) if errors else "无结果"))
-        # 跨引擎 RRF 融合 → 确定性重排+控源多样性 → top-n（治"直吞前几条噪声/单站霸屏"）
+        # 跨引擎 RRF 融合 → 重排（模型语义优先、确定性兜底）+控源多样性 → top-n
         fused = fuse_results(got)
-        ranked = rerank_results(query, fused, n)
+        ranked, how = rerank_with_model(query, fused, n, self._reranker)
         used = "+".join(e for e, _ in got)
         head = (f"[搜索结果·{used}] {query}"
-                f"（{len(got)} 个引擎并发、RRF 融合去重，自 {len(fused)} 条候选选 {len(ranked)} 条）")
+                f"（{len(got)} 个引擎并发、RRF 融合去重，自 {len(fused)} 条候选按{how}选 {len(ranked)} 条）")
         if errors:
             head += f"\n[注] 部分来源未用上：{'；'.join(errors)}"
+        bodies = self._read_bodies(ranked[:self._read_top_n], query) if self._read_top_n else {}
+        if bodies:
+            head += f"\n[已读正文] 前 {len(bodies)} 条已抓取正文并按查询摘录（下面 ↳ 的部分）"
         lines = [head]
         for i, r in enumerate(ranked, 1):
             src = r.get("sources") or []
             tag = f"  [{'+'.join(src)}]" if len(src) > 1 else ""
             lines.append(f"{i}. {r['title']}{tag}\n   {r['url']}"
                          + (f"\n   {r['snippet']}" if r["snippet"] else ""))
+            body = bodies.get(r["url"])
+            if body:
+                lines.append("   ↳ " + body.replace("\n", "\n     "))
         return "\n".join(lines)
+
+    def _read_bodies(self, results: list[dict], query: str) -> dict:
+        """并发抓前 K 条正文，按 query 摘录。返回 {url: 摘录}。
+
+        **任何一条读不动都只影响它自己**：反爬/超时/空页都标一句原因跳过，
+        搜索结果照常返回——读正文是增值项，绝不能让它把搜索拖失败。
+        受阻的这里不切浏览器（那是 web_fetch 的自动升级职责），标注让模型按需自己去读。
+        """
+        results = [r for r in results if (r.get("url") or "").startswith(("http://", "https://"))]
+        if not results:
+            return {}
+        out: dict = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(results)) as pool:
+            futs = {pool.submit(self._read_one, r["url"], query): r["url"] for r in results}
+            for fut in concurrent.futures.as_completed(futs):
+                url = futs[fut]
+                try:
+                    out[url] = fut.result()
+                except Exception as e:  # noqa: BLE001
+                    out[url] = f"[读取失败：{type(e).__name__}]"
+        return {u: out[u] for u in (r["url"] for r in results) if out.get(u)}   # 保持结果顺序
+
+    def _read_one(self, url: str, query: str) -> str:
+        """抓一页 → 主正文 → 按 query 摘录（不够长就整段给）。"""
+        try:
+            _final, body, ctype = _http_get(url, self._timeout)
+        except ToolError as e:
+            # 403/429 之类多半是反爬（知乎实测就是 403），和"正文空壳"同一类处置：
+            # 这里不切浏览器（那是 web_fetch 的自动升级职责），但要**指路**，别让模型以为此页没救。
+            reason = re.sub(r"请求失败（[^）]*）：", "", str(e))[:80]
+            return f"[未读到正文：{reason}——需要的话用 web_fetch 读它（会自动改用浏览器）]"
+        is_html = "html" in (ctype or "").lower() or bool(re.search(r"<\s*html", body[:2000], re.I))
+        _title, text = extract_main_text(body) if is_html else ("", body)
+        blocked = looks_blocked(text, is_html)
+        if blocked:
+            return f"[未读到正文：{blocked}——需要的话用 web_fetch 读它（会自动改用浏览器）]"
+        text = (text or "").strip()
+        if not text:
+            return "[未读到正文：页面没有可提取的文本]"
+        excerpt = excerpt_for_query(text, query, self._read_chars) if len(text) > self._read_chars \
+            else text
+        note = ""
+        if self._artifacts is not None:
+            art = self._artifacts.maybe_put(text, len(excerpt), tool="web_search", origin=url)
+            if art is not None:
+                note = f"\n[完整正文 {art.chars:,} 字符已存 {art.rel}]"
+        tail = "" if len(text) <= self._read_chars else f"（摘自 {len(text):,} 字符正文）"
+        return f"{excerpt}{tail}{note}"
 
 
 class WebFetchTool(Tool):

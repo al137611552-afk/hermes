@@ -70,6 +70,7 @@ def build_registry(
     skill_binding: SkillBinding | None = None,
     browser_reader=None,
     artifacts=None,
+    search_reranker=None,
 ) -> ToolRegistry:
     """按 config 构造默认工具集。
 
@@ -85,6 +86,8 @@ def build_registry(
     web 非 None 且 enabled 时注册联网检索 web_search/web_fetch（FR-11.1）。
     verifier 为写入后零成本语法校验回调（FR-11.2a）：注入给 write/edit/multi_edit，落盘后校验。
     skill_binding 非 None 时注册技能加载工具 load_skill（FR-13.S，只读、免 gate、子 Agent 也可用）。
+    search_reranker 为模型语义重排器（FR-11.1c 块2）：注入给 web_search，从宽召回候选池里按语义挑；
+    None 时只用确定性重排（行为同 3.54）。
     artifacts 为产物入口（ADR 0021）：注入给 run_<shell> / web_fetch，大输出落盘回「摘要 + 句柄」；
     None 时超限照旧直接截断丢弃（行为同 3.53）。主与子 Agent 传同一个（共用工作区的产物集）。
     """
@@ -121,7 +124,12 @@ def build_registry(
         # browser_reader（FR-11.1b）：接了浏览器穿透时注入，web_fetch 受阻自动改走浏览器。
         tools += [
             WebSearchTool(engine=web.search_engine, timeout=web.timeout,
-                          max_results=web.max_results),
+                          max_results=web.max_results,
+                          widen_pages=getattr(web, "widen_pages", 3),
+                          reranker=search_reranker,
+                          read_top_n=getattr(web, "read_top_n", 3),
+                          read_chars=getattr(web, "read_chars", 1500),
+                          artifacts=artifacts),
             WebFetchTool(timeout=web.timeout, max_chars=web.fetch_max_chars,
                          browser_reader=(browser_reader
                                          if getattr(web, "browser_fallback", True) else None),

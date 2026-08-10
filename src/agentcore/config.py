@@ -260,6 +260,11 @@ class WebConfig(BaseModel):
     timeout: int = 20             # 单次请求超时（秒）
     max_results: int = 5          # 搜索默认条数（硬上限 10）
     fetch_max_chars: int = 20000  # web_fetch 正文输出默认上限
+    model_rerank: bool = True     # 宽召回后由模型按语义挑（FR-11.1c 块2）；关掉只用确定性词覆盖重排
+    read_top_n: int = 3           # 搜完顺带读前几条正文并按查询摘录（FR-11.1c 块3）；0 = 关
+    read_chars: int = 1500        # 每条正文摘录的字符预算
+    widen_pages: int = 3          # 宽召回（FR-11.1c）：DDG 翻几页凑候选池（1 = 关，行为同 3.53）
+                                  # 实测 Bing 无视 count/first 参数恒回 10 条，加宽只能靠 DDG 翻页
     # 接了浏览器穿透时，web_fetch 命中反爬/登录墙/JS 空壳就自动改用浏览器读同一 URL。
     # 关掉则只提示受阻、由模型自己决定要不要开浏览器（注意：浏览器带登录态，读到的可能是私域内容）。
     browser_fallback: bool = True
