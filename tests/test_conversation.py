@@ -1362,6 +1362,104 @@ def test_run_autonomous_replans_after_phase(tmp: Path):
     assert "crazy_replan" in events                          # 发了 crazy_replan 事件（前端可展示）
 
 
+def test_run_autonomous_replans_on_task_state_delta(tmp: Path):
+    """块4 主路径：**不靠模型自报 PHASE_DONE**——任务清单里某阶段变 completed 且还有剩余阶段，
+    就是阶段边界，下一轮注入重规划。
+
+    这条是两次真跑逼出来的（2026-08-10）：真模型几乎从不发 `[[PHASE_DONE]]`——要么一口气做完
+    直接 `[[DONE]]`，要么撞步数上限被截断（那时标记按设计不被信任），块4 成了死代码路径。
+    """
+    api = _api(tmp)
+    conv = api.active
+    conv.res.config.agent.crazy_stall_rounds = 99
+    conv._ensure_session("t")
+    st = conv.res.store
+
+    def mark(done_n: int, total: int = 3):
+        st.set_tasks(conv.session_id, [
+            {"content": f"P{i + 1} 阶段", "status": "completed" if i < done_n else "pending"}
+            for i in range(total)])
+
+    scripted = ["P1 做完了 [[CONTINUE: 做 P2]]", "P2 做完了 [[CONTINUE: 做 P3]]", "全做完 [[DONE]]"]
+    calls: list[str] = []
+    inner = _scripted_round(conv, scripted, calls)
+
+    def round_with_tasks(prompt):
+        mark(len(calls) + 1)          # 每轮完成一个阶段（模型用 update_tasks 标的那种状态）
+        return inner(prompt)
+
+    conv._run_crazy_round = round_with_tasks
+    conv._crazy_verify_gate = lambda forced: (None, forced, False)
+    events: list = []
+    base = conv.emit
+    conv.emit = lambda ev, data: (events.append((ev, data)), base(ev, data))[-1]
+    r = conv.run_autonomous("做个东西", max_rounds=5)
+
+    assert r["reason"] == "goal_reached" and len(calls) == 3
+    assert "重规划" in calls[1] and "重规划" in calls[2]      # 第2、3 轮都在阶段边界上
+    assert "做 P2" in calls[1]                                # 模型自己的下一步仍接在后面
+    replans = [d for ev, d in events if ev == "crazy_replan"]
+    assert len(replans) == 2 and replans[0]["remaining"] == 2  # 事件带剩余阶段数
+    assert "P1 阶段" in replans[0]["phase"]                    # 事件带刚完成的阶段
+
+
+def test_replan_fires_on_truncated_round_with_progress(tmp: Path):
+    """撞步数上限那一轮：模型自称 DONE 但不被信任，而清单显示已完成 2 个、还剩 1 个
+    ——**这恰恰是最该重规划的时刻**（真跑 2026-08-10 观察到的真实形态）。"""
+    api = _api(tmp)
+    conv = api.active
+    conv.res.config.agent.crazy_stall_rounds = 99
+    conv._ensure_session("t")
+    calls: list[str] = []
+    inner = _scripted_round(conv, ["做了一堆 [[DONE]]", "补完了 [[DONE]]"], calls)
+
+    def round_with_tasks(prompt):
+        n = 2 if not calls else 3          # 第1轮完成 2 个阶段（剩 1 个），第2轮全完成
+        conv.res.store.set_tasks(conv.session_id, [
+            {"content": f"P{i + 1} 阶段", "status": "completed" if i < n else "pending"}
+            for i in range(3)])
+        out = inner(prompt)
+        conv._last_turn_hit_max = (len(calls) == 1)   # 第1轮撞步数上限
+        return out
+
+    conv._run_crazy_round = round_with_tasks
+    conv._crazy_verify_gate = lambda forced: (None, forced, False)
+    events: list = []
+    base = conv.emit
+    conv.emit = lambda ev, data: (events.append((ev, data)), base(ev, data))[-1]
+    r = conv.run_autonomous("做个东西", max_rounds=5)
+
+    assert r["reason"] == "goal_reached" and len(calls) == 2
+    assert "重规划" in calls[1]
+    assert "被打断" in calls[1]            # 两条指令都在：别轻信 DONE + 先重规划
+    replans = [d for ev, d in events if ev == "crazy_replan"]
+    assert len(replans) == 1 and replans[0]["remaining"] == 1
+
+
+def test_no_replan_when_all_phases_done_at_once(tmp: Path):
+    """一轮把所有阶段做完 → 没有"剩余阶段"，不该重规划（小任务别平白多绕一轮）。"""
+    api = _api(tmp)
+    conv = api.active
+    conv.res.config.agent.crazy_stall_rounds = 99
+    conv._ensure_session("t")
+    calls: list[str] = []
+    inner = _scripted_round(conv, ["全做完 [[DONE]]"], calls)
+
+    def round_with_tasks(prompt):
+        conv.res.store.set_tasks(conv.session_id, [
+            {"content": f"P{i + 1} 阶段", "status": "completed"} for i in range(3)])
+        return inner(prompt)
+
+    conv._run_crazy_round = round_with_tasks
+    conv._crazy_verify_gate = lambda forced: (None, forced, False)
+    events: list = []
+    base = conv.emit
+    conv.emit = lambda ev, data: (events.append(ev), base(ev, data))[-1]
+    r = conv.run_autonomous("做个东西", max_rounds=5)
+    assert r["reason"] == "goal_reached" and len(calls) == 1
+    assert "crazy_replan" not in events
+
+
 def test_run_autonomous_replan_off_continues_plainly(tmp: Path):
     """crazy_replan=False：PHASE_DONE 退化成普通续命——不注入重规划，仍带模型自报的下一步。"""
     conv = _api(tmp).active

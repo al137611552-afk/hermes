@@ -1271,6 +1271,7 @@ class Conversation:
         rnd, stale, reason = 0, 0, "budget_exhausted"
         verify_forced = False   # 块2 验收门：是否已逼过一次"实跑验收"（无 test_command 时只逼一次，防死循环）
         verify_fails = 0        # 块3：验收连续真红次数（到 crazy_verify_ask_at 就停下问用户）
+        phase_done_seen: set = set()   # 块4：已见过的「已完成阶段」，用差分认出阶段边界
         try:
             while rnd < budget:
                 if self._cancel.is_set():
@@ -1300,6 +1301,8 @@ class Conversation:
                     if stale >= max(1, cfg.crazy_stall_rounds):
                         reason = "stalled"; break
                 verdict, nxt = _parse_crazy_verdict(self._last_assistant_text())
+                newly_done, remaining_phases = self._crazy_phase_delta(phase_done_seen)
+                phase_done_seen |= newly_done
                 # 块A 契约观测：把 verdict 映射成稳定 Need 并随轮次上报（仅记账，不夺
                 # 分支决策权——下面仍按 verdict 走，保证行为逐字节等价。Need 是后续
                 # Learning 聚合的 key，见 docs/adr/0014）。
@@ -1349,6 +1352,15 @@ class Conversation:
                 if (hit or had_inject) and not nxt:
                     nxt = ("上一轮被打断（步数上限或用户中途补充）、任务可能尚未全部完成："
                            "继续推进，并确认原目标与用户补充都已达成后再收尾。")
+                # 块4（主路径）：任务清单显示**某阶段刚完成、且还有阶段没做** → 下一轮先重规划剩余阶段。
+                # 不只挂 [[PHASE_DONE]]：真跑三次证明那个标记几乎不出现（见 _crazy_phase_delta）。
+                # 放在最后包住 nxt，于是三种情形都覆盖：普通续命、被打断续命、以及**撞上限时模型
+                # 自称 DONE 但不被信任**的那一轮——恰恰是"做完了几个阶段、还剩一堆"最该重规划的时刻。
+                # （被信任的 DONE 走上面的验收门分支、已 continue/break，到不了这里。）
+                if cfg.crazy_replan and newly_done and remaining_phases > 0:
+                    self.emit("crazy_replan", {"phase": "；".join(sorted(newly_done))[:200],
+                                               "remaining": remaining_phases})
+                    nxt = self._crazy_replan_directive(nxt)
         finally:
             self.emit = orig_emit
             self.set_crazy_mode(False)
@@ -1399,6 +1411,22 @@ class Conversation:
             return self._ask.ask(question, options)
         finally:
             self._ask.set_auto(True)
+
+    def _crazy_phase_delta(self, prev_done: set) -> "tuple[set, int]":
+        """块4 触发判定：返回 (本轮新完成的阶段, 仍未完成的阶段数)。
+
+        **不等模型自报 `[[PHASE_DONE]]`**——真跑两次证明那个标记几乎不会出现：模型要么一口气
+        把所有阶段做完直接 `[[DONE]]`，要么撞步数上限被截断（`hit=True`，标记按设计不被信任），
+        阶段边界根本没机会被"自报"出来，块4 成了死代码路径。改看任务清单的**确定性状态差分**：
+        某阶段从未完成变 completed、且还有阶段没做 → 就是阶段边界，该重规划了。
+        """
+        try:
+            tasks = self.res.store.get_tasks(self.session_id) or [] if self.res.store else []
+        except Exception:  # noqa: BLE001 — 拿不到清单就当没有阶段边界，不影响主循环
+            return set(), 0
+        done = {str(t.get("content", "")) for t in tasks if t.get("status") == "completed"}
+        remaining = sum(1 for t in tasks if t.get("status") != "completed")
+        return done - prev_done, remaining
 
     def _crazy_replan_directive(self, next_step: "str | None") -> str:
         """块4：一个阶段刚通过验收 → 下一轮先按这阶段实际学到的重规划剩余阶段，再推进。
