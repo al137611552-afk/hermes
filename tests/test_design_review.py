@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agentcore.agent.design_review import (  # noqa: E402
     ACCEPTED, DEFERRED, NEEDUSER, OPEN, REJECTED, Decision, DesignReviewSession,
     apply_review, build_review_prompt, can_start_coding, count_blocking,
+    focus_count, review_output_spec, scale_review_budget,
     diagnose_decisions, escalate_unresolved, gate_status,
     make_review_fn, parse_decisions, render_consensus, round_snapshot, run_review,
     should_stop,
@@ -515,6 +516,70 @@ def test_apply_review_parses_prose_then_json():
                '```json\n[{"id":"d1","status":"NeedUser","add_blocking":["需拍板"]}]\n```')
     out = apply_review(ds, verdict)
     assert out[0].status == "NeedUser" and out[0].blocking == ["需拍板"]
+
+
+# ---- 预算随规模伸缩（真机：10 条决策 → 产品镜头撞 4096 被截断，尾部意见全丢）----
+
+
+def test_scale_review_budget_grows_with_decisions():
+    assert scale_review_budget(4096, 1) == 4096            # 少量决策：沿用配置的基线
+    assert scale_review_budget(4096, 10) > 4096            # 10 条：基线不够，自动抬高
+    assert scale_review_budget(4096, 10) == 600 * 10 + 800
+
+
+def test_scale_review_budget_never_exceeds_model_cap():
+    # 超过模型单次上限会被 API 直接拒绝，比截断更糟
+    assert scale_review_budget(4096, 50, model_cap=8192) == 8192
+    assert scale_review_budget(99999, 1, model_cap=8192) == 8192
+    assert scale_review_budget(4096, 10, model_cap=0) == 6800       # cap<=0 视为不限
+    assert scale_review_budget(4096, 10, model_cap=None) == 6800
+
+
+def test_focus_count_caps_how_many_decisions_get_deep_review():
+    assert focus_count(3) == 3            # 少的时候全说
+    assert focus_count(10) == 6           # 多的时候挑重点，别写流水账
+    assert focus_count(0) == 1
+
+
+def test_review_output_spec_adds_scope_discipline_only_when_needed():
+    assert "范围纪律" not in review_output_spec(3)
+    spec = review_output_spec(10)
+    assert "范围纪律" in spec and "≤6 条" in spec and "共 10 条" in spec
+
+
+def test_review_prompt_tells_model_to_focus_when_many_decisions():
+    many = [_d(f"d{i}", OPEN) for i in range(10)]
+    p_many = build_review_prompt("你是评审员", many)
+    assert "范围纪律" in p_many
+    assert "范围纪律" not in build_review_prompt("你是评审员", many[:3])
+
+
+def test_truncation_note_warns_it_is_a_biased_subset():
+    """截断丢的是**尾部**决策的意见。主模型必须知道"没提到 ≠ 没问题"，否则会把沉默当认可。"""
+    fn = make_review_fn(lambda name: _FakeTruncProvider(), max_tokens=4096)
+    out = fn("product", "prompt")
+    assert "有偏子集" in out and "没被提到 ≠ 没问题" in out
+
+
+def test_review_fn_scales_budget_by_scope_and_model_cap():
+    seen = {}
+
+    class P:
+        max_tokens = 8192
+
+        def stream_chat(self, msgs, system=None, tools=None, max_tokens=None):
+            seen["mt"] = max_tokens
+            yield _FakeEv("ok")
+
+    fn = make_review_fn(lambda name: P(), max_tokens=4096)
+    fn("product", "p")
+    assert seen["mt"] == 4096                    # 没告诉规模 → 用基线
+    fn.scope = 10                                # run_review 会设它
+    fn("product", "p")
+    assert seen["mt"] == 6800
+    fn.scope = 50
+    fn("product", "p")
+    assert seen["mt"] == 8192                    # 顶到模型天花板
 
 
 def _run_all():

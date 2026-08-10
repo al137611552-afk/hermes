@@ -303,6 +303,28 @@ def migrate_reviewer_models(mapping) -> dict:
             out[REVIEWER_ALIASES.get(k, k)] = v
     return out
 
+def focus_count(n_decisions: int, cap: int = 6) -> int:
+    """一轮里让镜头**深说几条**。决策多时不逐条流水账——挑最关键的说（纯函数）。
+
+    真机遇到过：10 条决策一次全评，散文写到一半撞 max_tokens 被截断，尾部几条的意见**全丢**，
+    而主模型看不出那是有偏子集（很容易把"没提到"当成"没问题"）。与其被截断截掉尾巴，
+    不如让镜头**自己挑**最该说的几条——同样的预算，信号密度高得多。
+    """
+    n = max(1, int(n_decisions or 1))
+    return n if n <= cap else cap
+
+
+def review_output_spec(n_decisions: int = 0) -> str:
+    """评审员输出契约。决策多于 focus_count 时，显式要求挑重点说，别逐条铺开。"""
+    k = focus_count(n_decisions)
+    focus = ""
+    if n_decisions and n_decisions > k:
+        focus = (f"\n**范围纪律**：这轮共 {n_decisions} 条决策，**只挑其中最关键的 ≤{k} 条展开说**"
+                 "（挑你认为风险最高/最可能错的），其余的不用提。宁可少而准，别逐条写成流水账"
+                 "——写太长会被输出上限从中间切断，尾部意见直接丢失。\n")
+    return focus + _REVIEW_OUTPUT_SPEC
+
+
 _REVIEW_OUTPUT_SPEC = (
     "\n\n**你只是进言，不做决定**：hub-and-spoke（ADR 0019 v5）——你只向**主模型**进言，最终采纳/反驳/收敛"
     "全由主模型逐条回复决定。你**建议**的 status/blocking 是给主模型的参考，不会直接改动方案；尤其**不得替方案"
@@ -330,7 +352,7 @@ def build_review_prompt(role_directive: str, decisions) -> str:
         if d.blocking:
             body.append(f"  现存未决：{'; '.join(d.blocking)}")
         body.append(f"  当前状态：{d.status}")
-    return role_directive + "\n\n" + "\n".join(body) + _REVIEW_OUTPUT_SPEC
+    return role_directive + "\n\n" + "\n".join(body) + review_output_spec(len(list(decisions)))
 
 
 # ── 主模型（hub）逐轮回复 directive + prompt + apply（ADR 0019 v5：唯一改 Decision 状态处）────
@@ -443,6 +465,22 @@ def apply_main_reply(decisions, reply_text: str) -> list:
 # 评审 verdict 输出天生紧凑（每条决策就 {id,status,blocking} 几十 token），此上限是**防长篇大论的安全网**、
 # 不是紧箍：设得宽松（覆盖 ~50 条决策的 verdict），既挡住模型跑偏写小作文，又不至于把 verdict 数组从中间切断。
 REVIEW_MAX_TOKENS = 2048
+REVIEW_TOKENS_PER_DECISION = 600   # 每条决策的散文+JSON 经验开销（实测 4096 在 10 条时必被截断）
+REVIEW_TOKENS_OVERHEAD = 800       # 开场/收尾/JSON 数组框架等固定开销
+
+
+def scale_review_budget(base: int, n_decisions: int, model_cap: "int | None" = None) -> int:
+    """按决策条数伸缩单镜头的输出预算，再顶到模型单次上限（纯函数）。
+
+    固定上限 + 随规模线性增长的输出 = 必然截断，而且**截在尾部**——后面的决策一条都没评到。
+    这个组合在本项目里栽过三次（shell 输出头部截断、web_fetch cap、这里），
+    统一的解法都是：预算跟着规模走，够不着就明说范围，别无声地丢尾巴。
+    """
+    want = max(int(base or 0), REVIEW_TOKENS_PER_DECISION * max(1, int(n_decisions or 1))
+               + REVIEW_TOKENS_OVERHEAD)
+    if model_cap and model_cap > 0:
+        want = min(want, int(model_cap))
+    return max(1, want)
 REVIEW_TIMEOUT_S = 90             # 单个角色单次调用超时（秒）：慢/卡的调用不无限等，超时按空评审跳过
 
 
@@ -534,6 +572,10 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
         # 1) 两评审员**顺序**进言：都审同一份轮初快照（独立双审），各自超时/故障→空进言跳过。
         #    v4 由并行改顺序——分屏逐个流式打字像"讨论"，且规避同 key 并发被限流（见 _run_reviewers_serial）。
         #    v5：评审员输出**不 apply**（只进言），逐条 emit 供前端分屏。
+        try:
+            review_fn.scope = len(cur)     # 供 make_review_fn 按规模伸缩预算（同 .partial 的属性约定）
+        except AttributeError:             # 传进来的是不可挂属性的可调用对象（如 lambda 之外的 C 函数）
+            pass
         prompts = [(name, build_review_prompt(directive, cur)) for name, directive in reviewers]
         outs = _run_reviewers_serial(review_fn, prompts, timeout=timeout, cancel=cancel)
         reviewer_outputs = []
@@ -579,7 +621,12 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
         provider = provider_for(name)
         if provider is None:
             return "[]"                        # 没配该角色的模型 → 无意见，不阻断评审
-        mt = main_max_tokens if name == MAIN else max_tokens   # 主模型逐轮回复放宽上限（更长、别被切断）
+        if name == MAIN:
+            mt = main_max_tokens                      # 主模型逐轮回复放宽上限（更长、别被切断）
+        else:
+            # 评审员：预算跟着决策条数走，再顶到该模型自己的单次上限（超了会被 API 拒绝）
+            mt = scale_review_budget(max_tokens, getattr(review_fn, "scope", 0),
+                                     getattr(provider, "max_tokens", None))
         out, stop = [], ""
         partial[name] = ""
         for ev in provider.stream_chat([Message("user", prompt)], system=None,
@@ -596,7 +643,9 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
             elif t == "done":
                 stop = (getattr(ev, "meta", None) or {}).get("stop_reason", "")
         if stop in ("max_tokens", "length"):       # 达上限被截断：补可见提示（别让用户/主模型面对无声断句）
-            note = "\n\n_（本镜头输出达 max_tokens 上限被截断，可在设置调高「评审结论上限」）_"
+            note = ("\n\n_（⚠ 本镜头输出达上限被截断：**排在后面的决策没有被评到**，"
+                    "请把以上意见当作只覆盖了前一部分的**有偏子集**——没被提到 ≠ 没问题。"
+                    "可在设置调高「评审结论上限」，或减少一次评审的决策条数。）_")
             out.append(note)
             if on_delta:
                 try:
