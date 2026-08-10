@@ -679,13 +679,27 @@ class WebFetchTool(Tool):
     }
 
     def __init__(self, *, timeout: int = 20, max_chars: int = DEFAULT_FETCH_CHARS,
-                 browser_reader=None) -> None:
+                 browser_reader=None, artifacts=None) -> None:
         self._timeout = timeout
         self._max_chars = max_chars
+        # ADR 0021：抓到了却被 cap 掉的原文落成产物（None=照旧丢弃）。
+        # 判据量的是**原文**长度而非返回长度——本工具的 cap 默认正好等于阈值，量返回长度会永远卡边界。
+        self._artifacts = artifacts
         # 浏览器兜底读取器：callable(url) -> str | None。接了浏览器穿透时由 registry 注入。
         # **自动升级而不是让模型选路**：HTTP 判定受阻就换浏览器读同一 URL（v3.43 的"不许绕路"
         # 本意保留，但不再连唯一的快路一起砍掉）。
         self._browser_reader = browser_reader
+
+    def _clip_and_keep(self, text: str, cap: int, focus: str, url: str) -> str:
+        """裁剪正文；被 cap 掉的原文落产物并附句柄（省上下文的同时不丢数据）。"""
+        out = _clip(text, cap, focus)
+        if self._artifacts is None:
+            return out
+        art = self._artifacts.maybe_put(text, len(out), tool="web_fetch", origin=url)
+        if art is None:
+            return out
+        return (out + f"\n[产物 {art.id}] 本页完整正文（{art.chars:,} 字符）已存 {art.rel}"
+                      "——要被截掉/未摘录的部分就 grep_search / read_file(offset=) 它，别重抓。")
 
     def _read_via_browser(self, url: str) -> "str | None":
         if not self._browser_reader:
@@ -722,7 +736,7 @@ class WebFetchTool(Tool):
             if via and not via.startswith("[浏览器兜底失败]"):
                 return (f"[URL] {final_url}\n[读取方式] HTTP 受阻（{blocked}）→ **已自动改用浏览器读取**"
                         "（浏览器带你的登录态，内容可能包含登录后才可见的信息）\n\n"
-                        + _clip(via, cap, focus))
+                        + self._clip_and_keep(via, cap, focus, final_url))
             hint = (f"（{via}）" if via else
                     "（未接浏览器穿透）")
             return (f"⚠ 抓取受阻（{blocked}）{hint}——下面内容可能是拦截页或不完整。\n"
@@ -730,7 +744,7 @@ class WebFetchTool(Tool):
                     f"{head}\n\n{text if text.strip() else '(页面没有可提取的文本)'}")
         if not text.strip():
             return f"{head}\n\n(页面没有可提取的文本)"
-        return f"{head}\n\n{_clip(text, cap, focus)}"
+        return f"{head}\n\n{self._clip_and_keep(text, cap, focus, final_url)}"
 
 
 def _clip(text: str, cap: int, focus: str = "") -> str:

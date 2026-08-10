@@ -3,12 +3,22 @@ from __future__ import annotations
 
 import re
 import time
+from pathlib import PurePath
 
 from .base import Tool, ToolError
 
 MAX_HITS = 100
-# 搜索时跳过的噪音目录
-_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
+# 搜索时跳过的噪音目录。`.hermes` 是工具产物目录（ADR 0021）：一个 40 万字符的 pytest 日志
+# 会污染此后**每一次**全库 grep 和 BM25 索引（retrieval.py 复用本集合），所以默认跳过；
+# 但显式把 path/pattern 指进 `.hermes` 时**不跳过**——"grep 产物下钻"正是 ADR 0021 §4 的核心用法。
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".hermes"}
+_ARTIFACT_DIR = ".hermes"
+
+
+def _skip_dirs_for(target) -> set:
+    """按检索目标算有效跳过集：目标本身就在 `.hermes` 里时放行该目录。"""
+    parts = PurePath(str(target).replace("\\", "/")).parts
+    return _SKIP_DIRS - {_ARTIFACT_DIR} if _ARTIFACT_DIR in parts else _SKIP_DIRS
 # ReDoS/大文件防护：用户/模型给的正则用回溯引擎（re），遇长行会灾难回溯（实测 `(a+)+$` 对全 a 行
 # 呈指数增长：28 字符行就要 16s，且 re.search 不放 GIL → 卡死整个进程。真实触发几乎都来自**长行**
 # （压缩后的 min.js、单行 JSON、生成代码），故把喂给正则的每行截到 MAX_GREP_LINE、跳过超大文件、
@@ -20,8 +30,11 @@ GREP_DEADLINE_S = 8.0       # 整个 grep 的墙钟时限：超时报错让模�
 
 
 def _iter_files(root, workspace=None, gi=None):
+    skip = _skip_dirs_for(root)
+    if _ARTIFACT_DIR not in skip:
+        gi = None       # 显式检索产物时连 .gitignore 过滤一起放行（用户仓库可能忽略 *.log）
     for p in root.rglob("*"):
-        if not p.is_file() or any(part in _SKIP_DIRS for part in p.parts):
+        if not p.is_file() or any(part in skip for part in p.parts):
             continue
         if gi is not None and workspace is not None:
             rel = str(p.relative_to(workspace)).replace("\\", "/")
@@ -38,7 +51,8 @@ class GrepSearchTool(Tool):
         "type": "object",
         "properties": {
             "pattern": {"type": "string", "description": "Python 正则表达式"},
-            "path": {"type": "string", "description": "搜索起始目录，默认工作区根"},
+            "path": {"type": "string",
+                      "description": "搜索起始目录，或直接给单个文件；默认工作区根"},
         },
         "required": ["pattern"],
     }
@@ -49,14 +63,19 @@ class GrepSearchTool(Tool):
         except re.error as e:
             raise ToolError(f"正则非法：{e}")
         root = self.resolve(params.get("path") or ".")
-        if not root.is_dir():
-            raise ToolError(f"目录不存在：{params.get('path', '.')}")
-
         from ..ignore import make_gitignore_matcher
         gi = make_gitignore_matcher(self.workspace)
+        if root.is_file():
+            # 允许直接 grep 单个文件——产物下钻（ADR 0021 §4）就是这么用的
+            files = iter([root])
+        elif root.is_dir():
+            files = _iter_files(root, self.workspace, gi)
+        else:
+            raise ToolError(f"路径不存在：{params.get('path', '.')}")
+
         hits = []
         deadline = time.time() + GREP_DEADLINE_S
-        for f in _iter_files(root, self.workspace, gi):
+        for f in files:
             try:
                 if f.stat().st_size > MAX_GREP_FILE_BYTES:   # 跳过超大文件（数据/压缩产物）
                     continue
@@ -89,9 +108,10 @@ class GlobSearchTool(Tool):
         from ..ignore import make_gitignore_matcher
         gi = make_gitignore_matcher(self.workspace)
         pattern = params.get("pattern") or "*"
+        skip = _skip_dirs_for(pattern)      # 显式 glob 进 .hermes（如 .hermes/artifacts/*.txt）就放行
         matches = []
         for p in self.workspace.glob(pattern):
-            if not p.is_file() or any(part in _SKIP_DIRS for part in p.parts):
+            if not p.is_file() or any(part in skip for part in p.parts):
                 continue
             rel = str(p.relative_to(self.workspace)).replace("\\", "/")
             if gi(rel, p.name):

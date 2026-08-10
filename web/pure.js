@@ -243,6 +243,26 @@
     return { folded: true, preview, full: s, total: lines.length, hidden: Math.max(0, lines.length - ml) };
   }
 
+  // 工具产物句柄（ADR 0021）：从工具结果文本里认出产物路径，前端把它渲染成可点开的文件。
+  // 认**路径**而不是认提示语——三处接入点（前台 shell / web_fetch / 后台进程）措辞各不相同，
+  // 但路径形态是统一的，将来改文案也不会把这里改坏。按出现顺序去重。
+  const ARTIFACT_RE = /(?:^|[^\w/\\.])((?:\.hermes)\/artifacts\/(art_\d+)\.(?:txt|log))/g;
+
+  function extractArtifacts(text) {
+    if (!text || typeof text !== "string") return [];
+    const out = [];
+    const seen = new Set();
+    let m;
+    ARTIFACT_RE.lastIndex = 0;
+    while ((m = ARTIFACT_RE.exec(text)) !== null) {
+      const path = m[1];
+      if (seen.has(path)) continue;
+      seen.add(path);
+      out.push({ id: m[2], path });
+    }
+    return out;
+  }
+
   // 工具结果的结构化评估（块B 事实层，见 docs/adr/0014）→ 一行人读摘要。
   // eval = {metrics, signals, issues, confidence, score}。有 issues=有问题(warn)，
   // 否则按是否有 signals 给 ok/中性。返回 null 表示无可展示事实（不渲染）。
@@ -498,7 +518,7 @@
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
     accumulateUsage, estimateCostUsd, MODEL_PRICING,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
-    formatEval,
+    formatEval, extractArtifacts,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
     DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_MAIN, DEBATE_MAIN_LABEL, debateMainRoundLabel,
     DEBATE_STATUS_ZH, splitVerdictProse, verdictTally, debateConvergedText,

@@ -265,6 +265,18 @@ class WebConfig(BaseModel):
     browser_fallback: bool = True
 
 
+class ArtifactsConfig(BaseModel):
+    """工具产物（ADR 0021）：大输出落盘成 `<工作区>/.hermes/artifacts/`，工具回摘要 + 句柄。
+
+    只在**发生截断**且原始量 ≥ threshold 时触发（没截断说明模型已看全，落盘是纯开销）。
+    产物就是工作区里的普通文件，用现成的 grep_search / read_file / shell 处理，无专用工具。
+    """
+    enabled: bool = True
+    threshold: int = 20000       # 防抖下限（字符）：原始量不到这个数就算截断也不落产物
+    max_total_mb: int = 200      # 单工作区产物总量上限，超了按最旧优先删
+    keep_days: float = 7         # 保留天数，过期删
+
+
 class AppConfig(BaseModel):
     active_model: str
     system_prompt: str = "You are a helpful coding assistant."
@@ -277,6 +289,7 @@ class AppConfig(BaseModel):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     web: WebConfig = Field(default_factory=WebConfig)
+    artifacts: ArtifactsConfig = Field(default_factory=ArtifactsConfig)
 
     def get_model(self, name: str | None = None) -> ModelConfig:
         key = name or self.active_model

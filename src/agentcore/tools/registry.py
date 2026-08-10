@@ -69,6 +69,7 @@ def build_registry(
     history_search=None,
     skill_binding: SkillBinding | None = None,
     browser_reader=None,
+    artifacts=None,
 ) -> ToolRegistry:
     """按 config 构造默认工具集。
 
@@ -84,6 +85,8 @@ def build_registry(
     web 非 None 且 enabled 时注册联网检索 web_search/web_fetch（FR-11.1）。
     verifier 为写入后零成本语法校验回调（FR-11.2a）：注入给 write/edit/multi_edit，落盘后校验。
     skill_binding 非 None 时注册技能加载工具 load_skill（FR-13.S，只读、免 gate、子 Agent 也可用）。
+    artifacts 为产物入口（ADR 0021）：注入给 run_<shell> / web_fetch，大输出落盘回「摘要 + 句柄」；
+    None 时超限照旧直接截断丢弃（行为同 3.53）。主与子 Agent 传同一个（共用工作区的产物集）。
     """
     tools: list[Tool] = [
         ReadFileTool(workspace),
@@ -97,7 +100,7 @@ def build_registry(
         FindSymbolTool(workspace),
         SearchCodeTool(workspace),  # 按相关性检索代码（大库按意图定位）
         RunShellTool(workspace, shell=shell, timeout=shell_timeout,
-                     process_manager=process_manager),
+                     process_manager=process_manager, artifacts=artifacts),
         TraceRunTool(workspace),  # 运行时值追踪（FR-13.D）：debug 看中间值，dangerous 过 gate
         CaptureFixtureTool(workspace),  # 失败固化 fixture（FR-13.E）：复现变可复现，dangerous 过 gate
         # git 工具（FR-10.1）常注册：非 git 仓库时返回可读错误（中途 git init 后即可用）
@@ -121,7 +124,8 @@ def build_registry(
                           max_results=web.max_results),
             WebFetchTool(timeout=web.timeout, max_chars=web.fetch_max_chars,
                          browser_reader=(browser_reader
-                                         if getattr(web, "browser_fallback", True) else None)),
+                                         if getattr(web, "browser_fallback", True) else None),
+                         artifacts=artifacts),
         ]
     if screenshot:
         tools.append(ScreenshotTool(workspace))
