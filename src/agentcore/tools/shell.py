@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 
+from ..artifacts import format_with_handle, head_tail_of_file
 from ..diagnose import with_location
 from .base import Tool, ToolError
 
@@ -213,10 +214,14 @@ def _terminate_tree(proc, pgid=None, job=None) -> None:
         pass
 
 
-def _drain(stream, sink, on_delta=None) -> None:
+def _drain(stream, sink, on_delta=None, tee_factory=None) -> None:
     """读线程：把一路输出增量收进 sink（{'parts','total','truncated'}），超上限就丢弃后续但继续读到 EOF
     —— 若停读，写端会因管道写满而永久阻塞（进程卡在 write 上），所以必须一直排空。
-    on_delta(chunk)：可选，前台实时流输出用——每读到一段就回调推给前端（读满 4096 才回一段＝天然节流）。"""
+    on_delta(chunk)：可选，前台实时流输出用——每读到一段就回调推给前端（读满 4096 才回一段＝天然节流）。
+    tee_factory()：可选，**第一次溢出时**才开产物（ADR 0021）——把已缓冲的头部连同后续全部落盘，
+    于是"超上限被丢掉的部分"不再永久消失，模型可以 grep/read 产物而不必重跑命令。
+    正常大小的命令不会触发，零开销。"""
+    tee = None
     try:
         while True:
             chunk = stream.read(4096)
@@ -231,9 +236,38 @@ def _drain(stream, sink, on_delta=None) -> None:
                     except Exception:  # noqa: BLE001 — 推流失败绝不影响命令执行/收集
                         pass
             else:
+                if not sink["truncated"] and tee_factory is not None:
+                    tee = tee_factory()
+                    if tee is not None:
+                        sink["artifact"] = tee.artifact
+                        tee.write("".join(sink["parts"]))   # 补上已在内存里的头部，产物才完整
                 sink["truncated"] = True
+                if tee is not None:
+                    tee.write(chunk)
     except (OSError, ValueError):
         pass
+    finally:
+        if tee is not None and not tee.close():
+            sink["artifact"] = None    # 收尾时不够大被销毁了，别在提示里给个死句柄
+
+def _render_stream(text: str, sink, workspace) -> str:
+    """把一路输出渲染成给模型看的内容。
+
+    没超上限：原样给（绝大多数命令走这条，零变化）。
+    超了上限且落了产物：**回摘要（头+尾）+ 句柄**而不是 20 万字符的头部截断——
+      老行为只留头部，恰好把结论（失败汇总/退出码）丢在被截掉的尾部；有了产物两头都能给，
+      顺带把这条工具结果从 ~20 万字符压到几 K（ADR 0021 §3）。
+    超了上限但没产物：沿用老提示（行为同 3.53）。
+    """
+    body = text.rstrip()
+    if not sink["truncated"]:
+        return body
+    art = sink.get("artifact")
+    if art is None:
+        return body + "\n…（输出超上限已截断，需完整日志请把命令输出重定向到文件后分段读）"
+    summary = head_tail_of_file(workspace / art.rel, total_lines=art.lines) or body[:8000]
+    return format_with_handle(summary, art)
+
 
 # config.agent.shell 取值 -> 命令行模板。{cmd} 处填模型给的命令。
 _SHELLS = {
@@ -266,13 +300,14 @@ class RunShellTool(Tool):
     }
 
     def __init__(self, workspace, *, shell: str = "powershell", timeout: int = 60,
-                 process_manager=None) -> None:
+                 process_manager=None, artifacts=None) -> None:
         super().__init__(workspace)
         if shell not in _SHELLS:
             raise ValueError(f"不支持的 shell：{shell}（可选 {list(_SHELLS)}）")
         self.shell = shell
         self.timeout = timeout
         self._procs = process_manager  # FR-10.3：后台进程管理器（None=不支持 background）
+        self._artifacts = artifacts    # ADR 0021：产物入口（None=超上限照旧丢弃）
         self.name = f"run_{shell}"
         self.description = (
             f"在工作区目录下执行一条 {shell} 命令并返回输出。"
@@ -332,8 +367,15 @@ class RunShellTool(Tool):
                 pgid = os.getpgid(proc.pid)           # 趁子进程还活着抓好进程组号，供收尾/超时整组杀
             except OSError:
                 pgid = proc.pid
-        out_sink = {"parts": [], "total": 0, "truncated": False}
-        err_sink = {"parts": [], "total": 0, "truncated": False}
+        out_sink = {"parts": [], "total": 0, "truncated": False, "artifact": None}
+        err_sink = {"parts": [], "total": 0, "truncated": False, "artifact": None}
+        def _mk_tee(kind):
+            """溢出时才开产物（ADR 0021）；没接产物入口就返回 None，行为同以前=丢弃。"""
+            if self._artifacts is None:
+                return None
+            return lambda: self._artifacts.open_tee(
+                tool=self.name, origin=f"{command}  [{kind}]",
+                min_chars=self._artifacts.threshold)
         # 前台实时流输出：把每段增量推给前端。共享事件上限，防疯狂刷屏命令灌爆前端（完整输出结束时仍会
         # 一次性返回，流只是"边跑边看"）；超上限后停止推流但命令照常跑、输出照常收集。
         _stream_budget = {"n": 0}
@@ -347,8 +389,12 @@ class RunShellTool(Tool):
                 _stream_budget["n"] += 1
                 stream(kind, chunk)
             return _on
-        t_out = threading.Thread(target=_drain, args=(proc.stdout, out_sink, _mk_delta("stdout")), daemon=True)
-        t_err = threading.Thread(target=_drain, args=(proc.stderr, err_sink, _mk_delta("stderr")), daemon=True)
+        t_out = threading.Thread(target=_drain,
+                                 args=(proc.stdout, out_sink, _mk_delta("stdout"), _mk_tee("stdout")),
+                                 daemon=True)
+        t_err = threading.Thread(target=_drain,
+                                 args=(proc.stderr, err_sink, _mk_delta("stderr"), _mk_tee("stderr")),
+                                 daemon=True)
         t_out.start()
         t_err.start()
         # 疑似常驻服务前台跑：先用短探针窗口等，超过它还没退就当服务处理，早杀早提示（不干等满 180s）。
@@ -380,10 +426,8 @@ class RunShellTool(Tool):
 
         parts = [f"[exit code] {proc.returncode}"]
         if stdout:
-            note = "\n…（输出超上限已截断，需完整日志请把命令输出重定向到文件后分段读）" if out_sink["truncated"] else ""
-            parts.append(f"[stdout]\n{stdout.rstrip()}{note}")
+            parts.append(f"[stdout]\n{_render_stream(stdout, out_sink, self.workspace)}")
         if stderr:
-            note = "\n…（输出超上限已截断）" if err_sink["truncated"] else ""
-            parts.append(f"[stderr]\n{stderr.rstrip()}{note}")
+            parts.append(f"[stderr]\n{_render_stream(stderr, err_sink, self.workspace)}")
         # 报错定位（FR-13.B）：输出含指向工作区文件的 traceback 时附加 file:line + 源码上下文
         return with_location("\n".join(parts), self.workspace)

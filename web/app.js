@@ -800,6 +800,22 @@ function renderToolResult(v, data) {
       box.appendChild(chip);
     }
   }
+  // 工具产物（ADR 0021）：结果里出现产物句柄就给一排可点开的入口——点了在右侧工作区预览里看全量输出。
+  // 顺带解决"用户看不到被截断内容"的老痛点：模型能 grep 产物，人也得点得开。
+  // 产物在 .hermes/ 下（文件树刻意不展开这个目录），所以只能从这里进。
+  extractArtifacts(out).forEach((art) => {
+    const chip = document.createElement("button");
+    chip.className = "tr-artifact";
+    chip.type = "button";
+    chip.textContent = `📄 ${art.id} 完整输出`;
+    chip.title = `在右侧预览里打开 ${art.path}（被截断的完整内容）`;
+    chip.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      setWorkspaceCollapsed(false);   // 面板收着就先展开，否则点了没反应
+      previewFile(art.path);
+    });
+    box.appendChild(chip);
+  });
   if (data.image) {
     // 截屏等返回图片的工具：在结果下方展示缩略图
     const img = document.createElement("img");

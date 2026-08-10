@@ -4,6 +4,75 @@
 
 ---
 
+## 2026-08-10 — FR-14 工具产物化与句柄（ADR 0021 落地块1–3）
+
+**阶段**：FR-14　**状态**：块1–3 已实现、本地自检全绿、**待 Windows 真机验**（块4 前端未做）
+
+**先评审定稿 ADR 0021**（草案 → 已接受），三个未决问题拍板、评审中又追加两个：
+
+1. **跨会话可见性**：台账记 `session_id`，列表默认只列本会话、按 id/路径读不设限。核代码后发现这题基本不用写代码：
+   默认 `per_session_workspace=true`，工作区就是 `data/workspaces/<session_id>/`，产物天然按会话隔离；
+   只有 📂 绑定真实项目时多会话才共用同一目录。
+2. **后台环形缓冲**：要落，但**落盘时机必须改成读线程 tee**——`procs.py` 是一边收一边丢最旧，
+   等 `read_process_output` 被调用时早期输出早没了，沿用"返回时超阈值才落盘"根本救不了它。这条优先级最高。
+3. **阈值 20,000 偏不偏低**：**换判据、问题消解**。判「发生截断」而非「输出够大」——`WebConfig.fetch_max_chars`
+   默认正好也是 20,000，量返回长度会永远卡在边界上，而真正该存的是被 cap 掉的**原文**；反过来没截断的
+   大输出模型已看全、落盘纯属浪费。阈值降级成防抖下限。
+4. **（评审新增）`read_file` 从首批移除**：源文件本身就在磁盘上、已经可寻址，`fs.py` 也早有 `offset/limit`，
+   产物化只是复制一份——和排除 `grep_search`/`list_dir` 的理由一模一样。
+5. **（评审新增）`.hermes/` 的两种污染**：①`tools/search.py` 的 `_SKIP_DIRS` 里没有 `.hermes`
+   （`workspace.py`/`profile.py`/`verify.py` 都跳了，只漏了搜索），一个 40 万字符的日志会污染此后
+   **每一次**全库 grep 和 BM25 索引；②绑定真实项目时 `.hermes/artifacts` 会冒进 `git_status` 和改动面板。
+   修法：默认跳过、**显式指进去时不跳过**；产物目录自带 `.gitignore`（`*`）自我忽略，不动用户仓库根的 `.gitignore`。
+
+**块1（存储与设施）**：新增 `src/agentcore/artifacts.py`——纯逻辑 `should_artifact`/`summarize_for_context`/
+`head_tail_of_file`/`format_with_handle`/`prune_plan`，IO 侧 `ArtifactStore`（落盘 + JSON 台账 + 双上限 prune +
+手删文件自动 prune 台账）与 `TeeWriter`；`ArtifactSink` 是注入给工具的入口（绑会话、内含判据、失败即降级 None）。
+配置新增 `artifacts` 段。顺带修 `grep_search` 只能给目录（ADR §4 的核心用法 `path=<单个产物文件>` 原本直接报错）。
+
+**块2（前台 shell + web_fetch）**：`_drain` 加 `tee_factory`——**第一次溢出时才开产物**，把已缓冲的头部连同
+后续全部落盘，正常大小的命令零开销。`web_fetch` 存被 cap 掉的原文（`focus` 摘录照常，摘录漏了还能下钻）。
+
+**顺手把 ADR §3 补齐（原本漏了）**：溢出时工具结果改回**「摘要（头 60 行 + 尾 40 行）+ 句柄」**，
+而不是继续塞 20 万字符的头部截断。这不只是省上下文（实测 200,000 → 10,238 字符），更是**治了一个老 bug**：
+一次 40 万字符的 pytest 输出，老行为给模型看的是前半截噪音，**最后的失败汇总正好在被截掉的尾部**。
+配套 `_clip_line_tail`——尾部超长行保**右**边（单行 JSON / 进度条刷出来的一整行，结论在行尾，从左截会切没）。
+
+**块3（后台 tee）**：`ProcessManager` 持 `artifacts`（随工作区由 conversation 赋值），`start()` 开 tee、
+`_reader` 在裁剪**之前**写盘、进程结束即定稿；环形缓冲与 `read_process_output` 增量语义一行未动。
+`min_chars=0` 始终保留——句柄一旦给出去就不能中途消失；`read_process_output` 只在**真丢了数据时**才提产物，
+日常输出不添噪音。
+
+**自检**：`test_artifacts.py` 35/35（含真跑子进程溢出、真跑后台进程验环形缓冲冲掉的早期输出仍在产物里、
+8 线程并发发号、坏台账容错）；全回归 Python 65 文件 + 前端 67 全绿；`test_golden.py` 决策内核门未受影响
+（产物化是工具层的事）。新增 `scripts/diag_artifacts.py`：真 Api → 真 Conversation → 真注册表 → 真子进程
+13 项接线自测全过（含"拿到句柄后用 grep_search/read_file 下钻到摘要里没有的中间行"）。
+
+**踩到并修掉一个死锁**：`TeeWriter.write()` 落盘出错时会在**持锁状态下**调 `close()`，普通 `threading.Lock`
+不可重入 → 当场死锁（且是在后台进程读线程里，症状会是整个进程读输出卡死）。改 `RLock`。
+
+**真跑校准了 ADR 的头号风险（"模型只看摘要、根本不去下钻"）**：场景刻意为难——30 万字符输出、
+`SECRET_CODE` 藏在**正中间**（既不在摘要的头 60 行也不在尾 40 行），只看摘要必然答不出。
+实测（deepseek-v4-flash，anthropic 兼容端点）：`run_bash` → 看到摘要 + 句柄 → **自发**
+`grep_search path=.hermes/artifacts/art_0001.log` → 答对 `ZQ-7741`，**全程没重跑命令**。
+两步到位、无需任何额外提示词引导。固化成 `scripts/diag_artifacts_realrun.py`（不含 key，读 config 当前模型）。
+顺带印证了"`grep_search` 要能直接给单个文件"这条修正的必要性——模型给的正是文件路径而非目录。
+注：本机原来的 ARK key 已用不了（400 `InvalidSubscription`，CodingPlan 订阅失效），本次用用户临时提供的 key 跑的。
+
+**块4（前端句柄）**：工具结果里出现产物路径就在结果块下方给一枚 `📄 art_0007 完整输出` 芯片，
+点了展开工作区面板并在预览里打开该文件——**顺带解决"用户看不到被截断内容"这个老痛点**
+（模型能 grep 产物，人也得点得开；`.hermes` 在文件树里刻意不展开，只能从这里进）。
+纯逻辑 `extractArtifacts` 放 `web/pure.js`（**认路径不认提示语**——三处接入点措辞各不相同，
+但路径形态统一，将来改文案不会把它改坏），`tests/web/artifacts.test.js` 7 例（三种措辞 / 去重 /
+一条结果多个产物 / 不误报 `.hermes/skills` 与裸 `artifacts/` / 正则 lastIndex 不残留）。
+样式 `.tr-artifact` 用**虚线边**与「展开/收起」区分：那个是就地展开，这个是跳到别处看。
+**Playwright 真渲染核对过**（stub 掉 pywebview 桥、驱动真 `renderToolResult`）：芯片渲染 1 枚且可见、
+点击后确实以 `.hermes/artifacts/art_0007.log` 调 `read_workspace_file`、右侧预览打开该文件；
+截图看版式正常。**第一次截图还抓到一件事**：工具块是 `<details open=false>`，芯片和结果正文一样默认收在里面——
+与既有的「展开/收起」按钮、评估芯片同一层级，属一致行为，故保持不变（展开后可见已验）。
+
+**下一步**：整包交你在 Windows 真机验（清单见 PRD FR-14）。
+
 ## 2026-08-08 — 🎉 v3.53.1 定版（现成技能装得上）+ ADR 0021 草案
 
 **阶段**：FR-13.S2 后续　**状态**：✅ 已定版（用户确认；Windows 真机核对由用户签字）

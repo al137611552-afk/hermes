@@ -278,6 +278,17 @@ web:
   max_results: 5        # 搜索默认返回条数（上限 10）
   fetch_max_chars: 20000  # web_fetch 正文输出默认上限（模型可临时调大）
 
+# 工具产物（ADR 0021）：大输出落盘成 <工作区>/.hermes/artifacts/，工具只回「摘要 + 句柄」。
+# 解决的是「截掉的部分永久消失、模型只能重跑命令」——重跑既贵又未必幂等（网页变了、
+# 后台进程的早期日志已被环形缓冲冲掉，根本重跑不出来）。产物就是工作区里的普通文件，
+# 用现成的 grep_search / read_file(offset=) / shell 处理，没有新工具要学。
+# 只在**发生截断**且原始量 ≥ threshold 时触发：没截断说明模型已看全，落盘是纯开销。
+artifacts:
+  enabled: true
+  threshold: 20000    # 防抖下限（字符）：原始量不到这个数，就算截断了也不落产物
+  max_total_mb: 200   # 单工作区产物总量上限，超了按最旧优先删
+  keep_days: 7        # 保留天数，过期删
+
 
 # 模型档案改由「设置面板 → Provider」管理（内置预设：火山方舟 / Anthropic / OpenAI / DeepSeek /
 # Kimi-Moonshot，只填 key 即用）；用户加的 provider / 模型存 providers.yaml + user_models.yaml、不写这里。

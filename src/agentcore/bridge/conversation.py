@@ -23,6 +23,7 @@ from pathlib import Path
 from ..agent import AgentLoop, PermissionGate
 from ..agent.contract import verdict_to_need
 from .. import checkpoints as ckpt
+from ..artifacts import ArtifactSink, ArtifactStore
 from ..changes import ChangeLedger
 from ..config import AppConfig
 from ..context import build_summary_request, compress
@@ -238,6 +239,8 @@ class Conversation:
         self._ask = AskUserBinding(lambda req: self.emit("ask_user", req))  # ask_user 工具的阻塞桥
         # 后台进程管理器（FR-10.3）：每对话一个、跨工作区切换保留；shutdown 时杀全部
         self.procs = ProcessManager()
+        # 产物入口（ADR 0021）：随工作区在 _build_registry 里建；None = 大输出照旧截断丢弃
+        self.artifacts = None
         # 压缩摘要缓存（FR-10.4a）：(已覆盖的被丢弃消息条数, 模型生成的摘要文本)。
         # 切点不动直接复用（零额外调用），切点前移增量合并；失败短时退避。
         self._compact: "tuple[int, str] | None" = None
@@ -1955,6 +1958,8 @@ class Conversation:
         """
         res = self.res
         self.ledger = ChangeLedger(self.workspace)
+        self.artifacts = self._make_artifact_sink()   # 产物随工作区走（ADR 0021）
+        self.procs.artifacts = self.artifacts         # 后台进程读线程 tee（§7）；已在跑的进程沿用原产物
         self._refresh_skills()           # 技能包随工作区走（项目级 .hermes/skills 换项目即换）
         self._refresh_smart_defaults()   # 情境自启②：探测项目、设智能默认（不覆盖用户面板选择）
         verifier = self._make_verifier()
@@ -1983,7 +1988,20 @@ class Conversation:
             history_search=(self.res.store.search_messages if self.res.store else None),
             skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
             browser_reader=self._make_browser_reader(),
+            artifacts=self.artifacts,
         )
+
+    def _make_artifact_sink(self):
+        """按当前工作区建产物入口（ADR 0021）。关掉或建不起来就返回 None＝行为同 3.53（截断丢弃）。"""
+        cfg = getattr(self.res.config, "artifacts", None)
+        if cfg is None or not cfg.enabled:
+            return None
+        try:
+            store = ArtifactStore(self.workspace, threshold=cfg.threshold,
+                                  max_total_mb=cfg.max_total_mb, keep_days=cfg.keep_days)
+            return ArtifactSink(store, session_id_fn=lambda: self.session_id)
+        except Exception:  # noqa: BLE001 — 产物是增值能力，建不起来不许拖垮建注册表
+            return None
 
     def _refresh_skills(self) -> None:
         """扫描技能目录，刷新当前可用技能（FR-13.S 渐进披露第一层的数据来源）。
@@ -2088,6 +2106,7 @@ class Conversation:
             skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
             ask_user_binding=self._ask,   # 子 Agent 也能 ask_user：遇登录墙时暂停、让用户在浏览器登录后再继续
             browser_reader=self._make_browser_reader(),
+            artifacts=self.artifacts,     # 与主 Agent 共用产物集（同一工作区）
         )
         # 子 Agent 与主 Agent 同一套分工（见 _make_browser_reader）：搜索走 HTTP、
         # 读不动的页面由 web_fetch 自动升级到浏览器；会浏览的角色照常还有 browser_* 可主动下钻。

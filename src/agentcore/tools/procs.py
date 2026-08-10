@@ -76,6 +76,7 @@ class _Entry:
         self.buffer = ""        # 环形缓冲（超限丢最旧）
         self.read_upto = 0      # 增量读游标（相对当前 buffer）
         self.trimmed = False    # 是否丢过最旧输出
+        self.tee = None         # ADR 0021 §7：读线程边收边落盘的完整日志产物（None=没接产物入口）
         self.started_at = time.time()
 
     def status(self) -> str:
@@ -86,10 +87,13 @@ class _Entry:
 class ProcessManager:
     """每对话一个：后台启动、增量读输出、停止、退出时全部清理。线程安全。"""
 
-    def __init__(self) -> None:
+    def __init__(self, artifacts=None) -> None:
         self._lock = threading.Lock()
         self._seq = 0
         self._procs: dict[int, _Entry] = {}
+        # ADR 0021 §7：产物入口。环形缓冲是"一边收一边丢最旧"，**重跑也拿不回来**被冲掉的早期日志，
+        # 所以这里不能等到工具返回时才落盘，必须在读线程里 tee。随工作区变（由 conversation 赋值）。
+        self.artifacts = artifacts
 
     # ---- 启动 -------------------------------------------------------------
 
@@ -126,13 +130,19 @@ class ProcessManager:
             self._seq += 1
             entry = _Entry(self._seq, command, proc, job)
             self._procs[entry.id] = entry
+        sink = self.artifacts
+        if sink is not None:
+            # min_chars=0：始终保留。小输出虽然环形缓冲也没丢，但句柄一旦给出去就不能中途消失。
+            entry.tee = sink.open_tee(tool="run_shell(background)", origin=command)
         threading.Thread(target=self._reader, args=(entry,), daemon=True).start()
         return entry
 
     def _reader(self, entry: _Entry) -> None:
-        """读线程：把进程输出收进环形缓冲（进程退出/管道关闭即结束）。"""
+        """读线程：把进程输出收进环形缓冲，同时 tee 一份完整日志到产物（进程退出/管道关闭即结束）。"""
         try:
             for line in entry.proc.stdout:  # type: ignore[union-attr]
+                if entry.tee is not None:
+                    entry.tee.write(line)   # 落盘在裁剪之前：被环形缓冲冲掉的早期输出仍留在产物里
                 with self._lock:
                     entry.buffer += line
                     if len(entry.buffer) > MAX_BUF_CHARS:
@@ -142,6 +152,9 @@ class ProcessManager:
                         entry.trimmed = True
         except (OSError, ValueError):
             pass
+        finally:
+            if entry.tee is not None:
+                entry.tee.close()   # 进程结束即定稿；文件在这之前也一直可读（append + flush）
 
     # ---- 查询 / 读输出 -----------------------------------------------------
 
@@ -187,8 +200,10 @@ class ProcessManager:
         truncated = len(new) > MAX_READ_CHARS
         if truncated:
             new = new[-MAX_READ_CHARS:]
+        art = entry.tee.artifact if entry.tee is not None else None
         return {"new_output": new, "status": entry.status(),
-                "trimmed": trimmed, "truncated": truncated}
+                "trimmed": trimmed, "truncated": truncated,
+                "artifact_rel": art.rel if art else "", "artifact_id": art.id if art else ""}
 
     # ---- 停止 / 清理 -------------------------------------------------------
 
@@ -277,10 +292,12 @@ class ProcessOutputTool(Tool):
             raise ToolError("id 应为整数（list_processes 里的进程编号）")
         r = self._m.read(pid_id)
         parts = [f"[状态] {r['status']}"]
+        handle = (f"——但**完整日志已落产物 {r['artifact_id']}**：{r['artifact_rel']}"
+                  "（grep_search / read_file 它，别重启进程）") if r.get("artifact_rel") else ""
         if r["trimmed"]:
-            parts.append("[提示] 输出过多，最旧部分已被丢弃")
+            parts.append("[提示] 输出过多，最旧部分已被丢弃" + handle)
         if r["truncated"]:
-            parts.append(f"[提示] 本次新增超 {MAX_READ_CHARS} 字符，只保留末尾")
+            parts.append(f"[提示] 本次新增超 {MAX_READ_CHARS} 字符，只保留末尾" + handle)
         parts.append(f"[新增输出]\n{r['new_output'].rstrip()}" if r["new_output"].strip()
                      else "(无新输出)")
         return "\n".join(parts)

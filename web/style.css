@@ -487,6 +487,14 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
 }
 .tr-eval.ok { background: var(--ok-bg); color: var(--ok); }
 .tr-eval.warn { background: var(--warn-bg); color: var(--warn); }
+/* 工具产物入口（ADR 0021）：点开在右侧预览里看被截断的完整输出 */
+.tr-artifact {
+  margin: 2px 6px 4px 0; padding: 2px 10px;
+  font-size: 12px; border-radius: 6px; cursor: pointer;
+  background: var(--panel-2); color: var(--accent);
+  border: 1px dashed var(--border);   /* 虚线：与「展开/收起」区分——这是跳到别处看，不是就地展开 */
+}
+.tr-artifact:hover { border-style: solid; border-color: var(--accent); }
 .tool-image {
   max-width: 320px; max-height: 240px; margin-top: 6px;
   border-radius: 6px; border: 1px solid var(--border);
