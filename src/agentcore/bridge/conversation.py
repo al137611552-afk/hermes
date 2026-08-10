@@ -1271,6 +1271,7 @@ class Conversation:
         rnd, stale, reason = 0, 0, "budget_exhausted"
         verify_forced = False   # 块2 验收门：是否已逼过一次"实跑验收"（无 test_command 时只逼一次，防死循环）
         verify_fails = 0        # 块3：验收连续真红次数（到 crazy_verify_ask_at 就停下问用户）
+        phase_done_seen: set = set()   # 块4：已见过的「已完成阶段」，用差分认出阶段边界
         try:
             while rnd < budget:
                 if self._cancel.is_set():
@@ -1300,6 +1301,8 @@ class Conversation:
                     if stale >= max(1, cfg.crazy_stall_rounds):
                         reason = "stalled"; break
                 verdict, nxt = _parse_crazy_verdict(self._last_assistant_text())
+                newly_done, remaining_phases = self._crazy_phase_delta(phase_done_seen)
+                phase_done_seen |= newly_done
                 # 块A 契约观测：把 verdict 映射成稳定 Need 并随轮次上报（仅记账，不夺
                 # 分支决策权——下面仍按 verdict 走，保证行为逐字节等价。Need 是后续
                 # Learning 聚合的 key，见 docs/adr/0014）。
@@ -1349,6 +1352,15 @@ class Conversation:
                 if (hit or had_inject) and not nxt:
                     nxt = ("上一轮被打断（步数上限或用户中途补充）、任务可能尚未全部完成："
                            "继续推进，并确认原目标与用户补充都已达成后再收尾。")
+                # 块4（主路径）：任务清单显示**某阶段刚完成、且还有阶段没做** → 下一轮先重规划剩余阶段。
+                # 不只挂 [[PHASE_DONE]]：真跑三次证明那个标记几乎不出现（见 _crazy_phase_delta）。
+                # 放在最后包住 nxt，于是三种情形都覆盖：普通续命、被打断续命、以及**撞上限时模型
+                # 自称 DONE 但不被信任**的那一轮——恰恰是"做完了几个阶段、还剩一堆"最该重规划的时刻。
+                # （被信任的 DONE 走上面的验收门分支、已 continue/break，到不了这里。）
+                if cfg.crazy_replan and newly_done and remaining_phases > 0:
+                    self.emit("crazy_replan", {"phase": "；".join(sorted(newly_done))[:200],
+                                               "remaining": remaining_phases})
+                    nxt = self._crazy_replan_directive(nxt)
         finally:
             self.emit = orig_emit
             self.set_crazy_mode(False)
@@ -1399,6 +1411,22 @@ class Conversation:
             return self._ask.ask(question, options)
         finally:
             self._ask.set_auto(True)
+
+    def _crazy_phase_delta(self, prev_done: set) -> "tuple[set, int]":
+        """块4 触发判定：返回 (本轮新完成的阶段, 仍未完成的阶段数)。
+
+        **不等模型自报 `[[PHASE_DONE]]`**——真跑两次证明那个标记几乎不会出现：模型要么一口气
+        把所有阶段做完直接 `[[DONE]]`，要么撞步数上限被截断（`hit=True`，标记按设计不被信任），
+        阶段边界根本没机会被"自报"出来，块4 成了死代码路径。改看任务清单的**确定性状态差分**：
+        某阶段从未完成变 completed、且还有阶段没做 → 就是阶段边界，该重规划了。
+        """
+        try:
+            tasks = self.res.store.get_tasks(self.session_id) or [] if self.res.store else []
+        except Exception:  # noqa: BLE001 — 拿不到清单就当没有阶段边界，不影响主循环
+            return set(), 0
+        done = {str(t.get("content", "")) for t in tasks if t.get("status") == "completed"}
+        remaining = sum(1 for t in tasks if t.get("status") != "completed")
+        return done - prev_done, remaining
 
     def _crazy_replan_directive(self, next_step: "str | None") -> str:
         """块4：一个阶段刚通过验收 → 下一轮先按这阶段实际学到的重规划剩余阶段，再推进。
@@ -1896,6 +1924,28 @@ class Conversation:
             return "".join(out)
         return judge_fn
 
+    def _make_search_reranker(self):
+        """FR-11.1c 块2：构造模型语义重排器 rerank_fn(prompt)->str，注入给 web_search。
+
+        与块H 裁判同一套注入模式（provider 注入、单测可喂假重排器），差别在**位置**：
+        裁判是事后检测器（判不对题→提示重搜），重排器在**管线里**——直接决定哪些候选进模型视野。
+
+        **每次调用现读 config + 现建 provider**（同 `_make_verifier` 的闭包做法）：这样
+        `web.model_rerank` 改了即时生效、切模型也跟着换，都不必重建 registry（重建会重置改动台账）。
+        返回 "" 表示"这次不用模型"，由 `rerank_with_model` 退回确定性重排。
+        """
+        def rerank_fn(prompt: str) -> str:
+            cfg = self.res.config
+            if not getattr(cfg.web, "model_rerank", True):
+                return ""
+            provider = build_provider(cfg, self.active_model)
+            out = []
+            for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
+                if getattr(ev, "type", None) == "text":
+                    out.append(ev.text)
+            return "".join(out)
+        return rerank_fn
+
     def _browse_nudge_enabled(self) -> bool:
         """情境自启：项目代码文件数 ≥ 阈值时，启用「浏览太多→提示 search_code」。"""
         n = self.res.config.agent.search_nudge_files
@@ -1989,6 +2039,7 @@ class Conversation:
             skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
             browser_reader=self._make_browser_reader(),
             artifacts=self.artifacts,
+            search_reranker=self._make_search_reranker(),
         )
 
     def _make_artifact_sink(self):
@@ -2107,6 +2158,7 @@ class Conversation:
             ask_user_binding=self._ask,   # 子 Agent 也能 ask_user：遇登录墙时暂停、让用户在浏览器登录后再继续
             browser_reader=self._make_browser_reader(),
             artifacts=self.artifacts,     # 与主 Agent 共用产物集（同一工作区）
+            search_reranker=self._make_search_reranker(),   # 子 Agent 搜索同样走模型重排
         )
         # 子 Agent 与主 Agent 同一套分工（见 _make_browser_reader）：搜索走 HTTP、
         # 读不动的页面由 web_fetch 自动升级到浏览器；会浏览的角色照常还有 browser_* 可主动下钻。
