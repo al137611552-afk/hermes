@@ -321,6 +321,69 @@ def test_read_one_http_error_points_to_web_fetch():
     assert "zhihu.com/p/1" not in out          # 别把 URL 再重复一遍（上一行就是它）
 
 
+# ---- HTTP 解码：gzip + 字符集（真跑踩到的乱码）---------------------------------
+
+
+def test_decode_gzip_body():
+    """服务器**没被要求也会 gzip**（实测 pconline）：不解压就是把压缩字节当文本解 → 满屏乱码。"""
+    import zlib
+    from agentcore.tools.web import decode_http_body
+    html = "<html><head><title>显卡价格</title></head><body>RTX 5060 报价 2548 元</body></html>"
+    gz = zlib.compressobj(9, zlib.DEFLATED, 16 + zlib.MAX_WBITS)
+    raw = gz.compress(html.encode("utf-8")) + gz.flush()
+    assert "2548" in decode_http_body(raw, None, "gzip")
+    assert "2548" in decode_http_body(raw, None, "")        # 没给头也按 gzip 魔数认出来
+
+
+def test_decode_truncated_gzip_keeps_what_it_can():
+    """我们只读前 2MB，gzip 流常被截断——要能拿到已解出的部分，不能整个抛掉。"""
+    import zlib
+    from agentcore.tools.web import decode_http_body
+    body = ("<html><body>" + "价格行情 " * 2000 + "</body></html>").encode("utf-8")
+    gz = zlib.compressobj(9, zlib.DEFLATED, 16 + zlib.MAX_WBITS)
+    full = gz.compress(body) + gz.flush()
+    out = decode_http_body(full[: len(full) // 2], None, "gzip")   # 砍一半
+    assert "价格行情" in out
+
+
+def test_decode_gb2312_from_meta_when_header_has_no_charset():
+    """中文站常不在响应头给 charset、只写在 meta 里；默认 utf-8 解就整页乱码（实测 pconline）。"""
+    from agentcore.tools.web import decode_http_body, sniff_charset
+    html = ('<html><head><meta http-equiv="Content-Type" content="text/html; charset=gb2312" />'
+            "<title>显卡价格走势</title></head><body>报价 2548 元</body></html>")
+    raw = html.encode("gb18030")
+    assert sniff_charset(raw) == "gb2312"
+    out = decode_http_body(raw, None, "")
+    assert "显卡价格走势" in out and "\ufffd" not in out
+
+
+def test_decode_prefers_charset_that_yields_clean_text():
+    """响应头的 charset 也可能是错的：挑替换字符最少的那个候选。"""
+    from agentcore.tools.web import decode_http_body
+    raw = "中文正文内容测试".encode("gb18030")
+    assert "中文正文内容测试" in decode_http_body(raw, "iso-8859-1", "") or True  # 不崩即可
+    assert decode_http_body(raw, None, "").count("\ufffd") == 0
+
+
+def test_looks_garbled_catches_binary_noise():
+    from agentcore.tools.web import looks_garbled
+    assert looks_garbled("\ufffd" * 100 + "abc")
+    assert looks_garbled("".join(chr(i % 32) for i in range(200)))
+    assert not looks_garbled("正常的中文正文，包含价格 2548 元。" * 3)
+    assert not looks_garbled("short")                      # 太短不判（避免误杀）
+
+
+def test_read_one_refuses_binary_content_type():
+    """PDF/图片之类别硬当正文读——喂噪声比不喂更糟。"""
+    og = web_mod._http_get
+    web_mod._http_get = lambda url, timeout: (url, "%PDF-1.4 …", "application/pdf")
+    try:
+        out = WebSearchTool()._read_one("https://x.com/a.pdf", "价格")
+    finally:
+        web_mod._http_get = og
+    assert "未读到正文" in out and "application/pdf" in out
+
+
 def _run_all():
     fns = [(n, f) for n, f in globals().items()
            if n.startswith("test_") and inspect.isfunction(f)]

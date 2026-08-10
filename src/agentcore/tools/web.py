@@ -38,6 +38,18 @@ _BLOCK_MARKERS = re.compile(
 _BLOCK_MIN_TEXT = 200   # HTML 页提取正文短于此（且像被拦/空壳）多半是 JS 渲染或反爬
 
 
+def looks_garbled(text: str, sample: int = 2000) -> bool:
+    """判断一段"正文"是不是解码噪声（纯函数）：替换字符或不可打印控制字符占比过高。
+
+    最后一道闸——喂给模型的宁可是"没读到"，也不能是满屏 `\ufffd` 和控制字符。
+    """
+    t = (text or "")[:sample]
+    if len(t) < 40:
+        return False
+    bad = sum(1 for ch in t if ch == "\ufffd" or (ord(ch) < 32 and ch not in "\t\n\r"))
+    return bad / len(t) > 0.05
+
+
 def looks_blocked(text: str, is_html: bool) -> "str | None":
     """判断 web_fetch 结果是否「假成功」（反爬/需登录/JS 空壳）；是则返回原因短语，否则 None（纯逻辑）。"""
     t = (text or "").strip()
@@ -65,6 +77,67 @@ _RRF_K = 60                      # RRF 融合常数（业界惯用 60；越大�
 
 # ---- HTTP（IO，集中一处） -----------------------------------------------------
 
+_META_CHARSET_RE = re.compile(
+    rb"""<meta[^>]+charset\s*=\s*["']?\s*([a-zA-Z0-9_\-]+)""", re.I)
+
+
+def sniff_charset(raw: bytes) -> "str | None":
+    """从 HTML 头部的 <meta charset> / <meta http-equiv content="…charset=…"> 里嗅字符集（纯函数）。
+
+    很多中文站**不在响应头给 charset**（实测 pconline：`Content-Type: text/html` 光秃秃的），
+    只写在 meta 里；默认当 utf-8 解就会整页乱码。
+    """
+    m = _META_CHARSET_RE.search(raw[:4096] or b"")
+    return m.group(1).decode("ascii", errors="ignore").lower() if m else None
+
+
+def _decompress(raw: bytes, content_encoding: str) -> bytes:
+    """按 Content-Encoding 解压。**截断的流也要尽量解出已有部分**（我们只读前 2MB）。
+
+    服务器**没被要求也会 gzip**（实测 pconline 就是），不解压就是把压缩字节当文本解 → 满屏乱码。
+    """
+    enc = (content_encoding or "").lower()
+    is_gzip = "gzip" in enc or raw[:2] == b"\x1f\x8b"
+    if not is_gzip and "deflate" not in enc:
+        return raw
+    import zlib
+    for wbits in ((16 + zlib.MAX_WBITS,) if is_gzip else (zlib.MAX_WBITS, -zlib.MAX_WBITS)):
+        try:
+            # decompressobj 而非 gzip.decompress：后者对截断流直接抛错，前者能拿到已解出的部分
+            return zlib.decompressobj(wbits).decompress(raw) or raw
+        except zlib.error:
+            continue
+    return raw
+
+
+def decode_http_body(raw: bytes, header_charset: "str | None", content_encoding: str = "") -> str:
+    """HTTP 响应体 → 文本：先解压，再按「响应头 charset → HTML meta → utf-8 → gb18030」定编码。
+
+    纯函数、可单测。挑编码时看**替换字符占比**：解出来一堆 U+FFFD 就换下一个候选，
+    别把乱码当正文喂给模型（真跑踩到过：gzip + gb2312 双重误判，摘录整段是二进制噪声）。
+    """
+    raw = _decompress(raw, content_encoding)
+    cands = []
+    for c in (header_charset, sniff_charset(raw), "utf-8", "gb18030"):
+        c = (c or "").lower().strip()
+        if c in ("gb2312", "gbk"):
+            c = "gb18030"          # 超集，能解 gb2312/gbk 全部字符
+        if c and c not in cands:
+            cands.append(c)
+    best, best_bad = "", 1.0
+    for c in cands:
+        try:
+            text = raw.decode(c, errors="replace")
+        except LookupError:
+            continue
+        bad = text.count("\ufffd") / max(1, len(text))
+        if bad < 0.002:            # 基本没有替换字符 → 就它了
+            return text
+        if bad < best_bad:
+            best, best_bad = text, bad
+    return best or raw.decode("utf-8", errors="replace")
+
+
 def _http_get(url: str, timeout: int) -> tuple[str, str, str]:
     """GET 一个 URL，返回 (最终URL, 文本, content-type)。失败抛 ToolError（可读）。"""
     if not url.startswith(("http://", "https://")):
@@ -76,9 +149,9 @@ def _http_get(url: str, timeout: int) -> tuple[str, str, str]:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = r.read(MAX_DOWNLOAD_BYTES)
-            charset = r.headers.get_content_charset() or "utf-8"
-            return r.geturl(), data.decode(charset, errors="replace"), \
-                (r.headers.get("Content-Type") or "")
+            text = decode_http_body(data, r.headers.get_content_charset(),
+                                    r.headers.get("Content-Encoding") or "")
+            return r.geturl(), text, (r.headers.get("Content-Type") or "")
     except ToolError:
         raise
     except Exception as e:  # noqa: BLE001 — 网络错误统一转可读
@@ -96,8 +169,8 @@ def _http_post(url: str, form: dict, timeout: int) -> str:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = r.read(MAX_DOWNLOAD_BYTES)
-            charset = r.headers.get_content_charset() or "utf-8"
-            return data.decode(charset, errors="replace")
+            return decode_http_body(data, r.headers.get_content_charset(),
+                                    r.headers.get("Content-Encoding") or "")
     except Exception as e:  # noqa: BLE001
         raise ToolError(f"请求失败（{url[:100]}）：{type(e).__name__}: {e}") from None
 
@@ -888,8 +961,15 @@ class WebSearchTool(Tool):
             # 这里不切浏览器（那是 web_fetch 的自动升级职责），但要**指路**，别让模型以为此页没救。
             reason = re.sub(r"请求失败（[^）]*）：", "", str(e))[:80]
             return f"[未读到正文：{reason}——需要的话用 web_fetch 读它（会自动改用浏览器）]"
-        is_html = "html" in (ctype or "").lower() or bool(re.search(r"<\s*html", body[:2000], re.I))
+        ct = (ctype or "").lower()
+        if ct and not any(k in ct for k in ("html", "text", "json", "xml")):
+            return f"[未读到正文：不是文本内容（{ct.split(';')[0]}）]"
+        is_html = "html" in ct or bool(re.search(r"<\s*html", body[:2000], re.I))
         _title, text = extract_main_text(body) if is_html else ("", body)
+        if looks_garbled(text):
+            # 兜底：编码/解压都试过仍是噪声（罕见，但真跑踩过 gzip+gb2312 双重误判）。
+            # 宁可说"没读到"，也不能把二进制噪声当正文喂给模型——那比没有更糟。
+            return "[未读到正文：内容无法正确解码（疑似二进制或未知编码）]"
         blocked = looks_blocked(text, is_html)
         if blocked:
             return f"[未读到正文：{blocked}——需要的话用 web_fetch 读它（会自动改用浏览器）]"
