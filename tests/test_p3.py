@@ -195,7 +195,12 @@ def test_agent_loop_thinking_emitted_not_in_answer(tmp: Path):
 
 
 def test_agent_loop_truncated_tool_not_executed(tmp: Path):
-    """输出被 max_tokens 截断时：不执行残缺的 tool_use、报错、停止（不死循环）。"""
+    """输出被 max_tokens 截断时：不执行残缺的 tool_use；先劝模型改分块写，劝不动才报错停下。
+
+    行为变更（2026-08-10）：原来是"撞上限即停、让用户去调 config"——但用户不该为了画个原型图
+    去研究 max_tokens 是什么，而且当时提示里说的"分块写入"根本没有工具支持（write_file 无 append）。
+    现在改成：注入可执行的转向指令（改用 append 分块写），最多劝 2 次，仍撞才报错。
+    """
     class TruncProvider:
         def __init__(self): self.round = 0
         def stream_chat(self, messages, system=None, tools=None):
@@ -215,9 +220,46 @@ def test_agent_loop_truncated_tool_not_executed(tmp: Path):
     loop.run([Message("user", "写个原型")], None, lambda e, d: events.append((e, d)))
 
     assert not (tmp / "mockup.html").exists()        # 没写出空文件
-    assert prov.round == 1                            # 只跑一轮，没死循环
+    assert prov.round == 3                            # 劝 2 次后才停：不死循环、也不一撞就放弃
+    hints = [d for e, d in events if e == "truncation_hint"]
+    assert len(hints) == 2 and "append" in hints[0]["text"]   # 转向指令可执行（指名 append 分块写）
+    assert "~100 行" in hints[1]["text"]                       # 第二次更强硬
     assert any(e == "error" and "max_tokens" in str(d) for e, d in events)
     assert not any(e == "tool_result" for e, _ in events)  # 残缺工具未执行
+
+
+def test_agent_loop_recovers_from_truncation_by_chunked_write(tmp: Path):
+    """自愈路径：第一次撞上限 → 收到转向指令 → 改用 append 分块写 → 文件完整落盘。"""
+    class RecoverProvider:
+        def __init__(self): self.round = 0
+        def stream_chat(self, messages, system=None, tools=None):
+            self.round += 1
+            if self.round == 1:                       # 想一次写完整个原型 → 被截断
+                yield StreamEvent("tool_use", meta={"call": ToolCall(
+                    "c1", "write_file", {"path": "mockup.html"})})
+                yield StreamEvent("done", meta={"stop_reason": "max_tokens"})
+            elif self.round == 2:                     # 读到指令，改分块：第一块
+                yield StreamEvent("tool_use", meta={"call": ToolCall(
+                    "c2", "write_file", {"path": "mockup.html", "content": "<html>\n"})})
+                yield StreamEvent("done", meta={"stop_reason": "tool_use"})
+            elif self.round == 3:                     # 追加第二块
+                yield StreamEvent("tool_use", meta={"call": ToolCall(
+                    "c3", "write_file", {"path": "mockup.html",
+                                         "content": "<body>hi</body>\n", "append": True})})
+                yield StreamEvent("done", meta={"stop_reason": "tool_use"})
+            else:
+                yield StreamEvent("text", "原型已写完")
+                yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+
+    reg = build_registry(tmp, shell="bash")
+    gate = PermissionGate(lambda req: None, allow=["write_file"])   # headless：免确认
+    loop = AgentLoop(RecoverProvider(), reg, gate, max_steps=8)
+    events = []
+    loop.run([Message("user", "写个原型")], None, lambda e, d: events.append((e, d)))
+
+    assert (tmp / "mockup.html").read_text(encoding="utf-8") == "<html>\n<body>hi</body>\n"
+    assert len([d for e, d in events if e == "truncation_hint"]) == 1   # 只劝了一次就自愈
+    assert not any(e == "error" for e, _ in events)
 
 
 def test_agent_loop_steering_inject(tmp: Path):

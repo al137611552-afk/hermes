@@ -13,7 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from agentcore.tools import build_registry  # noqa: E402
 from agentcore.tools.base import ToolError  # noqa: E402
-from agentcore.tools.fs import apply_edits, diagnose_not_found  # noqa: E402
+from agentcore.tools.fs import (  # noqa: E402
+    WriteFileTool, apply_edits, diagnose_not_found,
+)
 
 
 def _reg(tmp: Path, tracker=None):
@@ -215,6 +217,47 @@ def test_list_dir_caps_huge_directory(tmp: Path):
     out = str(_reg(tmp).get("list_dir").run({"path": "big"}))
     assert out.count("\n") <= MAX_DIR_ENTRIES + 1, "大目录应被截断"
     assert f"共 {MAX_DIR_ENTRIES + 50} 项" in out, "应提示总数与已截断"
+
+
+def test_write_file_append_chunks(tmp: Path):
+    """分块写大文件：第一块正常写，后续 append 追加——单次输出装不下整份内容时的正解。"""
+    w = WriteFileTool(tmp)
+    w.run({"path": "proto.html", "content": "<html>\n"})
+    out = w.run({"path": "proto.html", "content": "<body>hi</body>\n", "append": True})
+    w.run({"path": "proto.html", "content": "</html>\n", "append": True})
+    assert (tmp / "proto.html").read_text(encoding="utf-8") == "<html>\n<body>hi</body>\n</html>\n"
+    assert "已追加" in str(out) and "现 " in str(out)      # 回报累计长度，模型知道写到哪了
+
+
+def test_write_file_append_creates_when_missing(tmp: Path):
+    """文件还不存在时 append 等同新建——别让分块写的第一块因为"文件没有"而失败。"""
+    WriteFileTool(tmp).run({"path": "new.txt", "content": "第一块", "append": True})
+    assert (tmp / "new.txt").read_text(encoding="utf-8") == "第一块"
+
+
+def test_write_file_append_skips_syntax_check(tmp: Path):
+    """分块写的中间态必然语法不完整（半个函数），这时跑校验只会每块喷一次假报错、把模型带偏。"""
+    calls = []
+
+    def verifier(rel):
+        calls.append(rel)
+        return "⚠ 语法错误：unexpected EOF"
+
+    w = WriteFileTool(tmp, verifier=verifier)
+    out_append = w.run({"path": "a.py", "content": "def f(", "append": True})
+    assert "语法错误" not in str(out_append) and calls == []      # 追加时不校验
+    assert "跳过语法校验" in str(out_append)                       # 但明确告知要自己收口
+    out_full = w.run({"path": "a.py", "content": "def f(): pass"})
+    assert "语法错误" in str(out_full) and calls == ["a.py"]       # 整体覆盖仍照常校验
+
+
+def test_write_file_append_diff_shows_only_added(tmp: Path):
+    """改动面板/内联 diff 看到的是本次追加的部分，不是整份文件重写。"""
+    w = WriteFileTool(tmp)
+    w.run({"path": "x.txt", "content": "line1\n"})
+    out = w.run({"path": "x.txt", "content": "line2\n", "append": True})
+    diff = getattr(out, "blocks", [{}])[0].get("diff", "")
+    assert "+line2" in diff and "-line1" not in diff
 
 
 def _run_all():

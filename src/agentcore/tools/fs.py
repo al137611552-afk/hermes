@@ -184,13 +184,20 @@ class ReadFileTool(Tool):
 
 class WriteFileTool(Tool):
     name = "write_file"
-    description = "创建或覆盖工作区内的文本文件（会覆盖已有内容）。"
+    description = (
+        "创建或覆盖工作区内的文本文件（默认覆盖已有内容）。"
+        "**一次写不完的大文件（如高保真 HTML 原型）用 append 分块写**：第一块正常写，"
+        "后续每块传 append:true 追加——单次输出有 max_tokens 上限，硬要一次写完会被截断、这一轮白跑。"
+    )
     dangerous = True
     input_schema = {
         "type": "object",
         "properties": {
             "path": {"type": "string", "description": "相对工作区的文件路径"},
-            "content": {"type": "string", "description": "要写入的完整内容"},
+            "content": {"type": "string", "description": "要写入的内容（append:true 时是要追加的那一块）"},
+            "append": {"type": "boolean",
+                       "description": "追加到文件末尾而不是覆盖（默认 false）。分块写大文件时用："
+                                      "先写第一块，之后每块 append:true。文件不存在时等同于新建。"},
         },
         "required": ["path", "content"],
     }
@@ -207,10 +214,23 @@ class WriteFileTool(Tool):
         if self._tracker:
             self._tracker(rel)
         content = params.get("content", "")
-        _atomic_write(p, content)
-        msg = f"已写入 {params['path']}（{len(content)} 字符）"
-        return output_with_diff(_with_verify(msg, self._verifier, rel),
-                                make_diff_block(rel, before, content))
+        append = bool(params.get("append"))
+        if append:
+            # 追加仍走原子写（读旧 + 拼 + 换名），保住"写到一半崩溃不留半截文件"的性质。
+            # 文件不存在＝新建，别让分块写的第一块因为"文件还没有"而失败。
+            final = (_read_text_or_die(p, params["path"]) if p.is_file() else "") + content
+            msg = f"已追加到 {params['path']}（+{len(content)} 字符，现 {len(final)} 字符）"
+        else:
+            final = content
+            msg = f"已写入 {params['path']}（{len(content)} 字符）"
+        _atomic_write(p, final)
+        if append:
+            # 分块写的中间态**必然语法不完整**（半个 <html>、半个函数），这时候跑语法校验只会
+            # 每块喷一次假报错、把模型带偏。故追加时跳过校验，但明确告诉它最后要自己收口。
+            msg += "\n（分块写入中，已跳过语法校验；写完最后一块后请自行读一遍或跑一次校验确认完整）"
+        else:
+            msg = _with_verify(msg, self._verifier, rel)
+        return output_with_diff(msg, make_diff_block(rel, before, final))
 
 
 class EditFileTool(Tool):
