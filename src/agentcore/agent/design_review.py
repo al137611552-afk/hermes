@@ -303,6 +303,88 @@ def migrate_reviewer_models(mapping) -> dict:
             out[REVIEWER_ALIASES.get(k, k)] = v
     return out
 
+def focus_count(n_decisions: int, cap: int = 6) -> int:
+    """一轮里让镜头**深说几条**。决策多时不逐条流水账——挑最关键的说（纯函数）。
+
+    真机遇到过：10 条决策一次全评，散文写到一半撞 max_tokens 被截断，尾部几条的意见**全丢**，
+    而主模型看不出那是有偏子集（很容易把"没提到"当成"没问题"）。与其被截断截掉尾巴，
+    不如让镜头**自己挑**最该说的几条——同样的预算，信号密度高得多。
+    """
+    n = max(1, int(n_decisions or 1))
+    return n if n <= cap else cap
+
+
+def review_output_spec(n_decisions: int = 0) -> str:
+    """评审员输出契约。决策多于 focus_count 时，显式要求挑重点说，别逐条铺开。"""
+    k = focus_count(n_decisions)
+    focus = ""
+    if n_decisions and n_decisions > k:
+        focus = (f"\n**范围纪律**：这轮共 {n_decisions} 条决策，**只挑其中最关键的 ≤{k} 条展开说**"
+                 "（挑你认为风险最高/最可能错的），其余的不用提。宁可少而准，别逐条写成流水账"
+                 "——写太长会被输出上限从中间切断，尾部意见直接丢失。\n")
+    return focus + _REVIEW_OUTPUT_SPEC
+
+
+# ── 默认异构：自动把两个镜头分到不同模型（ADR 0019 的核心机制，原来默认没生效）──────────
+# ADR v4 锁的是"手动评审**默认异构** 2 模型"，代码注释也写着"两镜头默认异构模型（降错误相关性）"，
+# 但实现的默认是 `design_review_models: {}` → provider_for 全部回落主模型
+# = **同一个模型演三个角色**。同模型的错误高度相关，它挑不出自己看不见的问题；
+# 真机反馈过的"产物像单模型提炼"，根因就在这里（当时以为是过程不可见，加了分屏，其实是同构）。
+# 现在：用户没显式配就**自动挑**——跨 provider 优先（不同厂商错误相关性最低），
+# 实在只有一个模型可用就如实降级、并让界面说清楚，而不是继续管它叫"多模型讨论"。
+
+
+def _provider_of(profile: str) -> str:
+    """模型档案名 `provider/model` 取 provider 段（老式扁平名就是它自己）。"""
+    return (profile or "").split("/", 1)[0]
+
+
+def usable_profiles(models, env_get) -> list:
+    """筛出**当前真能用**的模型档案：写了 `api_key_env` 且该环境变量有值。纯函数（env 注入）。
+
+    **没写 `api_key_env` 的不算可用**（自定义 provider 常留空）——自动挑是"替用户做主"，只该在明确
+    能跑的档案里挑。原来把空 env 当成可用，结果是：面板里加过一个没填 key 的服务商，评审就会把它
+    自动派成「产品镜头」，界面显示得像正常的多模型讨论，实际那一路根本调不通。
+    想用无需 key 的本地端点，仍可在下拉里**显式**指定（显式配置不受此限）。
+    """
+    out = []
+    for name, mc in (models or {}).items():
+        env = getattr(mc, "api_key_env", None)
+        if env is None and isinstance(mc, dict):
+            env = mc.get("api_key_env")
+        if env and (env_get(env) or "").strip():
+            out.append(name)
+    return out
+
+
+def auto_reviewer_models(available, active: str, explicit=None) -> dict:
+    """给三个角色（product / technical / main）定模型档案。用户显式配的优先，其余自动挑。
+
+    挑选偏好：① 与主模型**不同 provider** 的排前面（跨厂商 = 错误相关性最低）；
+    ② 两个镜头彼此也尽量不同 provider；③ 没得挑就回落主模型（此时 is_heterogeneous 为假）。
+    纯函数，便于单测穷举各种"只有一个模型/只有两个/跨厂商"的组合。
+    """
+    explicit = migrate_reviewer_models(explicit or {})
+    pool = [p for p in (available or []) if p and p != active]
+    pool.sort(key=lambda p: _provider_of(p) == _provider_of(active))   # 异厂商优先（稳定排序）
+    picks: list = []
+    for role in ("product", "technical"):
+        if explicit.get(role):
+            picks.append(explicit[role])
+            continue
+        used_provs = {_provider_of(x) for x in picks}
+        cand = (next((p for p in pool if p not in picks and _provider_of(p) not in used_provs), None)
+                or next((p for p in pool if p not in picks), None)
+                or active)
+        picks.append(cand)
+    return {"product": picks[0], "technical": picks[1], "main": explicit.get("main") or active}
+
+
+def is_heterogeneous(plan: dict) -> bool:
+    """两个镜头是否真的落在不同模型上——这是"多模型讨论"这个说法成不成立的唯一判据。"""
+    return bool(plan) and plan.get("product") != plan.get("technical")
+
+
 _REVIEW_OUTPUT_SPEC = (
     "\n\n**你只是进言，不做决定**：hub-and-spoke（ADR 0019 v5）——你只向**主模型**进言，最终采纳/反驳/收敛"
     "全由主模型逐条回复决定。你**建议**的 status/blocking 是给主模型的参考，不会直接改动方案；尤其**不得替方案"
@@ -317,8 +399,31 @@ _REVIEW_OUTPUT_SPEC = (
 )
 
 
-def build_review_prompt(role_directive: str, decisions) -> str:
-    """组织一轮 reviewer 的提示：角色职责 + 当前 Decision 快照 + 严格 JSON 输出契约。"""
+def prose_only(text: str) -> str:
+    """取模型输出的**散文段**，丢掉末尾的 ```json 结构化块（对读者是噪声）。纯函数。"""
+    s = text or ""
+    fi = s.rfind("```json")
+    return (s[:fi] if fi >= 0 else s).strip()
+
+
+# 第 2 轮起喂给评审员的"上一轮主模型回复"（C6）。**只喂 hub 的回复、不喂对方镜头的意见**：
+# 两个镜头彼此看不见是 ADR 0019 的核心机制（独立双审 → 降错误相关性），互相看见就会被带偏，
+# 那正是"默认异构"刚治好的病。评审员要能听见的是**决策者**怎么回应了自己。
+_RESPOND_DIRECTIVE = (
+    "\n\n**回应主模型**：上面是主模型读完你（和另一位镜头）的进言后做的决定。这一轮你要**回应它**，"
+    "不是把同一份意见原样重发：\n"
+    "- 被它反驳的：要么给出**可证伪的**理由坚持（举反例/说清代价），要么明确让步并说明为什么改主意；\n"
+    "- 被它采纳的：不必重复表扬，直接跳过；\n"
+    "- 只提这一轮**还真正值得说**的；没有新东西可说就明说「本轮无补充」，别为凑字数造新问题。"
+)
+
+
+def build_review_prompt(role_directive: str, decisions, main_reply: str = "") -> str:
+    """组织一轮 reviewer 的提示：角色职责 + 当前 Decision 快照（+ 上一轮主模型回复）+ 严格 JSON 输出契约。
+
+    `main_reply` = 上一轮主模型（hub）的回复原文，第 2 轮起由 run_review 传入。不传＝第一轮，
+    评审员只看方案本身（独立首审）。
+    """
     body = ["以下是当前方案的决策列表，请逐条评审：", ""]
     for d in decisions:
         body.append(f"- id={d.id} | {d.title}")
@@ -330,7 +435,14 @@ def build_review_prompt(role_directive: str, decisions) -> str:
         if d.blocking:
             body.append(f"  现存未决：{'; '.join(d.blocking)}")
         body.append(f"  当前状态：{d.status}")
-    return role_directive + "\n\n" + "\n".join(body) + _REVIEW_OUTPUT_SPEC
+    tail = review_output_spec(len(list(decisions)))
+    prose = prose_only(main_reply)
+    if prose:
+        body.append("")
+        body.append("【主模型上一轮的回复】（它读了双方进言后做的决定）")
+        body.append(prose)
+        tail = _RESPOND_DIRECTIVE + tail
+    return role_directive + "\n\n" + "\n".join(body) + tail
 
 
 # ── 主模型（hub）逐轮回复 directive + prompt + apply（ADR 0019 v5：唯一改 Decision 状态处）────
@@ -361,6 +473,23 @@ _MAIN_REPLY_OUTPUT_SPEC = (
 )
 
 
+def main_output_spec(n_decisions: int = 0) -> str:
+    """主模型（hub）的输出契约。决策多时给**散文**限范围，但 JSON 不许省。
+
+    与评审员那条范围纪律不同的是后果：镜头被截断只是少几条意见，**主模型被截断＝末尾的 JSON 没了，
+    这一轮的所有决定一条都不生效**（`apply_main_reply` 拿不到数组）。所以这里压的是散文长度，
+    并明说"JSON 才是唯一生效的部分"。
+    """
+    k = focus_count(n_decisions)
+    if not n_decisions or n_decisions <= k:
+        return _MAIN_REPLY_OUTPUT_SPEC
+    return (f"\n\n**范围纪律**：这轮共 {n_decisions} 条决策。**散文只展开最关键的 ≤{k} 条**"
+            "（其余条目有决定就直接写进 JSON，不必逐条写理由）。"
+            "注意：**只有末尾的 JSON 会真正生效**，散文写太长会把 JSON 挤出输出上限，"
+            "那样这一轮的决定**一条都不会落地**——宁可少说，也要把 JSON 完整写出来。"
+            + _MAIN_REPLY_OUTPUT_SPEC)
+
+
 def build_main_reply_prompt(decisions, reviewer_outputs) -> str:
     """组织主模型一轮回复的提示：当前 Decision 快照 + 本轮两评审员的进言（散文+建议 JSON 原文）。
 
@@ -382,15 +511,11 @@ def build_main_reply_prompt(decisions, reviewer_outputs) -> str:
     body.append("本轮两位评审员的进言如下（这是给你参考的意见，不是已生效的改动）：")
     for name, text in reviewer_outputs:
         label = dict(REVIEWERS).get(name, name)
-        # 只取评审员散文意见段（```json 建议块对主模型是噪声，主模型自己重新决策）；无 splitter 依赖，就地截断。
-        prose = text or ""
-        fi = prose.rfind("```json")
-        if fi >= 0:
-            prose = prose[:fi]
+        # 只取评审员散文意见段（```json 建议块对主模型是噪声，主模型自己重新决策）
         body.append("")
         body.append(f"【{name}｜{label}】")
-        body.append(prose.strip() or "（本镜头无意见）")
-    return MAIN_REPLY_DIRECTIVE + "\n\n" + "\n".join(body) + _MAIN_REPLY_OUTPUT_SPEC
+        body.append(prose_only(text) or "（本镜头无意见）")
+    return MAIN_REPLY_DIRECTIVE + "\n\n" + "\n".join(body) + main_output_spec(len(list(decisions)))
 
 
 def apply_main_reply(decisions, reply_text: str) -> list:
@@ -443,6 +568,39 @@ def apply_main_reply(decisions, reply_text: str) -> list:
 # 评审 verdict 输出天生紧凑（每条决策就 {id,status,blocking} 几十 token），此上限是**防长篇大论的安全网**、
 # 不是紧箍：设得宽松（覆盖 ~50 条决策的 verdict），既挡住模型跑偏写小作文，又不至于把 verdict 数组从中间切断。
 REVIEW_MAX_TOKENS = 2048
+REVIEW_TOKENS_PER_DECISION = 600   # 每条决策的散文+JSON 经验开销（实测 4096 在 10 条时必被截断）
+REVIEW_TOKENS_OVERHEAD = 800       # 开场/收尾/JSON 数组框架等固定开销
+
+
+def scale_review_budget(base: int, n_decisions: int, model_cap: "int | None" = None) -> int:
+    """按决策条数伸缩单镜头的输出预算，再顶到模型单次上限（纯函数）。
+
+    固定上限 + 随规模线性增长的输出 = 必然截断，而且**截在尾部**——后面的决策一条都没评到。
+    这个组合在本项目里栽过三次（shell 输出头部截断、web_fetch cap、这里），
+    统一的解法都是：预算跟着规模走，够不着就明说范围，别无声地丢尾巴。
+    """
+    want = max(int(base or 0), REVIEW_TOKENS_PER_DECISION * max(1, int(n_decisions or 1))
+               + REVIEW_TOKENS_OVERHEAD)
+    if model_cap and model_cap > 0:
+        want = min(want, int(model_cap))
+    return max(1, want)
+
+
+REVIEW_TIMEOUT_CAP_FACTOR = 2.0    # 超时最多放宽到基准的几倍（够 10 条决策写完，又不让卡死的调用拖太久）
+
+
+def scale_review_timeout(base: int, n_decisions: int, base_budget: int = REVIEW_MAX_TOKENS,
+                         cap_factor: float = REVIEW_TIMEOUT_CAP_FACTOR) -> int:
+    """单角色超时随规模伸缩（纯函数）：**预算涨了多少倍，超时同比放宽多少**，封顶 cap_factor 倍。
+
+    **只放宽预算不放宽超时＝白放宽**：10 条决策的进言按 6800 token 预算写，30 tok/s 下要 ~227s，
+    而超时钉在 180s → 写到一半被超时打断、回捞成部分内容，**尾部决策照样丢**，只是换了个丢法。
+    `base_budget` 传实际用的基线预算（run_review 从 review_fn 上取），预算没涨时超时也不该动；
+    封顶是防另一头：真卡住的调用不该因为决策多就拖到十分钟。
+    """
+    ref = max(1, int(base_budget or REVIEW_MAX_TOKENS))
+    ratio = scale_review_budget(ref, n_decisions) / ref
+    return max(1, int(int(base or 0) * min(max(1.0, ratio), float(cap_factor))))
 REVIEW_TIMEOUT_S = 90             # 单个角色单次调用超时（秒）：慢/卡的调用不无限等，超时按空评审跳过
 
 
@@ -516,6 +674,7 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
     rounds = [round_snapshot(cur)]
     stop_reason = ""
     round_idx = 0
+    last_main_out = ""                  # 上一轮主模型回复：第 2 轮起喂回评审员，让讨论真是"回应"（C6）
     eff_min = max(0, min(min_rounds, max_rounds - 1))   # 讨论轮下限，但不越过 max_rounds 硬顶
     while True:
         if cancel and cancel():          # 协作式取消：用户退出规划/关面板/开工时中止，别把评审跑到底（与开发并发）
@@ -534,8 +693,21 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
         # 1) 两评审员**顺序**进言：都审同一份轮初快照（独立双审），各自超时/故障→空进言跳过。
         #    v4 由并行改顺序——分屏逐个流式打字像"讨论"，且规避同 key 并发被限流（见 _run_reviewers_serial）。
         #    v5：评审员输出**不 apply**（只进言），逐条 emit 供前端分屏。
-        prompts = [(name, build_review_prompt(directive, cur)) for name, directive in reviewers]
-        outs = _run_reviewers_serial(review_fn, prompts, timeout=timeout, cancel=cancel)
+        try:
+            review_fn.scope = len(cur)     # 供 make_review_fn 按规模伸缩预算（同 .partial 的属性约定）
+        except AttributeError:             # 传进来的是不可挂属性的可调用对象（如 lambda 之外的 C 函数）
+            pass
+        # C6：第 2 轮起把**上一轮主模型的回复**喂给评审员——原来每轮只喂决策快照，评审员既听不见 hub
+        # 也听不见对方，"再讨论一轮"实际是"看着被改过的决策再审一遍"，不是回应。只喂 hub 不喂对方镜头：
+        # 两个镜头彼此独立是降错误相关性的核心（见 _RESPOND_DIRECTIVE）。
+        prompts = [(name, build_review_prompt(directive, cur, last_main_out))
+                   for name, directive in reviewers]
+        # 超时与预算成对伸缩：只放宽预算不放宽超时＝写到一半被打断，尾部照样丢（见 scale_review_timeout）。
+        # 基线预算从 review_fn 上取（同 .scope/.partial 的属性约定），预算没涨时超时也不动。
+        base_budget = getattr(review_fn, "base_max_tokens", REVIEW_MAX_TOKENS)
+        outs = _run_reviewers_serial(review_fn, prompts,
+                                     timeout=scale_review_timeout(timeout, len(cur), base_budget),
+                                     cancel=cancel)
         reviewer_outputs = []
         for (name, _directive), out in zip(reviewers, outs):
             reviewer_outputs.append((name, out))
@@ -546,9 +718,12 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
         # 2) **主模型逐轮回复**（一次调用）：读双方进言 + 当前决策 → 逐条表态 → 结构化决策 JSON。
         _emit("main_reply_start", {"round": round_idx})
         main_prompt = build_main_reply_prompt(cur, reviewer_outputs)
-        main_out = _run_reviewers_serial(review_fn, [(MAIN, main_prompt)], timeout=main_timeout, cancel=cancel)[0]
+        main_out = _run_reviewers_serial(
+            review_fn, [(MAIN, main_prompt)],
+            timeout=scale_review_timeout(main_timeout, len(cur), base_budget), cancel=cancel)[0]
         # 3) apply 主模型 JSON —— **唯一改 Decision 状态处**（决策 A：可改 status/blocking/current_choice）。
         cur = apply_main_reply(cur, main_out)
+        last_main_out = main_out
         _emit("main_reply_done", {"round": round_idx, "reply": main_out})
         rounds.append(round_snapshot(cur))
     cur = escalate_unresolved(cur)          # 收敛后仍未定的 Open → NeedUser（交用户拍板，不留死状态）
@@ -579,8 +754,13 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
         provider = provider_for(name)
         if provider is None:
             return "[]"                        # 没配该角色的模型 → 无意见，不阻断评审
-        mt = main_max_tokens if name == MAIN else max_tokens   # 主模型逐轮回复放宽上限（更长、别被切断）
-        out, stop = [], ""
+        if name == MAIN:
+            mt = main_max_tokens                      # 主模型逐轮回复放宽上限（更长、别被切断）
+        else:
+            # 评审员：预算跟着决策条数走，再顶到该模型自己的单次上限（超了会被 API 拒绝）
+            mt = scale_review_budget(max_tokens, getattr(review_fn, "scope", 0),
+                                     getattr(provider, "max_tokens", None))
+        out, stop, err = [], "", ""
         partial[name] = ""
         for ev in provider.stream_chat([Message("user", prompt)], system=None,
                                        tools=[], max_tokens=mt):
@@ -593,10 +773,36 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
                         on_delta(name, ev.text)
                     except Exception:  # noqa: BLE001 — 推流故障不阻断评审
                         pass
+            elif t == "error":
+                # provider 把调用失败（401/400/订阅失效/网络）当事件吐出来。**原来这里没接**，
+                # 于是这一路返回空字符串 → 前端那一栏空白、主模型收到「（本镜头无意见）」，
+                # 整场评审看着正常跑完，实际少了一半的对冲视角。真机就是这么中招的
+                # （包里带的 ARK key 有值但 CodingPlan 已过期 → 该镜头静默缺席）。
+                err = (getattr(ev, "text", "") or "调用失败").strip()
             elif t == "done":
                 stop = (getattr(ev, "meta", None) or {}).get("stop_reason", "")
+        if err:                                    # 调用失败：**说出来**，别让缺席伪装成"没意见"
+            who = "主模型" if name == MAIN else "本镜头"
+            note = (f"\n\n_（⚠ {who}没能参与本轮：{err[:200]}。"
+                    "这一路的意见**完全缺席**——别把沉默当「没问题」。"
+                    "去「设置 → Provider」检查该模型的 API Key / 订阅是否有效，"
+                    "或在顶部「模型 ▾」给这个角色换一个可用的模型档。）_")
+            out.append(note)
+            if on_delta:
+                try:
+                    on_delta(name, note)
+                except Exception:  # noqa: BLE001
+                    pass
         if stop in ("max_tokens", "length"):       # 达上限被截断：补可见提示（别让用户/主模型面对无声断句）
-            note = "\n\n_（本镜头输出达 max_tokens 上限被截断，可在设置调高「评审结论上限」）_"
+            if name == MAIN:
+                # 主模型被截断比镜头严重一个量级：末尾 JSON 没了 = 本轮决定一条都不落地，必须说清楚。
+                note = ("\n\n_（⚠ 主模型回复达输出上限被截断：结构化决策 JSON 可能不完整，"
+                        "**本轮的决定可能没有生效**（决策状态保持原样）。请调高该模型档的 max_tokens，"
+                        "或减少一次评审的决策条数后点 ↻ 重跑。）_")
+            else:
+                note = ("\n\n_（⚠ 本镜头输出达上限被截断：**排在后面的决策没有被评到**，"
+                        "请把以上意见当作只覆盖了前一部分的**有偏子集**——没被提到 ≠ 没问题。"
+                        "可在设置调高「评审结论上限」，或减少一次评审的决策条数。）_")
             out.append(note)
             if on_delta:
                 try:
@@ -607,6 +813,7 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
         partial[name] = result
         return result
     review_fn.partial = partial                # 暴露给 _run_reviewers_serial 超时回捞
+    review_fn.base_max_tokens = max_tokens     # 暴露基线预算：run_review 据此把超时与预算成对伸缩
     return review_fn
 
 
@@ -644,6 +851,48 @@ class DesignReviewSession:
         self.signed = False                    # 决策集变了 → 旧签字作废
         self.last_result = res
         return res
+
+    def to_dict(self) -> dict:
+        """序列化成可落库的纯 JSON（决策 + 签字 + 编排参数）。纯函数级，无 IO。
+
+        `last_result` 里只有 `stop_reason` 值得留（rounds 快照是 set，且重启后再无用处）；
+        共识文档由 `render_consensus(decisions)` 现算，不存冗余副本。
+        """
+        return {
+            "decisions": [
+                {"id": d.id, "title": d.title, "current_choice": d.current_choice,
+                 "alternatives": d.alternatives, "rationale": d.rationale,
+                 "status": d.status, "blocking": list(d.blocking)}
+                for d in self.decisions
+            ],
+            "signed": bool(self.signed),
+            "max_rounds": self.max_rounds,
+            "min_rounds": self.min_rounds,
+            "timeout": self.timeout,
+            "stop_reason": (self.last_result or {}).get("stop_reason", ""),
+            "reviewed": self.last_result is not None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DesignReviewSession | None":
+        """反序列化；数据缺/坏/没有决策一律返回 None（当作没评审过，别让会话打不开）。"""
+        if not isinstance(data, dict):
+            return None
+        raw = data.get("decisions")
+        if not isinstance(raw, list) or not raw:
+            return None
+        decisions = [_coerce_decision(o) for o in raw if isinstance(o, dict)]
+        if not decisions:
+            return None
+        s = cls(decisions,
+                int(data.get("max_rounds") or 3),
+                int(data.get("timeout") or REVIEW_TIMEOUT_S),
+                int(data.get("min_rounds") or 1))
+        s.signed = bool(data.get("signed"))
+        if data.get("reviewed"):
+            # 只回填"评过 + 停在哪"，不伪造 rounds 快照——前端只读这两项（reviewed/stop_reason）。
+            s.last_result = {"stop_reason": data.get("stop_reason") or "", "restored": True}
+        return s
 
     def resolve(self, decision_id: str, status: str, current_choice=None) -> bool:
         """用户拍板一个决策：设其共识态（须四态之一）、可定稿 choice、清空该条 blocking。

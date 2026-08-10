@@ -377,6 +377,28 @@ def switch_strategy_nudge(step: int) -> "str | None":
             "（换的是**检索方式/来源**，不是再换几个关键词。）")
 
 
+# 撞 max_tokens 的转向指令（FR-10.2 补丁）：单次输出装不下一个大文件时，**别把问题甩给用户**
+# ——用户不该为了画个原型图去研究 max_tokens 是什么。同"情境自启"范式（detect_stuck_edit 那套）：
+# 检测到撞墙 → 给模型一条**可执行**的换姿势指令，让它自己分块写。劝两次仍撞才报错停下。
+_TRUNCATION_NUDGES = (
+    "[系统观察] 你上一次的输出**撞到单次 max_tokens 上限被截断**了（多半是想一次性写完一个大文件），"
+    "那次工具调用的入参不完整、已被丢弃，什么都没写成。**别原样重发**，改成分块写：\n"
+    "① 先 `write_file` 写第一块（骨架 / 前 1/3）；\n"
+    "② 之后每块用 `write_file` 且 **`append: true`** 追加，一块控制在 ~150 行以内；\n"
+    "③ 全部写完再读一遍确认完整。\n"
+    "或者把大文件拆成几个小文件（如 HTML / CSS / JS 分开），单次输出量自然降下来。",
+    "[系统观察] **又被截断了**。这次必须把内容拆得更碎：每块不超过 ~100 行、至少分 3 块，"
+    "每块都用 `write_file` + `append: true`，写一块停一下再写下一块。别再尝试一次性输出整份内容。",
+)
+
+
+def truncation_nudge(n_done: int) -> "str | None":
+    """撞 max_tokens 第 n 次时给模型的转向指令；劝过 len(_TRUNCATION_NUDGES) 次仍撞 → None（交由调用方报错停下）。"""
+    if n_done < 0 or n_done >= len(_TRUNCATION_NUDGES):
+        return None
+    return _TRUNCATION_NUDGES[n_done]
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -458,6 +480,7 @@ class AgentLoop:
         seen_images: list[dict] = []      # 块H3b：本轮模型"看过"的配图块（截图/浏览器图），供终局多模态裁判
         did_research = False              # 块H3b：本轮是否做过研究（web_search/browser_*）——给配图判定划范围
         answer_refined = False            # 块H3b：终局带图答案已据图重判一次（每轮封顶，防无限）
+        trunc_nudges = 0                  # 撞 max_tokens 已劝过几次改分块写（劝满即真报错停下）
         _names = self.registry.names() if hasattr(self.registry, "names") else []
         browser_present = any(n.split("__", 1)[-1].startswith("browser_") for n in _names)
 
@@ -511,10 +534,23 @@ class AgentLoop:
             if stop_reason in ("max_tokens", "length"):
                 if assistant_text.strip():
                     messages.append(Message("assistant", assistant_text))
+                hint = truncation_nudge(trunc_nudges)
+                if hint is not None:
+                    # 自己换姿势重来，而不是停下让用户去改配置（用户不该为了画原型图研究 max_tokens）。
+                    # 注意别产生两条连续 user 消息（破坏 role 交替）：能并进上一条就并。
+                    trunc_nudges += 1
+                    block = {"type": "text", "text": hint}
+                    last = messages[-1] if messages else None
+                    if last is not None and last.role == "user" and isinstance(last.content, list):
+                        last.content.append(block)
+                    else:
+                        messages.append(Message("user", hint))
+                    emit("truncation_hint", {"text": hint, "n": trunc_nudges})
+                    continue
                 emit("error",
                      f"模型输出达到 max_tokens 上限被截断（stop_reason={stop_reason}），"
-                     "已停止以避免执行不完整的工具调用（如写出空文件）。"
-                     "请在 config.yaml 调高该模型的 max_tokens，或让它分步/分块写入。")
+                     "已提示分块写入仍未成功，故停止（避免执行不完整的工具调用、写出残缺文件）。"
+                     "请在设置面板把该模型档案的 max_tokens 调到它的真实上限，或把任务拆小些再来。")
                 break
 
             if not calls:

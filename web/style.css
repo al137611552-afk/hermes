@@ -1144,6 +1144,12 @@ body.plan-on .composer::before {
 .rvd-head { font-size: 13px; font-weight: 600; color: var(--accent);
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .rvd-sub { font-size: 11px; font-weight: 400; color: var(--muted); }
+/* 单模型自审：标题用告警色，副标题也提亮——别让"其实没在对冲"这件事被静静略过 */
+.rvd-head.rvd-warn { color: var(--warn); }
+.rvd-head.rvd-warn .rvd-sub { color: var(--warn); }
+/* 某个角色的模型跑不了：在讨论流里留一行告警，别让"少了一路意见"悄无声息 */
+.rvd-warn-line { color: var(--warn); font-size: 12px; margin: 6px 0; padding: 6px 8px;
+                 border-left: 2px solid var(--warn); background: var(--warn-bg); }
 .rvd-seed { font-size: 12px; color: var(--muted); margin-top: 6px; }
 /* v5.1：单列线性讨论流——竖向逐块（产品→技术→主模型回复→下一轮）。
    守 WebView2 滚动坑：仅用 padding 缩进（不用 margin 造嵌套合并）、不设 overflow-x（免连带成滚动容器）。 */
@@ -1637,3 +1643,14 @@ body.plan-on .composer::before {
 .skill-update {
   background: var(--accent) !important; border: none !important; color: #fff !important;
 }
+
+/* 划选一段文字后浮出的「评审选中」小按钮（跟随选区，点它对准这段发起评审） */
+.sel-review { position: fixed; z-index: 60; padding: 5px 10px; font-size: 12px; cursor: pointer;
+              color: var(--text); background: var(--panel); border: 1px solid var(--border);
+              border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.sel-review:hover { border-color: var(--accent); }
+/* 评审面板放行后的两个出口（交给主模型 / 落回规划），竖排各占一行、点得准 */
+.rv-exits { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.rv-exits .rv-btn { width: 100%; text-align: center; }
+/* 气泡操作区的「评审这段」 */
+.msg-review { white-space: nowrap; }

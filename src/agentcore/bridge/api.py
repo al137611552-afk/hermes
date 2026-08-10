@@ -23,6 +23,7 @@ from pathlib import Path
 from ..config import (
     APP_DIR, PROVIDER_PRESETS, AppConfig, ModelConfig, collect_key_requirements,
     effective_user_providers, load_config, load_user_models, load_user_providers, mask_key,
+    model_list_urls,
     persist_model_selection, save_user_models, save_user_providers, upsert_env_line,
 )
 from ..mcp_client import McpManager
@@ -361,22 +362,32 @@ class Api:
         key_val = os.getenv(api_key_env, "").strip()
         if not key_val:
             return {"ok": False, "error": "未配置 API Key"}
+        urls = model_list_urls(provider, base_url)
+        if not urls:
+            return {"ok": False, "error": "未配置 Base URL"}
         if provider == "openai":
-            if not base_url:
-                return {"ok": False, "error": "未配置 Base URL"}
-            url, headers = base_url + "/models", {"Authorization": f"Bearer {key_val}"}
-        else:  # anthropic
-            root = base_url or "https://api.anthropic.com"
-            url = root + ("/models" if root.endswith("/v1") else "/v1/models")
-            headers = {"x-api-key": key_val, "anthropic-version": "2023-06-01"}
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read().decode())
-            ids = sorted({m["id"] for m in data.get("data", []) if isinstance(m, dict) and m.get("id")})
-            return {"ok": True, "models": ids} if ids else {"ok": False, "error": "该服务未返回模型列表，请手动添加"}
-        except Exception as e:  # noqa: BLE001
-            return {"ok": False, "error": f"获取失败（该服务可能不支持列模型，可手动添加）：{str(e)[:110]}"}
+            attempts = [{"Authorization": f"Bearer {key_val}"}]
+        else:
+            # **两种认证头都试**：Anthropic 官方认 x-api-key，但兼容端点未必——实测火山方舟 coding 端点
+            # 的 /v1/models 只认 `Authorization: Bearer`，只发 x-api-key 会 401，用户会以为 key 填错了。
+            attempts = [{"x-api-key": key_val, "anthropic-version": "2023-06-01"},
+                        {"Authorization": f"Bearer {key_val}", "anthropic-version": "2023-06-01"}]
+        last = ""
+        for url in urls:                       # 同源候选地址依次试（见 model_list_urls）
+            for headers in attempts:
+                try:
+                    req = urllib.request.Request(url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        data = json.loads(resp.read().decode())
+                    ids = sorted({m["id"] for m in data.get("data", []) if isinstance(m, dict) and m.get("id")})
+                    return ({"ok": True, "models": ids} if ids
+                            else {"ok": False, "error": "该服务未返回模型列表，请手动添加"})
+                except Exception as e:  # noqa: BLE001 — 换下一种认证头/下一个地址再试，都失败才报
+                    last = str(e)[:110]
+        hint = ("该服务的 Anthropic 兼容端点通常只实现 /v1/messages、不提供模型列表——"
+                "**不影响对话**，手动添加模型 ID 即可。" if provider != "openai"
+                else "该服务可能不支持列模型，可手动添加。")
+        return {"ok": False, "error": f"获取失败（{hint}）：{last}"}
 
     def delete_provider(self, key: str) -> dict:
         """删一个自定义 provider（内置预设不可删，只能关「启用」）→ providers.yaml 移除 + 重载。"""
@@ -1296,7 +1307,7 @@ class Api:
     # ---- 方案评审（ADR 0019 Architecture Review Mode）-----------------------
 
     def start_design_review(self, proposal_text: "str | None" = None) -> dict:
-        """对当前方案（缺省取 notes）跑多角色评审，返回四态共识 + 开工 gate。"""
+        """对**指定内容**发起多角色评审（前端传某条回复正文 / 划选的一段）；不传才回退 notes。"""
         return self.active.start_design_review(proposal_text)
 
     def run_design_review(self) -> dict:
@@ -1330,8 +1341,13 @@ class Api:
         cid 缺省=活动对话；主模型重排耗时里用户可能切走，锁定发起对话才不会落错。"""
         return self._conv_by_cid(cid).apply_review_to_plan()
 
+    def hand_review_to_main(self, cid: "int | None" = None) -> dict:
+        """把评审定稿作为一条消息交给主模型，让它据此迭代后续开发（阶段方案的出口，不动 notes/待办）。
+        cid 缺省=活动对话；入队耗时里用户可能切走，锁定发起对话才不会发错会话。"""
+        return self._conv_by_cid(cid).hand_review_to_main()
+
     def get_design_review_models(self) -> dict:
-        """评审模型选择：两个角色名、可用模型档名、当前映射（空=跟随主模型）。供 UI 下拉。"""
+        """评审模型选择：两个角色名、可用模型档名、当前映射（空=**自动挑不同模型**，见 review_model_plan）。供 UI 下拉。"""
         from ..agent.design_review import migrate_reviewer_models
         cfg = self.res.config
         return {"reviewers": ["product", "technical"],
@@ -1341,7 +1357,7 @@ class Api:
                 "current": migrate_reviewer_models(cfg.agent.design_review_models or {})}
 
     def set_design_review_model(self, reviewer: str, profile: "str | None") -> dict:
-        """给某评审角色选模型（profile 空/None=跟随主模型），写回内存 + config.yaml。"""
+        """给某评审角色选模型（profile 空/None=**自动挑**，见 review_model_plan），写回内存 + config.yaml。"""
         from ..config import persist_design_review_models
         from ..agent.design_review import migrate_reviewer_models
         cfg = self.res.config
@@ -1351,7 +1367,7 @@ class Api:
         if profile and profile in cfg.models:
             m[reviewer] = profile
         else:
-            m.pop(reviewer, None)                 # 空或非法档名 → 该角色跟随主模型
+            m.pop(reviewer, None)                 # 空或非法档名 → 该角色交给自动挑
         cfg.agent.design_review_models = m
         try:
             persist_design_review_models(m)

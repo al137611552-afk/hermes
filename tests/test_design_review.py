@@ -14,6 +14,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agentcore.agent.design_review import (  # noqa: E402
     ACCEPTED, DEFERRED, NEEDUSER, OPEN, REJECTED, Decision, DesignReviewSession,
     apply_review, build_review_prompt, can_start_coding, count_blocking,
+    focus_count, review_output_spec, scale_review_budget, scale_review_timeout,
+    MAIN, build_main_reply_prompt, main_output_spec,
+    auto_reviewer_models, is_heterogeneous, usable_profiles,
     diagnose_decisions, escalate_unresolved, gate_status,
     make_review_fn, parse_decisions, render_consensus, round_snapshot, run_review,
     should_stop,
@@ -515,6 +518,261 @@ def test_apply_review_parses_prose_then_json():
                '```json\n[{"id":"d1","status":"NeedUser","add_blocking":["需拍板"]}]\n```')
     out = apply_review(ds, verdict)
     assert out[0].status == "NeedUser" and out[0].blocking == ["需拍板"]
+
+
+# ---- 预算随规模伸缩（真机：10 条决策 → 产品镜头撞 4096 被截断，尾部意见全丢）----
+
+
+def test_scale_review_budget_grows_with_decisions():
+    assert scale_review_budget(4096, 1) == 4096            # 少量决策：沿用配置的基线
+    assert scale_review_budget(4096, 10) > 4096            # 10 条：基线不够，自动抬高
+    assert scale_review_budget(4096, 10) == 600 * 10 + 800
+
+
+def test_scale_review_budget_never_exceeds_model_cap():
+    # 超过模型单次上限会被 API 直接拒绝，比截断更糟
+    assert scale_review_budget(4096, 50, model_cap=8192) == 8192
+    assert scale_review_budget(99999, 1, model_cap=8192) == 8192
+    assert scale_review_budget(4096, 10, model_cap=0) == 6800       # cap<=0 视为不限
+    assert scale_review_budget(4096, 10, model_cap=None) == 6800
+
+
+def test_focus_count_caps_how_many_decisions_get_deep_review():
+    assert focus_count(3) == 3            # 少的时候全说
+    assert focus_count(10) == 6           # 多的时候挑重点，别写流水账
+    assert focus_count(0) == 1
+
+
+def test_review_output_spec_adds_scope_discipline_only_when_needed():
+    assert "范围纪律" not in review_output_spec(3)
+    spec = review_output_spec(10)
+    assert "范围纪律" in spec and "≤6 条" in spec and "共 10 条" in spec
+
+
+def test_review_prompt_tells_model_to_focus_when_many_decisions():
+    many = [_d(f"d{i}", OPEN) for i in range(10)]
+    p_many = build_review_prompt("你是评审员", many)
+    assert "范围纪律" in p_many
+    assert "范围纪律" not in build_review_prompt("你是评审员", many[:3])
+
+
+class _FailingProvider:
+    """假 provider：调用直接失败（401/订阅失效/网络），像真 provider 那样吐 error 事件。"""
+    max_tokens = 8192
+
+    def stream_chat(self, msgs, system=None, tools=None, max_tokens=None):
+        from agentcore.providers import StreamEvent
+        yield StreamEvent("error", "BadRequestError: InvalidSubscription — CodingPlan 已过期")
+
+
+def test_failed_reviewer_says_so_instead_of_going_silent():
+    """镜头调用失败过去是**静默**的：返回空串 → 那一栏空白、主模型收到「本镜头无意见」，
+    整场评审看着正常跑完实际少一路。真机中招：包里带的 ARK key 有值但订阅已过期。"""
+    seen = []
+    fn = make_review_fn(lambda name: _FailingProvider(), max_tokens=4096,
+                        on_delta=lambda n, t: seen.append((n, t)))
+    out = fn("product", "prompt")
+    assert "没能参与本轮" in out and "InvalidSubscription" in out    # 返回值里说清楚（主模型也读得到）
+    assert "完全缺席" in out and "别把沉默当" in out                 # 别把缺席读成"没问题"
+    assert "Provider" in out                                        # 指路：去哪修
+    assert seen and "没能参与本轮" in seen[0][1]                     # 也推给前端（用户当场看得见）
+
+
+def test_failed_main_reply_uses_its_own_wording():
+    fn = make_review_fn(lambda name: _FailingProvider(), max_tokens=4096)
+    assert "主模型没能参与本轮" in fn(MAIN, "prompt")
+
+
+def test_profile_without_key_env_is_not_usable():
+    """没填 key 的档案不许被"自动挑"选中——否则界面显示成正常的多模型讨论，那一路其实调不通。"""
+    class MC:
+        def __init__(self, env): self.api_key_env = env
+    models = {"deepseek/chat": MC("DEEPSEEK_API_KEY"),   # 有 env 且有值 → 可用
+              "mine/local": MC(""),                       # 自定义 provider 没填 env → **不可用**
+              "ark/kimi": MC("ARK_API_KEY")}              # 有 env 但没值 → 不可用
+    env = {"DEEPSEEK_API_KEY": "sk-x"}
+    assert usable_profiles(models, env.get) == ["deepseek/chat"]
+    # 于是自动挑只能落回主模型 → 如实显示「单模型自审」，而不是把没 key 的档派成产品镜头
+    plan = auto_reviewer_models(usable_profiles(models, env.get), "deepseek/chat", {})
+    assert plan["product"] == plan["technical"] == "deepseek/chat"
+    assert is_heterogeneous(plan) is False
+
+
+def test_session_roundtrips_through_dict():
+    """D9：评审要能落库——决策/签字/停止原因原样回来（跑十几分钟的结果不该关个应用就没）。"""
+    s = DesignReviewSession([_d("d1", NEEDUSER, ["待你拍"], choice="SQLite"), _d("d2", ACCEPTED)],
+                            max_rounds=4, timeout=200, min_rounds=2)
+    s.last_result = {"stop_reason": "no_new_blocking"}
+    s.sign()
+    back = DesignReviewSession.from_dict(s.to_dict())
+    assert [d.id for d in back.decisions] == ["d1", "d2"]
+    assert back.decisions[0].status == NEEDUSER and back.decisions[0].blocking == ["待你拍"]
+    assert back.decisions[0].current_choice == "SQLite"
+    assert back.signed is True and back.max_rounds == 4 and back.timeout == 200 and back.min_rounds == 2
+    assert (back.last_result or {}).get("stop_reason") == "no_new_blocking"
+    assert back.gate() == s.gate()                     # gate 结论一致（未决数/可否开工）
+
+
+def test_session_from_dict_rejects_garbage():
+    """库里数据缺/坏 → 当作没评审过，绝不让会话打不开。"""
+    assert DesignReviewSession.from_dict({}) is None
+    assert DesignReviewSession.from_dict({"decisions": []}) is None
+    assert DesignReviewSession.from_dict("不是字典") is None
+    assert DesignReviewSession.from_dict({"decisions": ["坏数据"]}) is None
+
+
+def test_reviewer_prompt_carries_main_reply_from_round_two(monkeypatch=None):
+    """C6：评审员原来每轮只看决策快照——**听不见主模型也听不见对方**，"再讨论一轮"其实是重审一遍。"""
+    p1 = build_review_prompt("你是产品镜头", [_d("d1", OPEN)])
+    assert "主模型上一轮的回复" not in p1 and "回应主模型" not in p1   # 第一轮：独立首审，不喂
+    p2 = build_review_prompt("你是产品镜头", [_d("d1", OPEN)],
+                             "我采纳了 d1 的风险，但反驳你的排期判断。\n```json\n[{\"id\":\"d1\"}]\n```")
+    assert "我采纳了 d1 的风险" in p2                      # hub 的回复进了 prompt
+    assert "```json" not in p2.split("回应主模型")[0]       # 结构化块被剥掉（对评审员是噪声）
+    assert "可证伪" in p2 and "本轮无补充" in p2            # 要求回应而不是原样重发
+
+
+def test_run_review_feeds_previous_main_reply_to_reviewers():
+    """接线：第 1 轮不带 hub 回复，第 2 轮起带上一轮的。"""
+    seen = []
+
+    def fn(name, prompt):
+        seen.append((name, prompt))
+        if name == MAIN:                      # 只有主模型的 JSON 会生效（v5 决策 A）
+            n = sum(1 for x, _ in seen if x == MAIN)
+            return (f"主模型第{n}轮的决定\n```json\n"
+                    f'[{{"id":"d1","add_blocking":["新问{n}"]}}]\n```')
+        return "技术镜头的私房意见ZZZ\n" + '[{"id":"d1","status":"Open"}]'
+
+    # 主模型每轮都添新 blocking → 不提前收敛，跑得到第 2 轮
+    run_review([_d("d1", OPEN)], fn, max_rounds=3)
+    r1 = [p for n, p in seen if n == "product"][0]
+    r2 = [p for n, p in seen if n == "product"][1]
+    assert "主模型上一轮的回复" not in r1
+    assert "主模型第1轮的决定" in r2                        # 第 2 轮听得见 hub 了
+    assert "私房意见ZZZ" not in r2                          # 但**听不见对方镜头**（独立双审，降错误相关性）
+
+
+def test_scale_review_timeout_follows_the_budget():
+    """只放宽预算不放宽超时＝白放宽：写到一半被超时打断，尾部照样丢。"""
+    # base_budget=4096（config 基线）：5 条以内预算没涨 → 超时一点不动
+    assert scale_review_timeout(180, 1, 4096) == 180
+    assert scale_review_timeout(180, 5, 4096) == 180
+    # 10 条：预算 4096→6800，超时同比放宽（不放宽就写到一半被打断）
+    assert scale_review_timeout(180, 10, 4096) == int(180 * (6800 / 4096))
+    assert scale_review_timeout(180, 500, 4096) == 360         # 封顶 2 倍：卡死的调用不许拖太久
+    assert scale_review_timeout(0, 10, 4096) == 1              # 退化输入不返回 0/负数
+
+
+def test_run_review_scales_both_reviewer_and_main_timeouts(monkeypatch=None):
+    """run_review 把伸缩后的超时交给串行执行器——预算与超时必须成对，别只改一半。"""
+    import agentcore.agent.design_review as dr
+    seen = []
+    orig = dr._run_reviewers_serial
+    try:
+        dr._run_reviewers_serial = lambda fn, prompts, timeout=None, cancel=None: (
+            seen.append((prompts[0][0], timeout)), ["[]"] * len(prompts))[1]
+        dr.run_review([_d(f"d{i}", ACCEPTED) for i in range(10)],
+                      lambda n, p: "[]", max_rounds=2, timeout=180, main_timeout=120)
+    finally:
+        dr._run_reviewers_serial = orig
+    by_name = dict(seen)
+    assert by_name["product"] == scale_review_timeout(180, 10)   # 评审员侧
+    assert by_name[MAIN] == scale_review_timeout(120, 10)        # 主模型侧同样伸缩
+    assert by_name["product"] > 180 and by_name[MAIN] > 120       # 确实放宽了，不是原样透传
+
+
+def test_main_output_spec_limits_prose_but_never_the_json():
+    """主模型被截断 = 末尾 JSON 没了 = 本轮决定一条都不落地，比镜头被截断严重一个量级。"""
+    assert "范围纪律" not in main_output_spec(3)
+    spec = main_output_spec(10)
+    assert "范围纪律" in spec and "≤6 条" in spec
+    assert "只有末尾的 JSON 会真正生效" in spec        # 压的是散文，不是 JSON
+    # 接线：条数多时提示真进了主模型 prompt
+    many = [_d(f"d{i}", OPEN) for i in range(10)]
+    assert "范围纪律" in build_main_reply_prompt(many, [("product", "意见")])
+    assert "范围纪律" not in build_main_reply_prompt(many[:3], [("product", "意见")])
+
+
+def test_main_truncation_note_says_decisions_may_not_have_landed():
+    """镜头截断=少几条意见；主模型截断=决定没生效。两者文案不能混用。"""
+    fn = make_review_fn(lambda name: _FakeTruncProvider(), max_tokens=4096)
+    main_note = fn(MAIN, "prompt")
+    assert "本轮的决定可能没有生效" in main_note
+    assert "有偏子集" not in main_note                 # 别套用镜头那套说法
+
+
+def test_truncation_note_warns_it_is_a_biased_subset():
+    """截断丢的是**尾部**决策的意见。主模型必须知道"没提到 ≠ 没问题"，否则会把沉默当认可。"""
+    fn = make_review_fn(lambda name: _FakeTruncProvider(), max_tokens=4096)
+    out = fn("product", "prompt")
+    assert "有偏子集" in out and "没被提到 ≠ 没问题" in out
+
+
+def test_review_fn_scales_budget_by_scope_and_model_cap():
+    seen = {}
+
+    class P:
+        max_tokens = 8192
+
+        def stream_chat(self, msgs, system=None, tools=None, max_tokens=None):
+            seen["mt"] = max_tokens
+            yield _FakeEv("ok")
+
+    fn = make_review_fn(lambda name: P(), max_tokens=4096)
+    fn("product", "p")
+    assert seen["mt"] == 4096                    # 没告诉规模 → 用基线
+    fn.scope = 10                                # run_review 会设它
+    fn("product", "p")
+    assert seen["mt"] == 6800
+    fn.scope = 50
+    fn("product", "p")
+    assert seen["mt"] == 8192                    # 顶到模型天花板
+
+
+# ---- 默认异构（ADR 0019 的核心机制，原来默认没生效）----------------------------
+
+
+def test_auto_picks_different_models_cross_provider_first():
+    """跨厂商优先：不同 provider 的模型错误相关性最低，是"对冲"最有效的形态。"""
+    plan = auto_reviewer_models(["ark/kimi", "ark/deepseek", "openai/gpt-4o"], "ark/kimi")
+    assert plan["main"] == "ark/kimi"
+    assert plan["product"] == "openai/gpt-4o"       # 先挑异厂商的
+    assert plan["technical"] == "ark/deepseek"      # 再挑与主模型不同的那个
+    assert is_heterogeneous(plan)
+
+
+def test_auto_uses_two_models_of_same_provider_when_thats_all_there_is():
+    plan = auto_reviewer_models(["ark/kimi", "ark/deepseek"], "ark/kimi")
+    assert plan["product"] == "ark/deepseek" and plan["technical"] == "ark/kimi"
+    assert is_heterogeneous(plan)                   # 同厂不同模型，仍算异构（聊胜于无）
+
+
+def test_single_model_degrades_honestly():
+    """只有一个模型可用：三个角色同模型——此时 is_heterogeneous 必须为假，
+    界面据此改叫"单模型自审"，绝不能继续吹"多模型讨论"（同模型挑不出自己看不见的问题）。"""
+    plan = auto_reviewer_models(["ark/kimi"], "ark/kimi")
+    assert plan == {"product": "ark/kimi", "technical": "ark/kimi", "main": "ark/kimi"}
+    assert not is_heterogeneous(plan)
+    assert not is_heterogeneous(auto_reviewer_models([], "ark/kimi"))
+
+
+def test_explicit_mapping_wins_and_old_keys_migrate():
+    plan = auto_reviewer_models(["a/x", "b/y", "c/z"], "a/x",
+                                {"architecture": "c/z"})     # 旧键 → technical
+    assert plan["technical"] == "c/z"
+    assert plan["product"] in ("b/y", "c/z") and plan["product"] != plan["technical"]
+
+
+def test_usable_profiles_filters_by_key_presence():
+    class M:
+        def __init__(self, env): self.api_key_env = env
+    models = {"has": M("K1"), "missing": M("K2"), "nokey": M("")}
+    env = {"K1": "sk-xxx", "K2": "  "}.get
+    # 有意的契约变更：**没写 api_key_env 的不再算可用**（原来算）——它会被自动挑成评审镜头，
+    # 界面显示成正常的多模型讨论，实际那一路没 key、调不通。空白 key 同样不算。
+    assert usable_profiles(models, env) == ["has"]
+    assert usable_profiles({}, env) == []
 
 
 def _run_all():

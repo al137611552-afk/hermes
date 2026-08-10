@@ -1,6 +1,8 @@
 # 模型档案。增删模型只改这里，UI 下拉自动读取。
 # active_model 指向 models 下的某个 key。
-active_model: volcengine-ark/kimi-k2.6
+# **留空 = 还没选模型**（开箱状态）：去「设置 → Provider」选服务商、填 API Key、勾模型，
+# 第一次启用时会自动选中；也可以在这里手写一个已存在的档名。
+active_model: ""
 
 # 全局系统提示词
 system_prompt: |
@@ -75,6 +77,9 @@ system_prompt: |
 
   可视化输出：可直接在回答里出 <svg>（别放进代码块，否则只显示源码）、```mermaid 图，或用
   write_file 写自包含 .html 高保真原型——需要画 UI / 流程图 / 可点击原型时主动用。
+  **大文件（高保真原型常上千行）别想一次写完**：单次输出有 max_tokens 上限，超了整个工具调用的
+  入参会被截断丢弃、这一轮白跑。正确做法是分块：第一块正常 write_file，之后每块传 append:true
+  追加（每块 ~150 行以内），写完读一遍确认完整；或把 HTML/CSS/JS 拆成几个文件分别写。
 
 # Agent 工具循环配置（P3）
 agent:
@@ -119,7 +124,10 @@ agent:
   # 不像 auto_review/auto_test 那样每轮自动触发）。设 false 可彻底关掉这个按钮的功能。
   design_review: true
   design_review_max_rounds: 4   # 评审轮数上限（含初始规划快照）：4 = 最多 3 个讨论轮，与 v5 hub-and-spoke「最多3轮收敛」一致；防无限互评
-  design_review_models: {}      # 异构路由：reviewer 名→模型档名，如 {architecture: "openai/gpt-4o"}；
+  design_review_models: {}      # 异构路由：reviewer 名→模型档名，如 {technical: "openai/gpt-4o"}。
+                                # **留空 = 自动挑**：从当前 key 可用的模型档里给两个镜头分不同模型
+                                # （跨 provider 优先）。只有一个模型可用时如实降级，界面会明说
+                                # 「单模型自审」而不是继续叫「多模型讨论」——同模型的错误高度相关，
                                 # 空=全用当前主模型（同模型双角色，离线零成本）。大设计才给某角色配异构档降低错误相关性
   # 可编程 hooks（对标 Claude Code PreToolUse/PostToolUse）：在工具调用前/后跑你的命令，做自定义
   # 守卫/动作。命令的 stdin 会收到 {event,tool,params,workspace[,result]} 的 JSON，cwd=工作区。

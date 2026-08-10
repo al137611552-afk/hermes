@@ -41,6 +41,7 @@ const EV = {
   REVIEW_REVIEWER_DONE: "review_reviewer_done",
   REVIEW_MAIN_REPLY_START: "review_main_reply_start",   // v5 hub：主模型逐轮回复开始（两评审员进言完毕）
   REVIEW_MAIN_REPLY_DONE: "review_main_reply_done",      // v5 hub：主模型本轮回复完成（含结构化决策）
+  REVIEW_WARN: "review_warn",         // 某个角色的模型不可用（没 key / 构造失败）——必须让用户看见，别静默降级
   REVIEW_CONVERGED: "review_converged",
   REVIEW_DONE: "review_done",
 };
@@ -310,6 +311,13 @@ function decorateAssistant(bubble, raw) {
   qt.innerHTML = QUOTE_ICON + "<span>引用</span>";
   qt.addEventListener("click", () => quoteToComposer(bubble.dataset.raw || bubble.innerText));
   act.appendChild(qt);
+  // 「评审这段」：评审的输入**由用户指定**，不再靠猜最后一条回复——方案在哪一轮就点哪一轮。
+  const rv = document.createElement("button");
+  rv.className = "msg-copy msg-review"; rv.type = "button";
+  rv.title = "对这条回复里的方案发起多角色评审";
+  rv.innerHTML = '<span>🔬 评审这段</span>';
+  rv.addEventListener("click", () => startReviewOn(bubble.dataset.raw || bubble.innerText, "这条回复"));
+  act.appendChild(rv);
   bubble.appendChild(act);
 }
 
@@ -1277,6 +1285,8 @@ window.__onAgentEvent = function (msg) {
     debateMainReplyStart(v, data); markActivity(v);
   } else if (event === EV.REVIEW_MAIN_REPLY_DONE) {
     debateMainReplyDone(v, data); markActivity(v);
+  } else if (event === EV.REVIEW_WARN) {
+    debateWarn(v, data); markActivity(v);
   } else if (event === EV.REVIEW_CONVERGED) {
     debateConverged(v, data); markActivity(v);
   } else if (event === EV.REVIEW_DONE) {
@@ -1497,6 +1507,17 @@ function renderReviewPanel(state, opts) {
   } else if (gate.user_signed) {
     parts.push(`<div class="rv-sign signed">已签字 ✓</div>`);
   }
+  // 放行后两个出口（评的是阶段方案还是整体方案，只有用户知道，所以两个都给、不替他猜）：
+  // ① 交给主模型继续开发——把定稿喂回对话，不动规划/待办（阶段方案的常用出口）
+  // ② 落回规划与待办——现有行为（共识进 notes + 重排整份清单，适合整体方案）
+  if (lbl.enabled) {
+    parts.push(`<div class="rv-exits">` +
+      `<button class="rv-btn primary" data-rv="hand-to-main" ` +
+      `title="把评审定稿作为一条消息交给主模型，让它据此迭代后续开发（不改规划与待办）">→ 交给主模型继续开发</button>` +
+      `<button class="rv-btn" data-rv="apply-plan" ` +
+      `title="把共识写回规划 notes 并按定稿重排整份待办清单（适合整体方案）">↺ 落回规划与待办清单</button>` +
+      `</div>`);
+  }
   // gate 放行后落回规划/任务的动作，统一并入「签字确认开工」——那步已含重排+落 notes，
   // 单独的「应用到规划」按钮多余，去掉。
   REVIEW_STATUSES.forEach((s) => {
@@ -1520,17 +1541,22 @@ async function fillReviewerModels() {
   const roleLabel = (role) => roleDesc[role] || ((m.reviewer_labels || {})[role]) || role;
   const sel = (role) => {
     const cur = (m.current || {})[role] || "";
-    const opts = [`<option value=""${cur ? "" : " selected"}>跟随主模型（${escapeHtml(m.active_model || "")}）</option>`]
+    // 留空**不是**"跟随主模型"：后端 review_model_plan 会自动给两个镜头分不同模型（跨厂商优先），
+    // 这是 ADR 0019「对冲视角 + 降错误相关性」的默认落点——措辞得跟真实行为一致。
+    const opts = [`<option value=""${cur ? "" : " selected"}>自动选不同模型</option>`]
       .concat((m.available || []).map((p) =>
         `<option value="${escapeHtml(p)}"${p === cur ? " selected" : ""}>${escapeHtml(p)}</option>`));
     return `<label class="mm-row"><span>${escapeHtml(roleLabel(role))}</span>` +
-      `<select class="rv-model-sel" data-role="${role}">${opts.join("")}</select></label>`;
+      `<select class="rv-model-sel" data-role="${role}" ` +
+      `title="留空=自动挑一个与主模型不同的档（优先不同厂商）；只有一个模型可用时退回主模型，界面会标明「单模型自审」">` +
+      `${opts.join("")}</select></label>`;
   };
   box.innerHTML = (m.reviewers || []).map(sel).join("");
   box.querySelectorAll(".rv-model-sel").forEach((s) => {
     s.addEventListener("change", async () => {
       await window.pywebview.api.set_design_review_model(s.getAttribute("data-role"), s.value || null);
-      showToast(s.value ? "已设评审模型：" + s.value + "（下次评审生效，可点 ↻ 重跑）" : "已改回跟随主模型");
+      showToast(s.value ? "已设评审模型：" + s.value + "（下次评审生效，可点 ↻ 重跑）"
+                        : "已改回自动选不同模型");
     });
   });
 }
@@ -1540,15 +1566,21 @@ async function refreshReview() {
   try { renderReviewPanel(await window.pywebview.api.get_design_review()); } catch (e) { /* ignore */ }
 }
 
-if (reviewBtn) reviewBtn.addEventListener("click", async () => {
+// 发起评审的**唯一**入口（顶部按钮 / 气泡「评审这段」/ 选区「评审选中」共用）。
+// text 为空 = 让后端按 notes → 最后一条回复兜底（并由后端拒掉太短的确认句）。
+async function startReviewOn(text, whatLabel) {
   const v = activeView();
   if (!v || !window.pywebview) return;
-  if (!v.planMode) { showToast("先开规划模式产出方案，再发起评审"); return; }
-  reviewBtn.classList.add("busy");
-  showReviewSkeleton("评审模型正在读方案原文、抽取关键决策并评审…");   // start 瞬时返回，面板立刻亮
+  const body = (text || "").trim();
+  // 指定了内容就不要求规划模式——用户常在**开发过程中**对某个阶段方案发起评审
+  if (!body && !v.planMode) { showToast("先开规划模式产出方案，或在某条回复下点「🔬 评审这段」"); return; }
+  if (body && body.length < 60) { showToast("选中的内容太短，评审需要一份成形的方案"); return; }
+  if (reviewBtn) reviewBtn.classList.add("busy");
+  showReviewSkeleton(body ? `评审模型正在读${whatLabel || "指定内容"}、抽取关键决策…`
+                          : "评审模型正在读方案原文、抽取关键决策并评审…");
   try {
     // 第一阶段：瞬时校验（零模型调用），面板已亮
-    const st = await window.pywebview.api.start_design_review();
+    const st = await window.pywebview.api.start_design_review(body || null);
     if (!st || !st.ok) {
       renderReviewPanel(null); reviewBtn.classList.remove("busy");
       showToast(st && st.error ? st.error : "评审未能开始");
@@ -1562,7 +1594,39 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
       showToast(kick && kick.error ? kick.error : "评审未能开始");
     }
   } catch (e) { renderReviewPanel(null); reviewBtn.classList.remove("busy"); showToast("评审失败：" + (e && e.message ? e.message : e)); }
-});
+}
+
+// 顶部「🔬 评审」按钮：不指定内容，走后端兜底（notes → 最后一条回复）
+if (reviewBtn) reviewBtn.addEventListener("click", () => startReviewOn("", ""));
+
+// 划选一段文字 → 浮出「🔬 评审选中」。方案常只占回复的一部分（前面是寒暄、后面是确认），
+// 划选让用户把评审对准真正的方案正文。
+(function bindSelectionReview() {
+  let chip = null;
+  const hide = () => { if (chip) { chip.remove(); chip = null; } };
+  document.addEventListener("selectionchange", () => {
+    const sel = window.getSelection();
+    const text = sel && !sel.isCollapsed ? String(sel).trim() : "";
+    // 只对对话区里的选区生效，且要够长（一两句话不值得开一场评审）
+    if (!text || text.length < 200 || !sel.anchorNode || !chat.contains(sel.anchorNode)) { hide(); return; }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) { hide(); return; }
+    if (!chip) {
+      chip = document.createElement("button");
+      chip.className = "sel-review"; chip.type = "button";
+      chip.textContent = "🔬 评审选中";
+      chip.addEventListener("mousedown", (e) => e.preventDefault());   // 别让点击清掉选区
+      document.body.appendChild(chip);
+    }
+    chip.dataset.text = text;
+    chip.style.left = Math.max(8, rect.left + rect.width / 2 - 48) + "px";
+    chip.style.top = Math.max(8, rect.top - 34) + "px";
+  });
+  document.addEventListener("mousedown", (e) => { if (chip && e.target !== chip) hide(); });
+  document.addEventListener("click", (e) => {
+    if (chip && e.target === chip) { const t = chip.dataset.text; hide(); startReviewOn(t, "选中的内容"); }
+  });
+})();
 
 (function bindReviewPanel() {
   const el = reviewPanelEl();
@@ -1576,6 +1640,24 @@ if (reviewBtn) reviewBtn.addEventListener("click", async () => {
       try { await window.pywebview.api.cancel_design_review(); } catch (_) {}
       if (reviewBtn) reviewBtn.classList.remove("busy");
       renderReviewPanel(null);
+      return;
+    }
+    if (act === "hand-to-main") {
+      t.disabled = true;
+      const r = await window.pywebview.api.hand_review_to_main(activeView() ? activeView().cid : null);
+      if (r && r.ok) {
+        renderReviewPanel(null);
+        showToast("✅ 评审定稿已交给主模型，它会据此迭代后续开发");
+      } else { t.disabled = false; showToast(r && r.error ? r.error : "交接失败"); }
+      return;
+    }
+    if (act === "apply-plan") {
+      t.disabled = true;
+      const r = await window.pywebview.api.apply_review_to_plan(activeView() ? activeView().cid : null);
+      if (r && r.ok) {
+        renderReviewPanel(null); refreshTasks();
+        showToast(`✅ 已落回规划（${r.replanned ? "待办已重排" : "+" + (r.tasks_added || 0) + " 待办"}）`);
+      } else { t.disabled = false; showToast(r && r.error ? r.error : "落回失败"); }
       return;
     }
     if (act === "rerun") {
@@ -1663,9 +1745,11 @@ function startDebate(v, data) {
   finalizeTextBubble(v);                      // 收束上一段主模型文本气泡
   const box = document.createElement("div");
   box.className = "rv-debate";
+  // 标题按**真实模型分配**渲染：同构时如实叫「单模型自审」并给出改进指引（纯逻辑在 pure.js）
+  const hd = debateHeader(data && data.models, data && data.heterogeneous);
   box.innerHTML =
-    `<div class="rvd-head">🔬 方案评审 · 多模型讨论` +
-      `<span class="rvd-sub">${escapeHtml(DEBATE_ROLE_LABELS.product)} → ${escapeHtml(DEBATE_ROLE_LABELS.technical)} → 主模型回复 · 逐轮收敛</span></div>` +
+    `<div class="rvd-head${hd.warn ? " rvd-warn" : ""}">${escapeHtml(hd.title)}` +
+      `<span class="rvd-sub">${escapeHtml(hd.sub)}</span></div>` +
     `<div class="rvd-seed">正在拆解方案为决策项…</div>` +   // 即时反馈：worker 一启动就亮，不等抽取阻塞调用
     `<div class="rvd-stream"></div>` +
     `<div class="rvd-foot"></div>`;
@@ -1677,6 +1761,19 @@ function startDebate(v, data) {
     footEl: box.querySelector(".rvd-foot"),
     rounds: new Map(), curRound: 0,
   };
+  scrollView(v);
+}
+
+// review_warn：某个角色的模型跑不了（没 key / 构造失败）。**必须显示**——否则那一栏只是空着，
+// 用户看到的是一场"正常"的多模型讨论，其实少了一路意见（评审是靠对冲视角的，少一路就是少一半）。
+function debateWarn(v, data) {
+  if (!v || !v.debate || !data) return;
+  const role = DEBATE_ROLE_LABELS[data.reviewer] || data.reviewer || "某个角色";
+  const el = document.createElement("div");
+  el.className = "rvd-warn-line";
+  el.textContent = `⚠ ${role}：${data.error || "模型不可用"}` +
+    (data.profile ? `（${data.profile}）` : "");
+  v.debate.streamEl.appendChild(el);
   scrollView(v);
 }
 
@@ -2679,7 +2776,6 @@ document.getElementById("open-project").addEventListener("click", async () => {
 modelSelect.addEventListener("change", async () => {
   await window.pywebview.api.set_active_model(modelSelect.value);
   updateModelMenuLabel();
-  fillReviewerModels();   // 主模型变了→评审「跟随主模型」项文案跟着更新
 });
 
 // 顶部「模型 ▾」弹层：开合 + 点击外部/Esc 关闭
@@ -3718,6 +3814,13 @@ async function refreshModelDropdowns() {
   const { models, active, subagent } = await window.pywebview.api.get_models();
   const fill = (sel, selected, withFollow) => {
     sel.innerHTML = "";
+    if (!models.length) {                 // 开箱无默认 provider：别给个空下拉让人猜，直接指路
+      const none = document.createElement("option");
+      none.value = ""; none.textContent = "未配置模型 · 去设置 → Provider";
+      none.selected = true;
+      sel.appendChild(none);
+      return;
+    }
     if (withFollow) {
       const f = document.createElement("option");
       f.value = ""; f.textContent = "跟随主模型";
@@ -3740,7 +3843,7 @@ async function refreshModelDropdowns() {
 // 顶部「模型 ▾」按钮上显示当前主模型名
 function updateModelMenuLabel() {
   const lbl = document.getElementById("model-menu-label");
-  if (lbl && modelSelect) lbl.textContent = modelSelect.value || "模型";
+  if (lbl && modelSelect) lbl.textContent = modelSelect.value || "未配置模型";
 }
 
 // ---- 会话导航索引（右缘迷你刻度条，按用户消息跳转） --------------------
