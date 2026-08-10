@@ -1,6 +1,8 @@
 # 模型档案。增删模型只改这里，UI 下拉自动读取。
 # active_model 指向 models 下的某个 key。
-active_model: volcengine-ark/kimi-k2.6
+# **留空 = 还没选模型**（开箱状态）：去「设置 → Provider」选服务商、填 API Key、勾模型，
+# 第一次启用时会自动选中；也可以在这里手写一个已存在的档名。
+active_model: ""
 
 # 全局系统提示词
 system_prompt: |

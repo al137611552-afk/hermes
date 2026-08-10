@@ -282,6 +282,10 @@ class ArtifactsConfig(BaseModel):
     keep_days: float = 7         # 保留天数，过期删
 
 
+NO_MODEL_HINT = ("还没有配置任何模型：打开右上角「⚙ 设置 → 🧠 Provider」，选一个服务商"
+                 "（火山方舟 / DeepSeek / Anthropic / OpenAI / Kimi）填上 API Key、勾一个模型即可开始。")
+
+
 class AppConfig(BaseModel):
     active_model: str
     system_prompt: str = "You are a helpful coding assistant."
@@ -298,8 +302,13 @@ class AppConfig(BaseModel):
 
     def get_model(self, name: str | None = None) -> ModelConfig:
         key = name or self.active_model
+        if not self.models:
+            # 开箱无默认 provider（DEFAULT_PROVIDERS 为空）：说人话，别抛 "未找到模型档案 ''"
+            raise KeyError(NO_MODEL_HINT)
+        if not key:
+            raise KeyError("还没有选中模型：在顶部「模型 ▾」里选一个（或在设置 → Provider 里启用）。")
         if key not in self.models:
-            raise KeyError(f"未找到模型档案 '{key}'，请检查 config.yaml")
+            raise KeyError(f"未找到模型档案 '{key}'，请检查 config.yaml 或设置 → Provider")
         return self.models[key]
 
     def resolve_api_key(self, mc: ModelConfig) -> str:
@@ -368,8 +377,10 @@ PROVIDER_PRESETS: dict = {
         "models": [{"id": "gpt-4o", "vision": True}],
     },
     "deepseek": {
-        "label": "DeepSeek", "provider": "openai", "api_key_env": "DEEPSEEK_API_KEY",
-        "base_url": "https://api.deepseek.com/v1",
+        # Anthropic 兼容端点（官方）：SDK 会在其后接 /v1/messages。
+        # OpenAI 兼容端点是 https://api.deepseek.com/v1（provider 改 openai 即可切回）。
+        "label": "DeepSeek", "provider": "anthropic", "api_key_env": "DEEPSEEK_API_KEY",
+        "base_url": "https://api.deepseek.com/anthropic",
         "models": [{"id": "deepseek-chat"}],
     },
     "moonshot": {
@@ -378,6 +389,33 @@ PROVIDER_PRESETS: dict = {
         "models": [{"id": "kimi-k2.6"}, {"id": "kimi-k2.5"}],
     },
 }
+
+
+def model_list_urls(provider: str, base_url: str) -> list:
+    """列模型要依次尝试的 URL（纯函数，便于单测）。
+
+    **Anthropic 兼容端点不一定实现 `/v1/models`**——它们通常只为 `/v1/messages` 而生：
+    实测 DeepSeek 的 `https://api.deepseek.com/anthropic` 列不出模型，而同一家的 OpenAI 兼容端点
+    `https://api.deepseek.com/v1` 可以。列模型只是配置面板的**辅助**功能（对话本身走 messages，
+    不受影响），所以这里多试几个同源地址，别让用户以为 key 填错了。
+    """
+    root = (base_url or "").rstrip("/")
+    out = []
+    if provider == "openai":
+        if root:
+            out.append(root + "/models")
+    else:
+        root = root or "https://api.anthropic.com"
+        out.append(root + ("/models" if root.endswith("/v1") else "/v1/models"))
+        if root.endswith("/anthropic"):
+            # 同一家的 OpenAI 兼容端点（DeepSeek 即此形态）：.../anthropic → .../v1
+            out.append(root[: -len("/anthropic")] + "/v1/models")
+    seen, uniq = set(), []
+    for u in out:
+        if u not in seen:
+            seen.add(u)
+            uniq.append(u)
+    return uniq
 
 
 def expand_provider_profiles(presets: dict, user_providers: "dict | None",
@@ -437,8 +475,10 @@ def save_user_providers(providers: dict, path: "Path | None" = None) -> None:
                  encoding="utf-8")
 
 
-# 开箱默认：从未配过 provider 时，启用火山方舟 + 只勾选 kimi-k2.6（填 ARK_API_KEY 即用）。
-DEFAULT_PROVIDERS = {"volcengine-ark": {"enabled": True, "models": ["kimi-k2.6"]}}
+# 开箱默认：**不预设任何 provider**。装好后由用户在「设置 → Provider」自己选服务商填 key——
+# 预置一家（原来是火山方舟）等于替用户做主：他没这家的 key 时下拉里挂着个用不了的模型，
+# 首轮对话报的是认证错，而不是"你还没配模型"。空表 = 首次启动就明确提示去配置。
+DEFAULT_PROVIDERS: dict = {}
 
 
 # ---- 浏览器穿透（Playwright MCP）一键开关（GUI 管理，与手编 config.yaml 的 mcp 段并存）------------

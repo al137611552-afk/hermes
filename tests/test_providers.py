@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import tempfile  # noqa: E402
 
 from agentcore.config import (  # noqa: E402
-    PROVIDER_PRESETS, expand_provider_profiles, load_user_providers, save_user_providers,
+    DEFAULT_PROVIDERS, NO_MODEL_HINT, PROVIDER_PRESETS, AppConfig,
+    expand_provider_profiles, load_user_providers, model_list_urls, save_user_providers,
 )
 
 
@@ -68,6 +69,56 @@ def test_providers_roundtrip():
         save_user_providers({"openai": {"enabled": True, "models": ["gpt-4o"]}}, p)
         got = load_user_providers(p)
         assert got["openai"]["enabled"] is True and got["openai"]["models"] == ["gpt-4o"]
+
+
+def test_no_provider_enabled_out_of_the_box():
+    """开箱不预设服务商：预置一家等于替用户做主——他没这家 key 时下拉挂着个用不了的模型，
+    首轮报的是认证错而不是"你还没配模型"。"""
+    assert DEFAULT_PROVIDERS == {}
+    assert expand_provider_profiles(PROVIDER_PRESETS, DEFAULT_PROVIDERS) == {}
+
+
+def test_no_model_configured_says_where_to_go():
+    """没配模型时给的是人话指路，不是 KeyError('未找到模型档案 \'\'')。"""
+    cfg = AppConfig(active_model="", models={})
+    try:
+        cfg.get_model()
+        raise AssertionError("该抛异常")
+    except KeyError as e:
+        assert "Provider" in str(e) and "API Key" in str(e)
+        assert str(e).strip("'\"") == NO_MODEL_HINT
+    # 有模型但没选中：另一句话（指顶部下拉，不是让他去配 key）
+    cfg2 = AppConfig(active_model="", models={"a": {"provider": "openai", "model": "x", "api_key_env": "K"}})
+    try:
+        cfg2.get_model()
+        raise AssertionError("该抛异常")
+    except KeyError as e:
+        assert "还没有选中模型" in str(e)
+
+
+def test_deepseek_uses_official_anthropic_endpoint():
+    """DeepSeek 走 Anthropic 兼容协议：base_url 是 /anthropic（SDK 会在其后接 /v1/messages）。"""
+    ds = PROVIDER_PRESETS["deepseek"]
+    assert ds["provider"] == "anthropic"
+    assert ds["base_url"] == "https://api.deepseek.com/anthropic"
+    out = expand_provider_profiles(PROVIDER_PRESETS, {"deepseek": {"enabled": True}})
+    assert out["deepseek/deepseek-chat"]["base_url"] == "https://api.deepseek.com/anthropic"
+
+
+def test_model_list_falls_back_to_same_host_openai_endpoint():
+    """Anthropic 兼容端点常常只实现 /v1/messages——DeepSeek 就列不出模型，但同一家的
+    OpenAI 兼容端点可以。列模型只是配置面板的辅助功能，多试一个同源地址，别让用户以为 key 填错。"""
+    assert model_list_urls("anthropic", "https://api.deepseek.com/anthropic") == [
+        "https://api.deepseek.com/anthropic/v1/models",     # 先按协议本来的地址试
+        "https://api.deepseek.com/v1/models",               # 再退到同一家的 OpenAI 兼容端点
+    ]
+    # 不带 /anthropic 后缀的兼容端点（如火山方舟 coding）没有可推导的同源地址 → 只试一个
+    assert model_list_urls("anthropic", "https://ark.cn-beijing.volces.com/api/coding") == [
+        "https://ark.cn-beijing.volces.com/api/coding/v1/models"]
+    assert model_list_urls("anthropic", "") == ["https://api.anthropic.com/v1/models"]   # 官方默认
+    assert model_list_urls("anthropic", "https://x.com/v1") == ["https://x.com/v1/models"]  # 已带 /v1 不再叠
+    assert model_list_urls("openai", "https://api.deepseek.com/v1") == ["https://api.deepseek.com/v1/models"]
+    assert model_list_urls("openai", "") == []              # OpenAI 协议没 base_url 就没得试
 
 
 def _run_all():
