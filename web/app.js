@@ -1663,9 +1663,11 @@ function startDebate(v, data) {
   finalizeTextBubble(v);                      // 收束上一段主模型文本气泡
   const box = document.createElement("div");
   box.className = "rv-debate";
+  // 标题按**真实模型分配**渲染：同构时如实叫「单模型自审」并给出改进指引（纯逻辑在 pure.js）
+  const hd = debateHeader(data && data.models, data && data.heterogeneous);
   box.innerHTML =
-    `<div class="rvd-head">🔬 方案评审 · 多模型讨论` +
-      `<span class="rvd-sub">${escapeHtml(DEBATE_ROLE_LABELS.product)} → ${escapeHtml(DEBATE_ROLE_LABELS.technical)} → 主模型回复 · 逐轮收敛</span></div>` +
+    `<div class="rvd-head${hd.warn ? " rvd-warn" : ""}">${escapeHtml(hd.title)}` +
+      `<span class="rvd-sub">${escapeHtml(hd.sub)}</span></div>` +
     `<div class="rvd-seed">正在拆解方案为决策项…</div>` +   // 即时反馈：worker 一启动就亮，不等抽取阻塞调用
     `<div class="rvd-stream"></div>` +
     `<div class="rvd-foot"></div>`;

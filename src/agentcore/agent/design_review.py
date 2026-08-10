@@ -325,6 +325,60 @@ def review_output_spec(n_decisions: int = 0) -> str:
     return focus + _REVIEW_OUTPUT_SPEC
 
 
+# ── 默认异构：自动把两个镜头分到不同模型（ADR 0019 的核心机制，原来默认没生效）──────────
+# ADR v4 锁的是"手动评审**默认异构** 2 模型"，代码注释也写着"两镜头默认异构模型（降错误相关性）"，
+# 但实现的默认是 `design_review_models: {}` → provider_for 全部回落主模型
+# = **同一个模型演三个角色**。同模型的错误高度相关，它挑不出自己看不见的问题；
+# 真机反馈过的"产物像单模型提炼"，根因就在这里（当时以为是过程不可见，加了分屏，其实是同构）。
+# 现在：用户没显式配就**自动挑**——跨 provider 优先（不同厂商错误相关性最低），
+# 实在只有一个模型可用就如实降级、并让界面说清楚，而不是继续管它叫"多模型讨论"。
+
+
+def _provider_of(profile: str) -> str:
+    """模型档案名 `provider/model` 取 provider 段（老式扁平名就是它自己）。"""
+    return (profile or "").split("/", 1)[0]
+
+
+def usable_profiles(models, env_get) -> list:
+    """筛出**当前真能用**的模型档案：api_key_env 已设值的（没写 env 的当作可用）。纯函数（env 注入）。"""
+    out = []
+    for name, mc in (models or {}).items():
+        env = getattr(mc, "api_key_env", None)
+        if env is None and isinstance(mc, dict):
+            env = mc.get("api_key_env")
+        if not env or (env_get(env) or "").strip():
+            out.append(name)
+    return out
+
+
+def auto_reviewer_models(available, active: str, explicit=None) -> dict:
+    """给三个角色（product / technical / main）定模型档案。用户显式配的优先，其余自动挑。
+
+    挑选偏好：① 与主模型**不同 provider** 的排前面（跨厂商 = 错误相关性最低）；
+    ② 两个镜头彼此也尽量不同 provider；③ 没得挑就回落主模型（此时 is_heterogeneous 为假）。
+    纯函数，便于单测穷举各种"只有一个模型/只有两个/跨厂商"的组合。
+    """
+    explicit = migrate_reviewer_models(explicit or {})
+    pool = [p for p in (available or []) if p and p != active]
+    pool.sort(key=lambda p: _provider_of(p) == _provider_of(active))   # 异厂商优先（稳定排序）
+    picks: list = []
+    for role in ("product", "technical"):
+        if explicit.get(role):
+            picks.append(explicit[role])
+            continue
+        used_provs = {_provider_of(x) for x in picks}
+        cand = (next((p for p in pool if p not in picks and _provider_of(p) not in used_provs), None)
+                or next((p for p in pool if p not in picks), None)
+                or active)
+        picks.append(cand)
+    return {"product": picks[0], "technical": picks[1], "main": explicit.get("main") or active}
+
+
+def is_heterogeneous(plan: dict) -> bool:
+    """两个镜头是否真的落在不同模型上——这是"多模型讨论"这个说法成不成立的唯一判据。"""
+    return bool(plan) and plan.get("product") != plan.get("technical")
+
+
 _REVIEW_OUTPUT_SPEC = (
     "\n\n**你只是进言，不做决定**：hub-and-spoke（ADR 0019 v5）——你只向**主模型**进言，最终采纳/反驳/收敛"
     "全由主模型逐条回复决定。你**建议**的 status/blocking 是给主模型的参考，不会直接改动方案；尤其**不得替方案"

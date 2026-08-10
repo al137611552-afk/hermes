@@ -956,22 +956,43 @@ class Conversation:
         return self._oneshot(provider, prompt, max_tokens)[0]
 
     def _design_review_provider_for(self):
-        """据 config.agent.design_review_models 把 reviewer 名路由到模型档案；缺省=主模型（异构唯一落点）。
+        """把 reviewer 名路由到模型档案（异构的唯一落点）：显式配的优先，否则自动挑不同模型。
 
-        v5 hub-and-spoke：除 product/technical 两评审员外，主模型（name=="main"）逐轮回复也走此 seam——
-        缺省即用 self.active_model（当前会话主模型），无需用户额外配置；想给收敛用异构档，config 里加 main 键即可。
+        v5 hub-and-spoke：除 product/technical 两评审员外，主模型（name=="main"）逐轮回复也走此 seam。
+        分配由 `review_model_plan()` 决定（见那里为什么要"默认异构"）。
         """
-        from ..agent.design_review import migrate_reviewer_models
         cfg = self.res.config
-        mapping = migrate_reviewer_models(cfg.agent.design_review_models or {})   # 旧键 execution/architecture 归一
+        mapping = self.review_model_plan()
 
         def provider_for(name):
             profile = mapping.get(name) or self.active_model
             try:
                 return build_provider(cfg, profile)
-            except Exception:
-                return None                  # 构造失败 → 该角色跳过，不阻断评审
+            except Exception as e:  # noqa: BLE001 — 构造失败该角色跳过、不阻断评审，但**不能静默**
+                # 教训：这里原本是裸 `except: return None`，一次改动漏了 cfg 绑定 → NameError 被吞成
+                # "该角色没配模型"，评审照常"成功"返回、实际三个角色一个都没跑（决策全被升级成待拍板）。
+                # 兜底可以宽，但必须留声——否则编程错误会伪装成正常降级。
+                self.emit("review_warn", {"reviewer": name, "profile": profile,
+                                          "error": f"{type(e).__name__}: {e}"})
+                return None
         return provider_for
+
+    def review_model_plan(self) -> dict:
+        """三个评审角色各用哪个模型档案：用户显式配的优先，其余**自动挑不同模型**（默认异构）。
+
+        为什么要自动：ADR 0019 的核心机制是"对冲视角 + 降错误相关性"，而原来的默认
+        `design_review_models: {}` 会让三个角色全部回落主模型＝同一个模型演三个角色，
+        核心机制直接失效（同模型的错误高度相关，挑不出自己看不见的问题）。
+        用户不该为了让"多模型讨论"名副其实而先去手配一张映射表。
+        """
+        import os as _os
+        from ..agent.design_review import auto_reviewer_models, usable_profiles
+        cfg = self.res.config
+        try:
+            avail = usable_profiles(cfg.models, _os.getenv)
+        except Exception:  # noqa: BLE001 — 取不到档案清单就退回"只有主模型"，不阻断评审
+            avail = []
+        return auto_reviewer_models(avail, self.active_model, cfg.agent.design_review_models)
 
     @staticmethod
     def _decision_brief(d) -> dict:
@@ -1076,7 +1097,10 @@ class Conversation:
         try:
             # 即时反馈：worker 一启动就发 review_started，前端面板秒出「正在拆解方案…」——不必等下面
             # _seed_decisions_from_plan 那次**阻塞式**整段抽取调用返回（真机反馈「点评审要等一会儿才跳出」的根因）。
-            self.emit("review_started", {})
+            from ..agent.design_review import is_heterogeneous
+            plan = self.review_model_plan()
+            # 如实告诉前端"到底是不是多模型"——同构时界面不该继续叫它「多模型讨论」
+            self.emit("review_started", {"models": plan, "heterogeneous": is_heterogeneous(plan)})
             # 逐 token 推前端讨论流（产品→技术→主模型回复，单列线性实时打字机）；on_event 推逐轮进度。
             # v5 hub-and-spoke：主模型（name==MAIN="main"）逐轮回复更长——放宽其上限（main_max_tokens=None=走模型单次预算），
             # 避免逐条决策回复被评审员紧上限从中间切断。主模型 provider 由 provider_for("main") 路由（缺省=主档）。

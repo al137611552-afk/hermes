@@ -243,6 +243,26 @@
     return { folded: true, preview, full: s, total: lines.length, hidden: Math.max(0, lines.length - ml) };
   }
 
+  // 方案评审的标题/副标题（ADR 0019）：**按真实模型分配说话**。
+  // 三个角色落在同一个模型上时不许再叫「多模型讨论」——同模型的错误高度相关，
+  // 它挑不出自己看不见的问题，管这个叫多模型讨论是骗自己。
+  function debateHeader(models, heterogeneous) {
+    const m = models || {};
+    const short = (p) => String(p || "").split("/").pop() || "?";
+    if (!m.product || !m.technical) {                    // 老会话/没带分配信息：保持中性措辞
+      return { title: "🔬 方案评审 · 多轮讨论", warn: false,
+               sub: "产品镜头 → 技术镜头 → 主模型回复 · 逐轮收敛" };
+    }
+    if (heterogeneous) {
+      return { title: "🔬 方案评审 · 多模型讨论", warn: false,
+               sub: `产品镜头 · ${short(m.product)} → 技术镜头 · ${short(m.technical)}`
+                    + ` → 主模型回复 · ${short(m.main)} · 逐轮收敛` };
+    }
+    return { title: "🔬 方案评审 · 单模型自审", warn: true,
+             sub: `⚠ 三个角色都是同一个模型（${short(m.product)}）：同模型的错误高度相关，`
+                  + `对冲价值有限。在设置里配第二个 provider 才是真正的多模型讨论。` };
+  }
+
   // 工具产物句柄（ADR 0021）：从工具结果文本里认出产物路径，前端把它渲染成可点开的文件。
   // 认**路径**而不是认提示语——三处接入点（前台 shell / web_fetch / 后台进程）措辞各不相同，
   // 但路径形态是统一的，将来改文案也不会把这里改坏。按出现顺序去重。
@@ -518,7 +538,7 @@
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
     accumulateUsage, estimateCostUsd, MODEL_PRICING,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
-    formatEval, extractArtifacts,
+    formatEval, extractArtifacts, debateHeader,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
     DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_MAIN, DEBATE_MAIN_LABEL, debateMainRoundLabel,
     DEBATE_STATUS_ZH, splitVerdictProse, verdictTally, debateConvergedText,

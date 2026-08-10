@@ -15,6 +15,7 @@ from agentcore.agent.design_review import (  # noqa: E402
     ACCEPTED, DEFERRED, NEEDUSER, OPEN, REJECTED, Decision, DesignReviewSession,
     apply_review, build_review_prompt, can_start_coding, count_blocking,
     focus_count, review_output_spec, scale_review_budget,
+    auto_reviewer_models, is_heterogeneous, usable_profiles,
     diagnose_decisions, escalate_unresolved, gate_status,
     make_review_fn, parse_decisions, render_consensus, round_snapshot, run_review,
     should_stop,
@@ -580,6 +581,49 @@ def test_review_fn_scales_budget_by_scope_and_model_cap():
     fn.scope = 50
     fn("product", "p")
     assert seen["mt"] == 8192                    # 顶到模型天花板
+
+
+# ---- 默认异构（ADR 0019 的核心机制，原来默认没生效）----------------------------
+
+
+def test_auto_picks_different_models_cross_provider_first():
+    """跨厂商优先：不同 provider 的模型错误相关性最低，是"对冲"最有效的形态。"""
+    plan = auto_reviewer_models(["ark/kimi", "ark/deepseek", "openai/gpt-4o"], "ark/kimi")
+    assert plan["main"] == "ark/kimi"
+    assert plan["product"] == "openai/gpt-4o"       # 先挑异厂商的
+    assert plan["technical"] == "ark/deepseek"      # 再挑与主模型不同的那个
+    assert is_heterogeneous(plan)
+
+
+def test_auto_uses_two_models_of_same_provider_when_thats_all_there_is():
+    plan = auto_reviewer_models(["ark/kimi", "ark/deepseek"], "ark/kimi")
+    assert plan["product"] == "ark/deepseek" and plan["technical"] == "ark/kimi"
+    assert is_heterogeneous(plan)                   # 同厂不同模型，仍算异构（聊胜于无）
+
+
+def test_single_model_degrades_honestly():
+    """只有一个模型可用：三个角色同模型——此时 is_heterogeneous 必须为假，
+    界面据此改叫"单模型自审"，绝不能继续吹"多模型讨论"（同模型挑不出自己看不见的问题）。"""
+    plan = auto_reviewer_models(["ark/kimi"], "ark/kimi")
+    assert plan == {"product": "ark/kimi", "technical": "ark/kimi", "main": "ark/kimi"}
+    assert not is_heterogeneous(plan)
+    assert not is_heterogeneous(auto_reviewer_models([], "ark/kimi"))
+
+
+def test_explicit_mapping_wins_and_old_keys_migrate():
+    plan = auto_reviewer_models(["a/x", "b/y", "c/z"], "a/x",
+                                {"architecture": "c/z"})     # 旧键 → technical
+    assert plan["technical"] == "c/z"
+    assert plan["product"] in ("b/y", "c/z") and plan["product"] != plan["technical"]
+
+
+def test_usable_profiles_filters_by_key_presence():
+    class M:
+        def __init__(self, env): self.api_key_env = env
+    models = {"has": M("K1"), "missing": M("K2"), "nokey": M("")}
+    env = {"K1": "sk-xxx", "K2": "  "}.get
+    assert usable_profiles(models, env) == ["has", "nokey"]   # 空白 key 不算可用；没写 env 的当可用
+    assert usable_profiles({}, env) == []
 
 
 def _run_all():
