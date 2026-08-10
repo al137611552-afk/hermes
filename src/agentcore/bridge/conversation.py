@@ -214,11 +214,13 @@ class Conversation:
         self.plan_mode = False            # 规划模式（FR-11.5）：只读勘察+产出方案，运行时态不持久化
         self._review_session = None       # ADR 0019：规划模式下的方案评审会话（DesignReviewSession），运行时态
         self._review_applied = False      # ADR 0019 v4：本轮评审是否已落回规划并开工（终态）——修 bug#4：应用后切回不再重现面板/重复开工
+        self._review_loaded = False       # 是否已尝试从库回填评审（惰性一次；见 _load_review_state）
         self._review_applying = False     # 正在落回（重排耗时中）：一置位 get_design_review 即转终态，堵住"切走再切回二次开工"
         self._review_thread: "threading.Thread | None" = None  # ADR 0019 v4：评审跑在独立后台线程（否则同步占用 JS-API 通道，WebView2 下 evaluate_js 分屏事件要等整轮跑完才渲染）
         self._review_thread_lock = threading.Lock()
         self._review_cancel = threading.Event()  # 协作式取消评审：退出规划/关面板/开工时置位，评审 worker 据此提前收场，别与开发并发
         self._pending_review_plan = None  # start 已确认可评审的方案原文，交 run 让评审模型直接读取抽决策
+        self._review_source = ""          # 这份方案是哪来的（指定内容 / 规划 notes / 最后一条回复），供 UI 显示与回流选路
         self.crazy_mode = False           # 自主/crazy 模式（无人值守外层循环），运行时态不持久化
         self._last_turn_hit_max = False   # 上一轮 send_message 是否撞步数上限（crazy 外层据此强制续命）
         self._last_turn_had_inject = False # 上一轮是否有用户中途补充（crazy 外层据此不轻信 [[DONE]]）
@@ -992,12 +994,68 @@ class Conversation:
             avail = usable_profiles(cfg.models, _os.getenv)
         except Exception:  # noqa: BLE001 — 取不到档案清单就退回"只有主模型"，不阻断评审
             avail = []
-        return auto_reviewer_models(avail, self.active_model, cfg.agent.design_review_models)
+        plan = auto_reviewer_models(avail, self.active_model, cfg.agent.design_review_models)
+        # 兜底闸：**任何**落到镜头上的档案都必须现在就能解析出 key，否则退回主模型。
+        # 自动挑已经只在 usable_profiles 里选，但显式映射（用户在下拉里选的档）不过那道筛——
+        # 选完之后把 key 删了/换了机器，界面照样显示成正常的多模型讨论，实际那一路 401。
+        for role in ("product", "technical"):
+            prof = plan.get(role)
+            if prof and prof != self.active_model and not self._profile_key_ready(prof):
+                self.emit("review_warn", {"reviewer": role, "profile": prof,
+                                          "error": "该模型档案没有可用的 API Key，本轮改用主模型"})
+                plan[role] = self.active_model
+        return plan
+
+    def _profile_key_ready(self, profile: str) -> bool:
+        """该模型档案现在能不能真的发出请求：档案存在 且 它的 api_key_env 解析得出非空 key。"""
+        cfg = self.res.config
+        mc = cfg.models.get(profile)
+        if mc is None:
+            return False
+        try:
+            return bool((cfg.resolve_api_key(mc) or "").strip())
+        except Exception:  # noqa: BLE001 — 解析不出就当不可用（宁可退回主模型，也别显示成能跑）
+            return False
 
     @staticmethod
     def _decision_brief(d) -> dict:
         return {"id": d.id, "title": d.title, "current_choice": d.current_choice,
                 "status": d.status, "blocking": list(d.blocking)}
+
+    # ---- 评审状态持久化（ADR 0019）：评审跑十几分钟才出结果，别关个应用就全没了 ----
+    def _save_review_state(self) -> None:
+        """把当前评审（决策/签字/已开工终态）整份写库。任何改动评审的入口都该调它。"""
+        if self.res.store is None or self.session_id is None:
+            return                                   # 草稿会话没落库，无处可存（重启本就不留）
+        try:
+            payload = None
+            if self._review_applied:
+                # 已开工是终态：只留标记，重开应用后面板照旧不重现、也不可重复开工
+                payload = {"applied": True}
+            elif self._review_session is not None:
+                payload = dict(self._review_session.to_dict(), applied=False)
+            self.res.store.set_review(self.session_id, payload)
+        except Exception:  # noqa: BLE001 — 存不下不该拖垮评审本身（同 checkpoint 的宽容策略）
+            pass
+
+    def _load_review_state(self) -> None:
+        """惰性回填评审：切回会话 / 重启应用后第一次读面板时从库里恢复。"""
+        if self._review_loaded:
+            return
+        self._review_loaded = True                   # 只试一次，失败就当没有
+        if self.res.store is None or self.session_id is None:
+            return
+        try:
+            data = self.res.store.get_review(self.session_id)
+        except Exception:  # noqa: BLE001
+            return
+        if not data:
+            return
+        if data.get("applied"):
+            self._review_applied = True
+            return
+        from ..agent.design_review import DesignReviewSession
+        self._review_session = DesignReviewSession.from_dict(data)
 
     def _review_state(self, ok: bool = True) -> dict:
         s = self._review_session
@@ -1009,6 +1067,8 @@ class Conversation:
                 "can_start": s.can_start(),
                 "decisions": [self._decision_brief(d) for d in s.decisions]}
 
+    MIN_REVIEW_CHARS = 200      # 自动兜底取到的文本短于此 = 多半是确认句而非方案（显式指定不受限）
+
     def start_design_review(self, proposal_text: "str | None" = None) -> dict:
         """**第一阶段（瞬时，零模型调用）**：只校验有方案可评、亮出面板；抽取+评审全在 `run_design_review`。
 
@@ -1017,28 +1077,48 @@ class Conversation:
         """
         if not self.res.config.agent.design_review:
             return {"ok": False, "error": "design_review 未启用（config.agent.design_review=false）"}
-        # 方案来源优先级：显式传入 > 规划 notes > 对话里最后一条 assistant 消息（方案常直接产在对话里）。
-        text = (proposal_text or self.get_notes() or self._last_assistant_text() or "").strip()
+        # 来源优先级：**用户显式指定**（点某条回复/划选/粘贴）> 规划 notes > 最后一条 assistant 消息。
+        # 最后那条只是兜底：规划模式下模型常以「要我开始吗」这类确认句收尾，抓到的就是它——
+        # 于是评审对着一句废话抽决策，看起来跑了、其实什么也没评（真机反馈的根因）。
+        explicit = (proposal_text or "").strip()
+        source = "指定内容" if explicit else ("规划 notes" if (self.get_notes() or "").strip() else "最后一条回复")
+        text = explicit or (self.get_notes() or "").strip() or self._last_assistant_text().strip()
         if not text:
-            return {"ok": False, "error": "没有可评审的方案（先产出规划方案，或传入 proposal_text）"}
+            return {"ok": False, "error": "没有可评审的方案：在某条回复下点「🔬 评审这段」，或划选一段文字再发起。"}
+        if not explicit and len(text) < self.MIN_REVIEW_CHARS:
+            # 兜底抓到的东西太短 = 多半是确认句/寒暄，不是方案。**明说抓错了**，别硬着头皮评。
+            return {"ok": False, "error":
+                    f"没抓到像样的方案（自动取到的「{source}」只有 {len(text)} 字：{text[:40]}…）。"
+                    "请在包含方案的那条回复下点「🔬 评审这段」，或划选方案正文再发起评审。"}
         self._pending_review_plan = text
+        self._review_source = source
         self._review_session = None
         self._review_applied = False      # 新一轮评审开启：清掉上一轮的"已开工"终态
+        self._review_loaded = True        # 本轮以内存为准：别再从库里回填上一轮
+        self._save_review_state()         # 同步清掉库里的旧评审（否则重启后旧决策又冒出来）
         return {"ok": True, "ready": True, "decisions": [],
                 "gate": {"can_start": False, "blocking_count": 0, "user_signed": False, "reason": "评审待运行"}}
 
     def _seed_decisions_from_plan(self, review_fn):
         """让评审模型**直接读方案原文**抽出初始 Decision 列表（取代主模型单独拆解）。
 
-        返回 (session_or_None, error_dict_or_None)。用独立的 2048 token 上限（评审输出上限 1024 太小、长列表会截断）。
-        路由到「务实」评审员对应的模型档（配了异构就用快/异构档，否则回落主模型）。
+        返回 (session_or_None, error_dict_or_None)。
+
+        **抽取固定走主模型**（除非用户显式给 product 配了档）：抽取是整个评审的地基——后面所有讨论、
+        四态共识、待办重排都建在这份决策清单上。默认异构（`auto_reviewer_models`）挑的是"对冲视角"用的
+        模型，不该顺带把地基也换掉：那个档可能更弱/更贵/端点有问题，抽取一失败整个评审起都起不来。
         """
-        from ..agent.design_review import (DesignReviewSession, diagnose_decisions, parse_decisions)
+        from ..agent.design_review import (DesignReviewSession, diagnose_decisions,
+                                           migrate_reviewer_models, parse_decisions)
         text = (self._pending_review_plan or self.get_notes() or "").strip()
         if not text:
             return None, {"ok": False, "error": "没有可评审的方案（先调 start_design_review）"}
-        provider = self._design_review_provider_for()("product") \
-            or build_provider(self.res.config, self.active_model)
+        explicit = migrate_reviewer_models(self.res.config.agent.design_review_models or {})
+        profile = explicit.get("product") or self.active_model
+        try:
+            provider = build_provider(self.res.config, profile)
+        except Exception:  # noqa: BLE001 — 显式配的档构造不出来就退回主模型，别让抽取整个失败
+            provider = build_provider(self.res.config, self.active_model)
         prompt = self._SEED_PROMPT + text
         # 抽取输出随决策数增长，**不设人为紧上限**：用满该模型单次预算（max_tokens=None）。延迟只随实际生成量，
         # 精简 schema 下正常方案输出很短、并不慢；只有极大方案才可能触到模型硬顶——那种情况如实报截断，别误导成"没吐JSON"。
@@ -1126,6 +1206,7 @@ class Conversation:
             if self._review_cancel.is_set():   # 被取消：cancel_design_review 已 emit 过 review_done，这里不再重复发终态
                 return {"ok": False, "cancelled": True}
             state = self._review_state(ok=True)
+            self._save_review_state()         # 跑了十几分钟的结果先落库，再推前端
             self.emit("review_done", state)
             return state
         except Exception as e:  # 后台线程异常无处冒泡：兜底 emit，避免前端 busy 卡死
@@ -1134,6 +1215,7 @@ class Conversation:
             return st
 
     def get_design_review(self) -> dict:
+        self._load_review_state()        # 切回会话/重启后第一次读：从库里把上次的评审恢复出来
         # 终态：本轮已应用并开工（或正在开工）——面板不再重现（修 bug#4/二次重排：切走再切回不重弹、不可重复开工）。
         if self._review_applied or self._review_applying:
             return {"ok": False, "applied": True, "error": "本轮评审已应用并开始编码"}
@@ -1145,6 +1227,7 @@ class Conversation:
         if self._review_session is None:
             return {"ok": False, "error": "尚未开始评审"}
         hit = self._review_session.resolve(decision_id, status, current_choice)
+        self._save_review_state()
         return self._review_state(ok=hit)
 
     def sign_off_design_review(self) -> dict:
@@ -1152,6 +1235,7 @@ class Conversation:
         if self._review_session is None:
             return {"ok": False, "error": "尚未开始评审"}
         self._review_session.sign()
+        self._save_review_state()
         return self._review_state(ok=True)
 
     def can_start_coding(self) -> bool:
@@ -1159,6 +1243,38 @@ class Conversation:
         return bool(self._review_session and self._review_session.can_start())
 
     _REVIEW_SECTION_MARK = "## 评审共识（Review）"
+
+    _HANDOFF_HEADER = "【方案评审结论】以下是刚刚对这份方案做的多角色评审定稿，请据此迭代后续开发。"
+    _HANDOFF_FOOTER = (
+        "\n\n请你：① 先说清楚这些定稿**改变了**你原来的哪些做法（逐条对上决策标题，别泛泛说「已采纳」）；"
+        "② 然后按定稿继续开发——采纳(Accepted)的照做，否决(Rejected)的别再做，后置(Deferred)的先不做但记进待办。"
+        "③ 如果某条定稿你认为执行不了或有更好的做法，直接说出来并给理由，不要闷头照做。"
+    )
+
+    def hand_review_to_main(self) -> dict:
+        """把评审定稿作为一条消息交给**主模型**，让它据此迭代后续开发（阶段方案的默认出口）。
+
+        与 `apply_review_to_plan` 的分工：那条是"整体方案定稿 → 落回规划 notes + **重排整份待办**"；
+        这条**不碰 notes、不碰待办**——评的往往只是开发途中的一个阶段方案，让一次阶段评审把整份
+        待办重排掉是过头的。这里只把结论喂回对话，主模型接着干。
+        """
+        s = self._review_session
+        if s is None:
+            return {"ok": False, "error": "尚未开始评审"}
+        if self._review_applied or self._review_applying:   # 同"开始编码"：交接过就是终态，别重复喂
+            return {"ok": False, "error": "本轮评审已交接（或已开工），无需重复"}
+        if not s.can_start():
+            return {"ok": False, "error": "评审未放行（" + s.gate().get("reason", "") +
+                    "）：交给主模型前需未决清零并签字"}
+        src = f"（评审对象：{self._review_source}）" if self._review_source else ""
+        msg = self._HANDOFF_HEADER + src + "\n\n" + s.consensus() + self._HANDOFF_FOOTER
+        r = self.enqueue(msg)
+        if not r.get("ok"):
+            return r
+        # 交接完成 = 本轮评审收工：面板收起、不可重复交接（同"开始编码"的终态语义）
+        self._review_applied = True
+        self._save_review_state()
+        return {"ok": True, "handed": True, "queued": r.get("queued"), "steering": r.get("steering")}
 
     def apply_review_to_plan(self) -> dict:
         """把评审定稿落回**规划(notes)** + **任务清单(tasks)**。仅在 gate 放行（未决清零+签字）后可用。
@@ -1208,6 +1324,7 @@ class Conversation:
             tasks = done + new_pending
             self.res.store.set_tasks(self.session_id, tasks)
             self._review_applied = True       # 终态：已落回并开工（修 bug#4）
+            self._save_review_state()         # 终态也落库：重启后面板照旧不重现、不可重复开工
             return {"ok": True, "notes_updated": True, "tasks_added": len(new_pending), "replanned": True}
         finally:
             self._review_applying = False    # 成功已置 applied（终态续存）；失败则解锁，允许重试

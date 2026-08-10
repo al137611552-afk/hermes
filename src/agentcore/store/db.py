@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS session_notes (
     notes      TEXT NOT NULL,        -- 工作笔记 Markdown（整份替换；FR-11.3a）
     updated_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS session_review (
+    session_id INTEGER PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    review     TEXT NOT NULL,        -- JSON：DesignReviewSession.to_dict()（ADR 0019；整份替换）
+    updated_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS checkpoints (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -291,6 +296,37 @@ class Store:
                 "SELECT notes FROM session_notes WHERE session_id=?", (session_id,)
             ).fetchone()
         return row["notes"] if row else ""
+
+    # ---- 方案评审（ADR 0019，按会话整份替换式存取） ----------------------
+    def set_review(self, session_id: int, review: "dict | None") -> None:
+        """存一份评审状态（决策/签字/终态）。传 None/空 = 清掉这会话的评审。
+
+        评审跑十几分钟才出结果，原来只活在内存里——关掉应用就全没了（决策、拍板记录、共识一起丢）。
+        """
+        with self._lock:
+            if not review:
+                self._conn.execute("DELETE FROM session_review WHERE session_id=?", (session_id,))
+            else:
+                self._conn.execute(
+                    "INSERT INTO session_review(session_id, review, updated_at) VALUES (?,?,?) "
+                    "ON CONFLICT(session_id) DO UPDATE SET review=excluded.review, "
+                    "updated_at=excluded.updated_at",
+                    (session_id, json.dumps(review, ensure_ascii=False), time.time()),
+                )
+            self._conn.commit()
+
+    def get_review(self, session_id: int) -> dict:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT review FROM session_review WHERE session_id=?", (session_id,)
+            ).fetchone()
+        if not row:
+            return {}
+        try:
+            data = json.loads(row["review"])
+        except (ValueError, TypeError):      # 手改坏/半截写入：当没有，别让整个会话打不开
+            return {}
+        return data if isinstance(data, dict) else {}
 
     # ---- 检查点（FR-11.6，按会话存快照 payload） -------------------------
     def add_checkpoint(self, session_id: int, label: str, payload: dict) -> int:

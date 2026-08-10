@@ -1677,6 +1677,145 @@ def test_apply_review_guards_against_double_replan(tmp: Path):
         convmod.build_provider = orig
 
 
+def test_review_refuses_to_evaluate_a_confirmation_sentence(tmp: Path):
+    """评审的输入原来是"猜最后一条回复"——规划模式下模型常以「要我开始吗」收尾，
+    于是评审对着一句确认语抽决策，看着跑了其实什么也没评。现在抓错就明说，别硬评。"""
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    conv.res.config.agent.design_review = True
+    conv.history.append(Message("assistant", "方案我已经写好了，要我开始实现吗？"))
+    r = conv.start_design_review()                       # 不指定内容 → 兜底抓到那句确认语
+    assert r["ok"] is False and "没抓到像样的方案" in r["error"]
+    assert "评审这段" in r["error"] or "划选" in r["error"]   # 告诉他该怎么做
+    # 显式指定内容 → 照评（长度不设限之外，来源也记下来）
+    r2 = conv.start_design_review("阶段二：权限模块方案\n1. 用 RBAC…\n2. 中间件在路由层…")
+    assert r2["ok"] is True and conv._review_source == "指定内容"
+
+
+def test_hand_review_to_main_feeds_consensus_back_without_touching_tasks(tmp: Path):
+    """阶段方案评完的出口：把定稿喂回主模型继续开发，**不重排整份待办**（那是整体方案的出口）。"""
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    conv.res.config.agent.design_review = True
+    conv.res.store.set_tasks(conv.session_id, [{"content": "原有待办", "status": "pending"}])
+    conv.res.store.set_notes(conv.session_id, "原有规划")
+    sent = []
+    conv.enqueue = lambda text, attachments=None: (sent.append(text), {"ok": True, "queued": 1})[1]
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _ReviewProvider()
+    try:
+        conv.start_design_review("阶段二：权限模块方案，用 SQLite 存会话，先不做全文检索")
+        conv._run_design_review_worker()
+        conv.resolve_decision("db", "Accepted", "SQLite")
+        conv.sign_off_design_review()
+        r = conv.hand_review_to_main()
+        assert r["ok"] is True and r["handed"] is True
+        assert len(sent) == 1 and "方案评审结论" in sent[0] and "Consensus" in sent[0]
+        assert "改变了" in sent[0]                        # 要求主模型说清哪些做法变了，不许泛泛"已采纳"
+        # 不碰规划与待办
+        assert conv.get_notes() == "原有规划"
+        assert [t["content"] for t in conv.res.store.get_tasks(conv.session_id)] == ["原有待办"]
+        # 交接即终态：面板收起、不可重复交接
+        assert conv.get_design_review().get("applied") is True
+        assert conv.hand_review_to_main()["ok"] is False
+    finally:
+        convmod.build_provider = orig
+
+
+def test_review_plan_never_shows_a_model_without_key(tmp: Path):
+    """评审镜头不许落在没 key 的档上——否则界面显示成正常的多模型讨论，那一路其实 401。
+
+    自动挑已经只在 usable_profiles 里选；这里守的是**显式映射**那条路（用户在下拉里选完之后
+    key 被删了/换了台机器），以及"必须留声"（emit review_warn，不许静默降级）。
+    """
+    import os
+    api = _api(tmp)
+    conv = api.active
+    warns = []
+    conv.emit = lambda ev, data: warns.append((ev, data))
+    os.environ["K"] = "sk-x"                       # m1（主模型）有 key
+    conv.res.config.models["m2"].api_key_env = "K_MISSING"   # m2 的 key 没配
+    conv.res.config.agent.design_review_models = {"technical": "m2"}   # 用户显式选了 m2
+    try:
+        plan = conv.review_model_plan()
+        assert plan["technical"] == "m1"           # 退回主模型，不拿没 key 的档冒充
+        assert any(e == "review_warn" and d["profile"] == "m2" for e, d in warns)   # 且说出来
+    finally:
+        os.environ.pop("K", None)
+        os.environ.pop("K_MISSING", None)
+
+
+def test_review_survives_restart_and_terminal_state_too(tmp: Path):
+    """D9：评审跑十几分钟才出结果，原来只活在内存里——关掉应用就全没了。
+
+    这里用"同一个库上新建一个 Conversation"模拟重启：决策/拍板/签字要还在，
+    已开工的终态也要还在（否则重启后面板重现、还能再开工一次）。
+    """
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    sid = conv.session_id
+    conv.res.config.agent.design_review = True
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: _ReviewProvider()
+    try:
+        conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
+        conv._run_design_review_worker()
+        conv.resolve_decision("db", "Accepted", "SQLite")     # 用户拍板
+        conv.sign_off_design_review()                          # 签字
+
+        def reborn():                                          # ← 模拟重启：同一个库，全新对话对象
+            return Conversation(conv.res, cid=99, session_id=sid, history=[],
+                                workspace=conv.workspace, pending_workspace=None,
+                                active_model=conv.active_model)
+
+        r = reborn().get_design_review()
+        assert r["ok"] is True and len(r["decisions"]) == 2     # 决策回来了
+        assert {d["id"]: d["status"] for d in r["decisions"]}["db"] == "Accepted"   # 拍板结果保住
+        assert r["gate"]["user_signed"] is True and r["can_start"] is True          # 签字也保住
+        assert r["reviewed"] is True                            # 别显示成"还没评过"
+
+        conv.res.store.set_notes(sid, "原方案正文")
+        assert conv.apply_review_to_plan()["ok"] is True        # 开工 → 终态
+        r2 = reborn().get_design_review()
+        assert r2["ok"] is False and r2.get("applied") is True  # 重启后仍是终态，不重现、不可重复开工
+    finally:
+        convmod.build_provider = orig
+
+
+def test_seed_stays_on_main_model_while_reviewers_go_heterogeneous(tmp: Path):
+    """决策抽取是评审的**地基**，默认异构不该把它一起换掉（只有用户显式配 product 才换）。
+
+    默认异构上线时顺带把 `_seed_decisions_from_plan` 也路由到了自动挑的那个档——那个档可能更弱/更贵/
+    端点有问题，抽取一失败整个评审起都起不来。这里钉死：抽取走主模型，两个镜头照旧异构。
+    """
+    import os
+    import agentcore.bridge.conversation as convmod
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    conv.res.config.agent.design_review = True
+    conv.res.config.agent.design_review_models = {}      # 留空 = 自动挑
+    used = []
+    orig = convmod.build_provider
+    convmod.build_provider = lambda cfg, model: (used.append(model), _ReviewProvider())[1]
+    os.environ["K"] = "x"                                # 让 m1/m2 都算"key 已设"→ 自动挑挑得动
+    try:
+        plan = conv.review_model_plan()
+        assert plan["product"] == "m2" and plan["technical"] == "m1"   # 跨厂商优先，确实异构
+        conv.start_design_review("方案：用 SQLite 存会话，先不做全文检索")
+        conv._run_design_review_worker()
+        assert used[0] == conv.active_model == "m1"      # 第一次构造 = 抽取，必须是主模型
+        assert "m2" in used                              # 镜头照旧走异构档
+    finally:
+        convmod.build_provider = orig
+        os.environ.pop("K", None)
+
+
 def test_design_review_disabled_returns_error(tmp: Path):
     api = _api(tmp)
     api.active.res.config.agent.design_review = False
@@ -1730,13 +1869,21 @@ def test_start_design_review_retries_once_on_nojson(tmp: Path):
 
 
 def test_start_design_review_falls_back_to_last_assistant_message(tmp: Path):
-    """notes 为空但方案已产在对话里 → 回退取最后一条 assistant 消息，不再误报"没有可评审的方案"。"""
+    """notes 为空但方案已产在对话里 → 回退取最后一条 assistant 消息，不再误报"没有可评审的方案"。
+
+    注意这条兜底**只对够长的正文成立**：太短的（多半是「要我开始吗」这类确认句）会被拒，
+    见 test_review_refuses_to_evaluate_a_confirmation_sentence。"""
     api = _api(tmp)
     conv = api.active
     conv._ensure_session("x")
     conv.res.config.agent.design_review = True
     conv.history.append(Message("user", "帮我规划一个待办应用"))
-    conv.history.append(Message("assistant", "## 规划：技术栈用 React + IndexedDB，先做 MVP……"))
+    conv.history.append(Message("assistant",
+        "## 规划：技术栈用 React + IndexedDB，先做 MVP\n"
+        "1. 数据层：IndexedDB 直接存待办对象，不引 ORM；离线优先，后续再考虑同步。\n"
+        "2. 状态管理：先用 React 内置 context，不引 Redux——待办应用的状态图很浅。\n"
+        "3. 范围：第一版只做增删改查 + 完成态筛选，不做多人协作、不做提醒推送。\n"
+        "4. 待确认：要不要一开始就上 PWA 离线壳，还是先纯网页、稳定后再补。"))
     r = conv.start_design_review()                                # 不传 proposal_text、notes 也空
     assert r["ok"] is True and r.get("ready") is True
     assert "React" in (conv._pending_review_plan or "")          # 确用了对话里的方案原文
