@@ -527,6 +527,37 @@
     config: "配置目录", project: "本项目（.hermes/skills）",
   };
 
+  // ---- 自定义斜杠命令（FR-13.C1）：内置 + 用户自定义合并 ----
+
+  // 合并成补全菜单用的清单。内置在前（顺序稳定、肌肉记忆不变），自定义在后。
+  // 同名以内置为准——后端 discover_commands 已挡掉同名文件，这里再兜一层，
+  // 因为被顶掉的若是 /crazy 这种免确认入口，代价太大。
+  function mergeSlashCommands(builtin, custom) {
+    const out = (builtin || []).map((c) => ({ ...c, custom: false }));
+    const taken = new Set(out.map((c) => c.cmd));
+    (custom || []).forEach((c) => {
+      const cmd = c.slash || ("/" + (c.name || ""));
+      if (!c || !c.name || taken.has(cmd)) return;
+      taken.add(cmd);
+      out.push({
+        cmd,
+        arg: c.argument_hint || "",
+        desc: (c.description || "自定义命令") + (c.mode === "exec" ? "　·直接执行" : ""),
+        custom: true,
+        mode: c.mode || "prompt",
+        source: c.source || "",
+      });
+    });
+    return out;
+  }
+
+  // 把用户敲的 `/盯盘` 对到具体自定义命令上（找不到返回 null，由调用方提示"未知命令"）。
+  function findCustomCommand(custom, cmdText) {
+    const name = String(cmdText || "").replace(/^\//, "").trim();
+    if (!name) return null;
+    return (custom || []).find((c) => c && c.name === name) || null;
+  }
+
   // 焦点环绕（浮层 focus trap 用）：Tab 到末尾回到开头，Shift+Tab 到开头绕到末尾。
   // 当前焦点不在浮层内时（cur<0）：Tab 进第一个、Shift+Tab 进最后一个。
   function wrapFocusIndex(len, cur, shift) {
@@ -543,8 +574,10 @@
     { key: "__mcp__", label: "🔌 MCP 扩展", group: "capabilities" },
     { key: "__hooks__", label: "🪝 Hooks", group: "capabilities" },
     { key: "__skills__", label: "🧩 技能", group: "capabilities" },
+    { key: "__commands__", label: "⌨ 命令", group: "capabilities" },
     { key: "__appearance__", label: "🎨 外观", group: "general" },
     { key: "__features__", label: "🛠 功能开关", group: "general" },
+    { key: "__permissions__", label: "🔐 权限", group: "general" },
     { key: "__limits__", label: "📊 限额与预算", group: "general" },
   ];
   const SETTINGS_GROUPS = [
@@ -582,6 +615,19 @@
     return n ? { text: String(n), tone: "muted" } : null;
   }
 
+  function commandsNavBadge(commands, errors) {
+    // 有加载失败的命令文件时优先报问题——一条存了却用不了的命令，比少显示个数字严重
+    if ((errors || []).length) return { text: `${errors.length} 个没加载`, tone: "warn" };
+    const n = (commands || []).length;
+    return n ? { text: String(n), tone: "muted" } : null;
+  }
+
+  // 权限徽标：只数"用户自己放行的"——config.yaml 手编的规则不归面板管，数进来会误导
+  function permissionsNavBadge(userAllow) {
+    const n = (userAllow || []).length;
+    return n ? { text: `放行 ${n}`, tone: "muted" } : null;
+  }
+
   function hooksNavBadge(hooks) {
     const n = ((hooks || []).filter((h) => !h || h.enabled !== false)).length;
     return n ? { text: String(n), tone: "muted" } : null;
@@ -609,7 +655,9 @@
 
   return {
     SETTINGS_PANES, SETTINGS_GROUPS, buildSettingsNav, wrapFocusIndex,
-    mcpNavBadge, browserNavBadge, skillsNavBadge, hooksNavBadge,
+    mergeSlashCommands, findCustomCommand,
+    mcpNavBadge, browserNavBadge, skillsNavBadge, hooksNavBadge, commandsNavBadge,
+    permissionsNavBadge,
     SKILL_GRADES, skillGradeBadge, installConfirmLevel, filterMarketEntries,
     groupSkillsBySource, SOURCE_LABELS, skillCountLabel,
     UPDATE_STATUS, updateStatusLabel, summarizeUpdateCheck,

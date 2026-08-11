@@ -18,7 +18,7 @@ from ..permissions import evaluate, is_safe_autorun, suggest_rule
 ALLOW = "allow"
 DENY = "deny"
 ALLOW_ALL = "allow_all"
-ALLOW_RULE = "allow_rule"   # 「总是允许这类」：把推导的规则加入本会话 allow（FR-11.4）
+ALLOW_RULE = "allow_rule"   # 「总是允许这类」：加入 allow 并**持久化**（FR-11.4 / 11.4b）
 
 # 毁灭性命令黑名单：自主/免确认模式下的最后防线，避免无人值守误删/格式化/关机/强推
 import re as _re
@@ -47,7 +47,8 @@ def is_destructive(tool_name: str, params: dict) -> bool:
 
 class PermissionGate:
     def __init__(self, emit: Callable[[dict], None], allow=None, deny=None,
-                 auto_safe: "Callable[[], bool] | None" = None) -> None:
+                 auto_safe: "Callable[[], bool] | None" = None,
+                 on_rule_added: "Callable[[str], None] | None" = None) -> None:
         # emit({"id", "tool", "params", "suggest"}) 负责把请求推给前端
         self._emit = emit
         self._allow_all = False
@@ -55,6 +56,10 @@ class PermissionGate:
         # 「明显安全」的只读/检视/测试 shell 命令、不弹窗（safe-by-default，拿不准仍确认）。
         # 用闭包而非静态布尔，🛠 面板切换即时生效、不必重建 gate。None=不启用该分级。
         self._auto_safe = auto_safe
+        # 「总是允许这类」落盘回调（FR-11.4b）。以前只加进本会话、**重启就丢**——
+        # 用户以为放行了、下次照旧弹窗，于是养成闭眼点同意的习惯，反而更危险。
+        # None＝不持久化（单测/子 Agent 场景）。
+        self._on_rule_added = on_rule_added
         # 细粒度规则（FR-11.4）：config 来的 + 本会话「记住此类」追加的，统一在 _allow/_deny
         self._allow: list[str] = list(allow or [])
         self._deny: list[str] = list(deny or [])
@@ -76,21 +81,50 @@ class PermissionGate:
             self._pending.clear()
             self._decisions.clear()
 
-    def confirm(self, tool_name: str, params: dict) -> bool:
-        """裁决一次危险操作。deny 规则直接拦截；allow 规则或「全部允许」免确认；
-        否则阻塞等用户决定。返回 True=允许执行。"""
+    # 裁决结果（explain 的返回值）。UI 用它解释"为什么没问你"——三种免确认原因长得一模一样，
+    # 不说清楚用户只能猜（真机验证时就栽在这：以为漏了确认，其实是命中只读白名单）。
+    DENY_RULE = "deny_rule"          # deny 规则拦截
+    DESTRUCTIVE = "destructive"      # 免确认态下的毁灭性命令，强制拦
+    BY_RULE = "rule"                 # 命中 allow 规则
+    BY_SESSION = "session"           # 本会话「全部允许」/ 自主模式
+    BY_SAFE = "safe"                 # 智能确认分级：只读命令自动放行
+    ASK = "ask"                      # 要问用户
+    AUTO_REASONS = {
+        BY_RULE: "命中放行规则",
+        BY_SESSION: "本会话已全部允许",
+        BY_SAFE: "只读命令，智能确认分级自动放行",
+    }
+
+    def explain(self, tool_name: str, params: dict) -> str:
+        """这次调用会怎么被裁决（不阻塞、无副作用）。confirm 与 UI 共用同一套判定，避免两处漂移。"""
         verdict = evaluate(self._allow, self._deny, tool_name, params)
         if verdict == "deny":
-            return False
+            return self.DENY_RULE
         # 免确认态（crazy / 全部允许）下，毁灭性命令仍强制拦截——无人值守的最后防线。
-        # 直接拒绝、不走 _emit（那是权限请求通道，会误触确认态）；模型会收到工具被拒、自行换路。
         if self._allow_all and is_destructive(tool_name, params):
-            return False
-        if verdict == "allow" or self._allow_all:
-            return True
+            return self.DESTRUCTIVE
+        if verdict == "allow":
+            return self.BY_RULE
+        if self._allow_all:
+            return self.BY_SESSION
         # 智能确认分级：无显式规则时，「明显安全」的只读/检视/测试命令自动放行、不打断。
         # 仅在开关开启时生效；其余（写文件/编辑/commit/装依赖/拿不准的命令）仍照常弹确认。
         if self._auto_safe is not None and self._auto_safe() and is_safe_autorun(tool_name, params):
+            return self.BY_SAFE
+        return self.ASK
+
+    def auto_reason(self, tool_name: str, params: dict) -> str:
+        """免确认的人话原因；要问用户则返回空串。"""
+        return self.AUTO_REASONS.get(self.explain(tool_name, params), "")
+
+    def confirm(self, tool_name: str, params: dict) -> bool:
+        """裁决一次危险操作。deny 规则直接拦截；allow 规则或「全部允许」免确认；
+        否则阻塞等用户决定。返回 True=允许执行。"""
+        why = self.explain(tool_name, params)
+        if why in (self.DENY_RULE, self.DESTRUCTIVE):
+            # 直接拒绝、不走 _emit（那是权限请求通道，会误触确认态）；模型会收到工具被拒、自行换路。
+            return False
+        if why != self.ASK:
             return True
 
         suggest = suggest_rule(tool_name, params)
@@ -112,10 +146,28 @@ class PermissionGate:
             return True
         if decision == ALLOW_RULE:
             with self._lock:
-                if suggest not in self._allow:
-                    self._allow.append(suggest)  # 本会话后续同类调用免确认
+                new_rule = suggest not in self._allow
+                if new_rule:
+                    self._allow.append(suggest)  # 本会话后续同类调用立即免确认
+            if new_rule and self._on_rule_added:
+                try:
+                    self._on_rule_added(suggest)   # 落盘：下次启动仍然放行，且面板里可见可撤
+                except Exception:  # noqa: BLE001 — 落盘失败不该让这次操作失败
+                    pass
             return True
         return decision == ALLOW
+
+    def set_rules(self, allow=None, deny=None) -> None:
+        """热更新规则（🔐 权限面板增删后调用），运行中的会话立即生效、不必重启。"""
+        with self._lock:
+            if allow is not None:
+                self._allow = list(allow)
+            if deny is not None:
+                self._deny = list(deny)
+
+    def rules(self) -> "tuple[list[str], list[str]]":
+        with self._lock:
+            return list(self._allow), list(self._deny)
 
     def resolve(self, req_id: int, decision: str) -> bool:
         """前端回调：记录决定并唤醒等待的 confirm()。"""

@@ -26,6 +26,9 @@ const EV = {
   TASKS_UPDATED: "tasks_updated",
   CHECKPOINT_CREATED: "checkpoint_created",
   ENQUEUED: "enqueued",
+  COMMAND_START: "command_start",
+  PERMISSION_RULE_ADDED: "permission_rule_added",
+  COMMAND_DONE: "command_done",
   USAGE: "usage",
   STEP_WARNING: "step_warning",
   SUBAGENT_START: "subagent_start",
@@ -1268,6 +1271,13 @@ window.__onAgentEvent = function (msg) {
             (data.pending > 1 ? `（待纳入 ${data.pending}）` : "")
         : "📨 已排队，当前任务完成后处理" +
             (data && data.pending > 1 ? `（待处理 ${data.pending}）` : ""));
+  } else if (event === EV.PERMISSION_RULE_ADDED) {
+    // 「总是允许这类」现在是真的"总是"（落盘）——明确告诉用户，并指出去哪撤销
+    showToast(`🔓 已永久放行 ${(data && data.rule) || ""}，可在设置 → 🔐 权限里撤销`);
+  } else if (event === EV.COMMAND_START) {
+    onCommandStart(v, data); markActivity(v);
+  } else if (event === EV.COMMAND_DONE) {
+    onCommandDone(v, data); markActivity(v);
   } else if (event === EV.REVIEW_STARTED) {
     startDebate(v, data); markActivity(v);
   } else if (event === EV.REVIEW_SEED) {
@@ -1294,7 +1304,7 @@ window.__onAgentEvent = function (msg) {
   } else if (event === EV.MEMORY_CAPTURED) {
     renderMemoryCaptured(data);
   } else if (event === EV.WORKSPACE_CHANGED) {
-    if (isActive(v)) { setTopTitle(data.label); refreshWorkspace(); }
+    if (isActive(v)) { setTopTitle(data.label); refreshWorkspace(); refreshCommands(); }
   } else if (event === EV.CONVENTIONS_GENERATED) {
     if (isActive(v)) {
       showToast("🧭 已为本项目生成规范文件 " + (data.file || "hermes.md"));
@@ -2487,6 +2497,20 @@ const SLASH_COMMANDS = [
 ];
 const slashMenu = document.getElementById("slash-menu");
 let slashSel = -1;
+// 自定义命令（`.hermes/commands/*.md`）：随工作区走，切工作区要重拉
+let customCommands = [];
+let commandErrors = [];
+
+async function refreshCommands() {
+  try {
+    const r = await window.pywebview.api.get_commands();
+    customCommands = (r && r.commands) || [];
+    commandErrors = (r && r.errors) || [];
+  } catch (e) { customCommands = []; commandErrors = []; }   // 命令是增强项，拉不到就当没有
+}
+
+// 补全菜单/帮助用的完整清单（内置 + 自定义）
+function allSlashCommands() { return mergeSlashCommands(SLASH_COMMANDS, customCommands); }
 
 function hideSlashMenu() { slashMenu.hidden = true; slashMenu._matches = null; slashSel = -1; }
 
@@ -2507,7 +2531,7 @@ function renderSlashMenu(matches) {
 
 // 输入以 / 开头、且还在打命令名（无空格）时，浮出匹配命令
 function updateSlashMenu() {
-  const matches = matchSlashCommands(SLASH_COMMANDS, input.value);
+  const matches = matchSlashCommands(allSlashCommands(), input.value);
   if (!matches.length) { hideSlashMenu(); return; }
   if (slashSel >= matches.length) slashSel = -1;
   renderSlashMenu(matches);
@@ -2606,10 +2630,64 @@ async function handleSlashCommand(v, text) {
     try { await window.pywebview.api.start_autonomous(arg, 0); }
     catch (e) { addSysLine(v, "⚠ 启动失败：" + e); }
   } else if (cmd === "/help") {
-    addSysLine(v, "可用命令：\n" + SLASH_COMMANDS.map((c) => `  ${c.cmd}${c.arg ? " " + c.arg : ""}　—　${c.desc}`).join("\n"));
+    const list = allSlashCommands();
+    const fmt = (c) => `  ${c.cmd}${c.arg ? " " + c.arg : ""}　—　${c.desc}`;
+    let txt = "可用命令：\n" + list.filter((c) => !c.custom).map(fmt).join("\n");
+    const mine = list.filter((c) => c.custom);
+    if (mine.length) txt += "\n\n自定义命令（.hermes/commands）：\n" + mine.map(fmt).join("\n");
+    if (commandErrors.length) txt += "\n\n⚠ 有命令文件没加载：\n" + commandErrors.map((e) => "  · " + e).join("\n");
+    addSysLine(v, txt);
   } else {
-    addSysLine(v, `未知命令 ${cmd}　输入 /help 查看可用命令`);
+    await runCustomCommand(v, cmd, arg);
   }
+}
+
+// 自定义命令分派：prompt 模式展开成提示词照常发；exec 模式后台跑命令行（过权限 gate）。
+// 展开逻辑在后端（commands.py，有单测），前端不重复实现模板替换。
+async function runCustomCommand(v, cmd, arg) {
+  const name = cmd.replace(/^\//, "");
+  if (!findCustomCommand(customCommands, cmd)) {
+    await refreshCommands();                         // 可能是刚新建的命令，重拉一次再判
+    if (!findCustomCommand(customCommands, cmd)) {
+      addSysLine(v, `未知命令 ${cmd}　输入 /help 查看可用命令`);
+      return;
+    }
+  }
+  let r;
+  try { r = await window.pywebview.api.expand_command(name, arg); }
+  catch (e) { addSysLine(v, "⚠ 命令展开失败：" + e); return; }
+  if (!r || !r.ok) { addSysLine(v, "⚠ " + ((r && r.error) || "命令展开失败")); return; }
+
+  if (r.mode === "exec") {
+    try { await window.pywebview.api.run_command(name, arg); }
+    catch (e) { addSysLine(v, "⚠ 执行失败：" + e); }
+    return;                                          // 过程与结果由 command_start/command_done 事件渲染
+  }
+  submitMessage(v, r.text, []);                      // prompt 模式：展开后的文本就是这一轮的用户输入
+}
+
+// exec 模式：命令开跑（权限确认仍走既有 permission_request 通道）
+function onCommandStart(v, data) {
+  const d = data || {};
+  // 免确认时说明原因，别让人以为漏了权限确认（规则 / 本会话全部允许 / 只读白名单）
+  addSysLine(v, `⌨ /${d.name || ""} 执行中：${d.command || ""}` + (d.auto ? `　（免确认：${d.auto}）` : ""));
+}
+
+// exec 模式：结果回来。有后续指示的命令会由后端另起一轮交给模型，这里只负责把原始输出摆出来。
+function onCommandDone(v, data) {
+  const d = data || {};
+  if (!d.ok) { addSysLine(v, `⚠ /${d.name || ""} 未执行：${d.error || "失败"}`); return; }
+  const out = (d.output || "").trim();
+  // shell 工具总会回 "[exit code] N"，所以空输出＝链路出问题，别含糊成"执行完成"
+  if (!out) {
+    addSysLine(v, `⚠ /${d.name || ""} 没拿到任何输出（工具至少该回一行退出码，这不正常，请反馈）`);
+    return;
+  }
+  const m = out.match(/^\[exit code\]\s*(-?\d+)/);
+  const failed = m && m[1] !== "0";
+  addSysLine(v, failed
+    ? `⚠ /${d.name || ""} 执行失败（退出码 ${m[1]}）：\n${out}`
+    : `⌨ /${d.name || ""} 输出：\n${out}`);
 }
 
 async function send() {
@@ -2627,14 +2705,22 @@ async function send() {
   }
 
   const atts = pendingAttachments.slice();
+  input.value = "";
+  autoResize();
+  clearAttachments();
+  submitMessage(v, text, atts);
+}
+
+// 真正把一轮发出去。从 send() 拆出来，供自定义命令（prompt 模式）复用——
+// 命令展开后的文本直接进这里，不再过斜杠解析，避免模板以 / 开头时自我递归。
+function submitMessage(v, text, atts) {
+  atts = atts || [];
+  if (!text && !atts.length) return;
   const queued = v.streaming;   // 运行中发送 = 排队（不打断当前回合，对标 Claude Code）
 
   renderSentAttachments(v, atts);
   if (text) { addMessage(v, "user", text); rebuildChatIndex(); }
   scrollChatForce();   // 主动发送：强制到底并恢复粘底（哪怕之前往上翻看了历史）
-  input.value = "";
-  autoResize();
-  clearAttachments();
 
   if (!queued) {
     // 首次发送：正常启动流式
@@ -2650,11 +2736,9 @@ async function send() {
 
   // 只把后端需要的字段传过去（去掉 dataUrl/isImage）
   const payload = atts.map((a) => ({ name: a.name, mime: a.mime, data: a.data }));
-  try {
-    await window.pywebview.api.send_message(text, payload);
-  } catch (e) {
+  window.pywebview.api.send_message(text, payload).catch((e) => {
     window.__onAgentEvent({ event: EV.ERROR, data: String(e), cid: v.cid });
-  }
+  });
 }
 
 // ---- 输入框交互 --------------------------------------------------------
@@ -2911,14 +2995,17 @@ function closeSettings() { settingsOverlay.hidden = true; popLayer(settingsOverl
 async function refreshNavBadges() {
   const get = async (fn) => { try { return await fn(); } catch (e) { return null; } };
   const api = window.pywebview.api;
-  const [mcp, br, sk, hk] = await Promise.all([
+  const [mcp, br, sk, hk, cmd] = await Promise.all([
     get(() => api.get_mcp_servers()), get(() => api.get_browser_mcp_status()),
-    get(() => api.get_skills()), get(() => api.get_hooks()),
+    get(() => api.get_skills()), get(() => api.get_hooks()), get(() => api.get_commands()),
   ]);
+  const perm = await get(() => api.get_permissions());
   navBadges = {
     __mcp__: mcpNavBadge(mcp),
     __browser__: browserNavBadge(br),
     __skills__: skillsNavBadge(sk && sk.skills),
+    __commands__: commandsNavBadge(cmd && cmd.commands, cmd && cmd.errors),
+    __permissions__: permissionsNavBadge(perm && perm.user_allow),
     __hooks__: hooksNavBadge(hk && hk.hooks),
   };
   if (!settingsOverlay.hidden) renderProviderList();
@@ -3241,6 +3328,192 @@ async function renderMcpPane() {
 let skillMarketRepo = "";   // 当前展开浏览的市场
 let skillMarketQuery = "";
 let skillUpdates = {};      // 技能名 -> 检查更新的结果（重绘面板时保留，免得一刷新就没了）
+
+// 🔐 权限：免确认规则的可见与可撤（FR-11.4b）。以前点「总是允许这类」只在本会话生效、
+// 重启就丢，用户以为放行了却照旧弹窗——于是闭眼点同意。现在落盘、列出来、能撤。
+async function renderPermissionsPane() {
+  const r = (await window.pywebview.api.get_permissions()) || {};
+  const allow = r.allow || [], deny = r.deny || [], mine = r.user_allow || [];
+  const esc = escapeHtml;
+  const row = (rule, removable) => `
+    <div class="mcp-row" data-rule="${esc(rule)}">
+      <div class="mcp-main"><div class="mcp-cmd"><code>${esc(rule)}</code></div>
+        <div class="perm-from">${removable ? "面板放行" : "config.yaml"}</div></div>
+      ${removable ? '<button class="ws-btn perm-del" type="button">撤销</button>'
+                  : '<span class="me-unsupported">改文件</span>'}
+    </div>`;
+
+  const allowRows = allow.length
+    ? allow.map((x) => row(x, mine.includes(x))).join("")
+    : '<p class="settings-hint">还没有免确认规则——每个危险操作都会逐次确认。</p>';
+  const denyRows = deny.length
+    ? deny.map((x) => row(x, false)).join("")
+    : '<p class="settings-hint">没有拦截规则。</p>';
+
+  provDetailEl.innerHTML =
+    '<div class="prov-d-head"><span class="prov-d-title">🔐 权限</span></div>' +
+    '<p class="settings-hint">免确认规则按「工具 + 参数模式」放行，治确认疲劳。' +
+    '对话里点「总是允许这类」记下的规则会出现在这里，<b>重启后依然有效</b>，随时可撤。' +
+    '格式：<code>工具名</code> 或 <code>工具名(通配)</code>，如 <code>run_bash(futures *)</code>、<code>git_status</code>。' +
+    '<b>拦截（deny）规则只在 config.yaml 手编</b>——那是硬拦，不该被面板顺手改掉。</p>' +
+    '<div class="prov-d-title" style="font-size:13px;margin-top:6px">免确认（allow）</div>' +
+    `<div class="mcp-list">${allowRows}</div>` +
+    '<div class="mcp-form">' +
+      '<input class="feat-input" id="perm-f-rule" placeholder="加一条规则，如 run_bash(futures *)">' +
+      '<button class="prov-save" id="perm-add" type="button">添加</button>' +
+    '</div>' +
+    '<div class="prov-d-title" style="font-size:13px;margin-top:16px">拦截（deny，优先于放行）</div>' +
+    `<div class="mcp-list">${denyRows}</div>`;
+
+  provDetailEl.querySelectorAll(".perm-del").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const rule = b.closest(".mcp-row").dataset.rule;
+      if (!window.confirm(`撤销免确认规则 ${rule}？之后这类操作会重新逐次确认。`)) return;
+      const res = await window.pywebview.api.remove_permission(rule);
+      showToast(res && res.ok ? "已撤销" : "⚠ " + ((res && res.error) || "撤销失败"));
+      renderPermissionsPane();
+    }));
+  const addBtn = provDetailEl.querySelector("#perm-add");
+  const addInput = provDetailEl.querySelector("#perm-f-rule");
+  const doAdd = async () => {
+    const rule = addInput.value.trim();
+    if (!rule) { showToast("先填规则"); return; }
+    const res = await window.pywebview.api.add_permission(rule);
+    showToast(res && res.ok ? "✅ 已放行 " + rule : "⚠ " + ((res && res.error) || "添加失败"));
+    if (res && res.ok) renderPermissionsPane();
+  };
+  addBtn.addEventListener("click", doAdd);
+  addInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doAdd(); });
+  refreshNavBadges();   // 面板内容变了（增删改/开关）→ 左栏徽标跟着刷新
+}
+
+// ⌨ 命令：自定义斜杠命令的增删改（对标 Claude Code 的 .claude/commands，但给个能点的地方）
+async function renderCommandsPane() {
+  const [r, sk] = await Promise.all([
+    window.pywebview.api.get_commands(),
+    window.pywebview.api.get_skills().catch(() => ({ skills: [] })),
+  ]);
+  const cmds = (r && r.commands) || [];
+  const errs = (r && r.errors) || [];
+  const skills = (sk && sk.skills) || [];
+  const esc = escapeHtml;
+  customCommands = cmds; commandErrors = errs;      // 顺带刷新补全菜单用的清单
+
+  const SRC_LABEL = { project: "本项目", global: "全局", config: "配置目录" };
+  const rows = cmds.length ? cmds.map((c) => `
+    <div class="mcp-row" data-name="${esc(c.name)}">
+      <div class="mcp-main">
+        <div class="mcp-name">${esc(c.slash)}
+          <span class="cmd-tag">${esc(c.mode === "exec" ? "直接执行" : "提示词")}</span>
+          <span class="cmd-tag">${esc(SRC_LABEL[c.source] || c.source)}</span>
+          ${c.skill ? `<span class="cmd-tag">技能 ${esc(c.skill)}</span>` : ""}</div>
+        <div class="mcp-cmd">${esc(c.description || "（没写说明）")}</div>
+      </div>
+      ${c.mode === "exec" ? '<button class="ws-btn cmd-allow" type="button" title="把这条命令加进免确认">免确认</button>' : ""}
+      <button class="ws-btn cmd-edit" type="button">编辑</button>
+      <button class="ws-btn cmd-del" type="button">删除</button>
+    </div>`).join("")
+    : '<p class="settings-hint">还没有自定义命令。下面新建一个——比如把常用的一句话固化成 <code>/盯盘</code>。</p>';
+
+  const errBlock = errs.length
+    ? `<div class="mcp-err">以下命令文件没加载（存了也用不了，先修）：<br>${errs.map(esc).join("<br>")}</div>`
+    : "";
+  const skillOpts = ['<option value="">（不绑定）</option>']
+    .concat(skills.map((s) => `<option value="${esc(s.name)}">${esc(s.name)}</option>`)).join("");
+
+  provDetailEl.innerHTML =
+    '<div class="prov-d-head"><span class="prov-d-title">⌨ 命令</span></div>' +
+    '<p class="settings-hint">把常用问法固化成斜杠命令，输入框打 <code>/</code> 即可补全。' +
+    '<b>提示词模式</b>＝展开成一句话交给模型（能带参数、能组合）；<b>直接执行模式</b>＝跑一条命令行，不过模型判断。' +
+    '命令保存在 <code>.hermes/commands/</code>（本项目）或程序旁 <code>commands/</code>（全局），也可以直接手写文件。</p>' +
+    errBlock +
+    `<div class="mcp-list">${rows}</div>` +
+    '<div class="mcp-form">' +
+      '<div class="prov-d-title" style="margin-top:10px;font-size:13px">新建 / 编辑命令</div>' +
+      '<input class="feat-input" id="cmd-f-name" placeholder="命令名（不带斜杠，如 盯盘）">' +
+      '<input class="feat-input" id="cmd-f-desc" placeholder="说明（补全菜单里显示）">' +
+      '<div class="cmd-modes">' +
+        '<label><input type="radio" name="cmd-mode" value="prompt" checked> 提示词模式</label>' +
+        '<label><input type="radio" name="cmd-mode" value="exec"> 直接执行模式</label>' +
+        `<select class="feat-input cmd-skill" id="cmd-f-skill" title="绑定技能">${skillOpts}</select>` +
+      '</div>' +
+      '<input class="feat-input" id="cmd-f-hint" placeholder="参数提示（可选，如 [动量|热点]）">' +
+      '<input class="feat-input" id="cmd-f-cmd" placeholder="要执行的命令行（直接执行模式必填，可用 $ARGUMENTS）" hidden>' +
+      '<textarea class="feat-input mcp-ta" id="cmd-f-body" rows="4" ' +
+        'placeholder="提示词模板；$ARGUMENTS 会替换成命令后面跟的参数。&#10;例：用 futures-monitor 技能查 $ARGUMENTS。没给参数就查动量排名和热点品种。"></textarea>' +
+      '<label class="feat-row"><input type="checkbox" id="cmd-f-global">' +
+        '<span class="feat-text"><span class="feat-title">全局可用</span>' +
+        '<span class="feat-desc">不勾＝只在当前工作区可用（跟项目走，推荐）；勾上＝所有项目都能用。</span></span></label>' +
+      '<button class="prov-save" id="cmd-save" type="button">保存</button>' +
+    '</div>';
+
+  const q = (sel) => provDetailEl.querySelector(sel);
+  const modeRadios = provDetailEl.querySelectorAll('input[name="cmd-mode"]');
+  const syncMode = () => {
+    const exec = q('input[name="cmd-mode"]:checked').value === "exec";
+    q("#cmd-f-cmd").hidden = !exec;
+    q("#cmd-f-body").placeholder = exec
+      ? "结果回来后要模型做什么（可选；留空＝输出直接贴回对话，不惊动模型）"
+      : "提示词模板；$ARGUMENTS 会替换成命令后面跟的参数。";
+  };
+  modeRadios.forEach((b) => b.addEventListener("change", syncMode));
+  syncMode();
+
+  provDetailEl.querySelectorAll(".mcp-row").forEach((row) => {
+    const name = row.dataset.name;
+    const c = cmds.find((x) => x.name === name);
+    row.querySelector(".cmd-edit").addEventListener("click", () => {
+      q("#cmd-f-name").value = c.name;
+      q("#cmd-f-desc").value = c.description || "";
+      q("#cmd-f-hint").value = c.argument_hint || "";
+      q("#cmd-f-cmd").value = c.command || "";
+      q("#cmd-f-body").value = c.body || "";
+      q("#cmd-f-skill").value = c.skill || "";
+      q("#cmd-f-global").checked = c.source === "global";
+      provDetailEl.querySelector(`input[name="cmd-mode"][value="${c.mode === "exec" ? "exec" : "prompt"}"]`).checked = true;
+      syncMode();
+      q("#cmd-f-name").focus();
+    });
+    const allowBtn = row.querySelector(".cmd-allow");
+    if (allowBtn) allowBtn.addEventListener("click", async () => {
+      // 规则由后端按"命令首词通配"推导（同确认条的「总是允许这类」），不放行整个 shell
+      const sg = await window.pywebview.api.suggest_permission_for_command(name);
+      if (!sg || !sg.ok) { showToast("⚠ " + ((sg && sg.error) || "推导规则失败")); return; }
+      if (!window.confirm(`把 ${sg.rule} 加进免确认？\n\n之后 ${c.slash} 及同前缀的命令不再逐次确认。` +
+                          `\n可随时在「🔐 权限」里撤销。`)) return;
+      const res = await window.pywebview.api.add_permission(sg.rule);
+      showToast(res && res.ok ? `✅ 已放行 ${sg.rule}` : "⚠ " + ((res && res.error) || "添加失败"));
+      refreshNavBadges();
+    });
+    row.querySelector(".cmd-del").addEventListener("click", async () => {
+      if (!window.confirm(`删除命令 ${c.slash}？（删的是磁盘上的命令文件）`)) return;
+      const res = await window.pywebview.api.delete_command(name);
+      showToast(res && res.ok ? "🗑 已删除 " + c.slash : "⚠ " + ((res && res.error) || "删除失败"));
+      renderCommandsPane();
+    });
+  });
+
+  q("#cmd-save").addEventListener("click", async () => {
+    const name = q("#cmd-f-name").value.trim();
+    const mode = q('input[name="cmd-mode"]:checked').value;
+    const spec = {
+      description: q("#cmd-f-desc").value.trim(),
+      mode,
+      command: q("#cmd-f-cmd").value.trim(),
+      body: q("#cmd-f-body").value.trim(),
+      skill: q("#cmd-f-skill").value,
+      argument_hint: q("#cmd-f-hint").value.trim(),
+    };
+    if (!name) { showToast("命令名要填"); return; }
+    const res = await window.pywebview.api.save_command(name, spec, q("#cmd-f-global").checked ? "global" : "project");
+    if (res && res.ok) {
+      showToast(`✅ 已保存 /${res.name}，现在就能用`);
+      await refreshCommands();
+      renderCommandsPane();
+    } else showToast("⚠ " + ((res && res.error) || "保存失败"));
+  });
+  refreshNavBadges();   // 面板内容变了（增删改/开关）→ 左栏徽标跟着刷新
+}
 
 async function renderSkillsPane() {
   const [me, markets] = await Promise.all([
@@ -3715,8 +3988,10 @@ function renderProviderDetail() {
   if (provSelected === "__mcp__") { renderMcpPane(); return; }
   if (provSelected === "__hooks__") { renderHooksPane(); return; }
   if (provSelected === "__skills__") { renderSkillsPane(); return; }
+  if (provSelected === "__commands__") { renderCommandsPane(); return; }
   if (provSelected === "__appearance__") { renderAppearancePane(); return; }
   if (provSelected === "__features__") { renderFeaturePane(); return; }
+  if (provSelected === "__permissions__") { renderPermissionsPane(); return; }
   if (provSelected === "__limits__") { renderLimitsPane(); return; }
   const p = provData.find((x) => x.key === provSelected);
   if (!p) { provDetailEl.innerHTML = '<div class="prov-empty">选择左侧的模型服务进行配置</div>'; return; }
@@ -4539,6 +4814,7 @@ window.addEventListener("pywebviewready", async () => {
   setWorkspaceCollapsed(localStorage.getItem("wsCollapsed") === "1");
   refreshWorkspace();
   refreshTokenBudget();      // 读预算总额 → 顶部用量芯片按百分比显示
+  refreshCommands();         // 自定义斜杠命令：拉一次填补全菜单（拉不到就只有内置命令，不影响启动）
 
   // 桥就绪：开放输入
   input.disabled = false;
