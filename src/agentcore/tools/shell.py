@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 
 from ..artifacts import format_with_handle, head_tail_of_file
 from ..diagnose import with_location
@@ -55,8 +56,51 @@ def hardened_env() -> dict:
         "DEBIAN_FRONTEND": "noninteractive",  # apt/dpkg 不弹交互配置界面
         "PIP_NO_INPUT": "1",          # pip 不等输入
         "PYTHONUNBUFFERED": "1",      # 子 Python 输出即时刷出（否则块缓冲、超时前看不到进度/挂着像卡死）
+        # ---- 下面这批同属"别等人"，按生态补齐（真机反复撞超时后加的，2026-08-11）----
+        "SSH_ASKPASS_REQUIRE": "never",   # ssh 不弹 GUI 询问口令的窗口（弹了在无窗口环境=永久挂）
+        "GH_PROMPT_DISABLED": "1",        # gh cli 不进交互问答
+        "GH_NO_UPDATE_NOTIFIER": "1",
+        "NPM_CONFIG_YES": "true",         # npm/npx 的 "Ok to proceed? (y)" 自动过（npm 认 npm_config_*，
+        "npm_config_yes": "true",         # 大小写两写：不同版本/平台读法不一致，都给上更保险
+        "COMPOSER_NO_INTERACTION": "1",
+        "HUSKY": "0",                     # git hook 里跑 lint/开编辑器 → commit 挂住
+        "DOTNET_NOLOGO": "1",
+        "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+        "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+        "POWERSHELL_UPDATECHECK": "Off",  # pwsh 启动时的更新检查横幅（要联网，网差时拖慢每条命令）
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "HOMEBREW_NO_AUTO_UPDATE": "1",   # mac：brew install 前自动 update 常跑几分钟，前台必超时
+        "NO_COLOR": "1",                  # 输出里的 ANSI 转义序列对模型是纯噪声（还占 token）
     })
+    # 会改变命令语义/可能被用户刻意设过的，用 setdefault：用户显式设了就尊重他的。
+    # CI=1 是覆盖面最大的一个开关（大量 CLI 一看到就切非交互），但它也会改测试框架行为
+    # （如 jest 不再自动写新快照、playwright 改重试策略）——那是**更该有的** CI 语义，故默认给上，
+    # 但不硬覆盖：用户在 .env 里写 CI=0 就按他的来。
+    env.setdefault("CI", "1")
+    # ssh 首次连主机会问 "Are you sure you want to continue connecting (yes/no)?"——BatchMode 直接失败。
+    # 用户配过自己的 GIT_SSH_COMMAND 就不动（他可能挂了代理/指定了私钥）。
+    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
+    # 注意：**刻意不设 TERM=dumb**——git 遇到 dumb 终端会打印 "terminal is not fully functional -
+    # press RETURN"，反而多一个挂死点。颜色靠 NO_COLOR 关就够了。
     return env
+
+
+# PowerShell 前缀：进度条在无窗口环境下不但没用，还会把 Invoke-WebRequest / Expand-Archive 拖慢一个
+# 数量级（PS 5.1 的老毛病，实测下载能慢 10 倍以上）——慢到撞 timeout，看起来就像"卡死"。
+# 只关进度显示，**不碰 $ConfirmPreference/$ErrorActionPreference**：那两个会改命令语义，
+# 等于替用户偷偷 auto-yes / 吞错误，属于越界。
+_PS_PREFIX = "$ProgressPreference='SilentlyContinue'; "
+
+
+def build_argv(shell: str, command: str) -> list:
+    """拼出真正要执行的 argv。纯函数，便于单测。
+
+    PowerShell 系加进度条前缀；其它 shell 原样。**只影响执行，不影响给模型/产物看的 command 原文**。
+    """
+    argv = list(_SHELLS[shell])
+    if shell in ("powershell", "pwsh"):
+        return argv + [_PS_PREFIX + command]
+    return argv + [command]
 
 
 # 疑似"常驻/不自退"服务的命令特征：dev server / watch / REPL / 静态服。命中且用户前台跑时，
@@ -86,6 +130,49 @@ def _looks_long_running(command: str) -> bool:
 
 
 _PROBE_SECONDS = 12   # 疑似常驻服务前台跑时的探针窗口：超过它还没退就判定为服务，早杀早提示
+
+
+# ---- 交互提示识别（P2）：认出"这条命令在等你敲字"，别干等满整个 timeout 再报一句笼统的超时 ----
+# 判据刻意保守，三个条件同时成立才算：① 进程还活着 ② 输出**最后一行**长得像提示 ③ 已经安静够久。
+# 只靠 ② 会误伤——`--help` 里就有 "[y/N]"、日志里也可能出现 "Password:"；加上 ①③ 后，
+# 那些情形要么早退出了、要么还在继续刷输出，都不会命中。
+_PROMPT_PATTERNS = [
+    r"\[y/n\]\s*[:?]?$",                        # Overwrite? [y/N]
+    r"\((?:y|yes)(?:/n|/no)\)\s*[:?]?$",        # (y/n) (yes/no) Ok to proceed? (y)
+    r"\(y\)\s*$",
+    r"\b(?:y/n|yes/no)\s*[:?]?$",
+    r"(?:password|passphrase)[^\n]{0,40}:\s*$",             # Password: / Passphrase for key ...:
+    r"username[^\n]{0,40}:\s*$",
+    r"are you sure[^\n]{0,60}\?\s*$",
+    r"continue connecting[^\n]{0,30}\?\s*$",                # ssh 首次连主机
+    r"press (?:any key|enter|return)[^\n]{0,30}$",
+    r"请按任意键[^\n]{0,10}$",
+    r"(?:是否继续|确认[要否]?继续|继续吗)[^\n]{0,6}[?？]?\s*$",
+    # inquirer/prompts 风格：`? Project name:` / `? Select a framework › - Use arrow-keys.`
+    # 要求以 "? " 开头，且要么带箭头指示符、要么以冒号/问号收尾——只凭开头的 "?" 太宽。
+    r"^\?\s+\S[^\n]*(?:[›❯▸][^\n]*|[:?])\s*$",
+    r"^--more--\s*$|^\(end\)\s*$",                          # 分页器停在这儿等 q/空格
+    r"(?:select|choose|请选择)[^\n]{0,40}[:：]\s*$",
+]
+_PROMPT_RE = re.compile("|".join(_PROMPT_PATTERNS), re.IGNORECASE | re.MULTILINE)
+_PROMPT_QUIET_SECONDS = 5.0   # 输出静止多久之后才敢下"它在等输入"的结论（防长任务打完提示还接着干活被误杀）
+_PROMPT_POLL_SECONDS = 0.25
+
+
+def looks_waiting_input(text: str) -> "str | None":
+    """输出尾巴看起来像"停在提示上等输入"→ 返回那一行提示原文；否则 None。纯函数，便于单测。
+
+    只看**最后一个非空行**：提示的特征就是打完不换行、停在行尾等人。日志里顺带提到 `[y/N]`
+    的那行后面通常还有别的输出，于是不是最后一行，自然不会命中。
+    """
+    tail = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [ln for ln in tail.split("\n") if ln.strip()]
+    if not lines:
+        return None
+    last = lines[-1].strip()
+    if len(last) > 300:            # 超长行多半是日志/数据，不是提示
+        return None
+    return last if _PROMPT_RE.search(last) else None
 
 
 def _win_create_job():
@@ -222,11 +309,20 @@ def _drain(stream, sink, on_delta=None, tee_factory=None) -> None:
     于是"超上限被丢掉的部分"不再永久消失，模型可以 grep/read 产物而不必重跑命令。
     正常大小的命令不会触发，零开销。"""
     tee = None
+    dec = _StreamDecoder()
     try:
         while True:
-            chunk = stream.read(4096)
-            if not chunk:
+            raw = stream.read1(4096)        # read1：**有多少给多少**，不等攒满（见 _StreamDecoder 注释）
+            if not raw:
+                chunk = dec.feed(b"", final=True)
+                if chunk:
+                    sink["parts"].append(chunk)
+                    sink["total"] += len(chunk)
                 break
+            chunk = dec.feed(raw)
+            if not chunk:
+                continue                    # 半个多字节字符，等下一块凑齐
+            sink["ts"] = time.monotonic()   # 最后一次有输出的时刻（交互提示识别要靠它判"安静多久了"）
             if sink["total"] < _MAX_OUTPUT_CHARS:
                 sink["parts"].append(chunk)
                 sink["total"] += len(chunk)
@@ -249,6 +345,65 @@ def _drain(stream, sink, on_delta=None, tee_factory=None) -> None:
     finally:
         if tee is not None and not tee.close():
             sink["artifact"] = None    # 收尾时不够大被销毁了，别在提示里给个死句柄
+
+class _StreamDecoder:
+    """增量解码 + 换行归一，配合 `read1()` 用。
+
+    为什么不再用 `text=True` 让 Python 帮忙解码：`TextIOWrapper.read(4096)` **会一直阻塞到读满
+    4096 字符或 EOF**（实测：命令先 printf 一段再 sleep，read 要等到进程结束才返回）。后果有两个——
+    ① 所谓"前台实时流输出"对绝大多数命令根本不实时（输出攒不满 4096 就只能等它退出）；
+    ② 停在交互提示上的命令，提示文字卡在缓冲里，外面根本看不见、无从识别。
+    改成读底层二进制 `read1()`（有多少给多少）+ 这里自己解码，两个问题一起解决。
+    """
+
+    def __init__(self) -> None:
+        import codecs
+        self._dec = codecs.getincrementaldecoder("utf-8")("replace")
+        self._pending_cr = False
+
+    def feed(self, raw: bytes, final: bool = False) -> str:
+        text = self._dec.decode(raw, final)
+        if self._pending_cr:                 # 上一块结尾的 \r 与本块开头的 \n 是同一个换行，别拆成两行
+            text = ("" if text.startswith("\n") else "\n") + text
+            self._pending_cr = False
+        if text.endswith("\r") and not final:
+            text = text[:-1]
+            self._pending_cr = True
+        # 复刻 text=True 的 universal newlines：\r\n 和裸 \r 都归一成 \n（进度条靠 \r 刷新，
+        # 归一后是多行，与改动前行为一致）。
+        return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _tail_text(sink, n: int = 2000) -> str:
+    """取某一路输出的尾巴（读线程在并发追加，故先快照再拼，不加锁：最坏是少看一段，下轮再看）。"""
+    parts = list(sink["parts"])[-8:]
+    return "".join(parts)[-n:]
+
+
+def _wait_with_prompt_watch(proc, timeout: float, sinks):
+    """等直接子进程退出，期间盯着输出尾巴认交互提示。
+
+    返回 None＝正常退出；返回字符串＝判定"停在这条提示上等输入"（调用方负责杀树+报错）；
+    抛 `subprocess.TimeoutExpired`＝真到点了（调用方沿用原有超时处理）。
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            proc.wait(timeout=_PROMPT_POLL_SECONDS)
+            return None
+        except subprocess.TimeoutExpired:
+            pass
+        now = time.monotonic()
+        last_ts = max((s.get("ts") or 0.0) for s in sinks)
+        # 一个字都没输出过（last_ts=0）就谈不上"停在提示上"——那是纯挂死，交给 timeout 处理。
+        if last_ts and (now - last_ts) >= _PROMPT_QUIET_SECONDS:
+            for s in sinks:
+                hit = looks_waiting_input(_tail_text(s))
+                if hit:
+                    return hit
+        if now >= deadline:
+            raise subprocess.TimeoutExpired(getattr(proc, "args", "?"), timeout)
+
 
 def _render_stream(text: str, sink, workspace) -> str:
     """把一路输出渲染成给模型看的内容。
@@ -314,6 +469,8 @@ class RunShellTool(Tool):
             "**启动常驻/不自退的进程（dev server、watch、REPL：如 streamlit run、uvicorn、flask run、"
             "npm run dev、vite、next dev、http.server、带 --watch/--reload 的命令）必须一开始就传 "
             "background:true——别前台跑，前台会一直等它退出、白白卡到超时才被杀。**"
+            "**执行环境无终端、stdin 已关闭：任何会等人回答（y/n、选模板、输密码）的命令都过不去，"
+            "一开始就加非交互参数（--yes / -y / --non-interactive / --force）或把参数一次给全。**"
             "**读/看文件内容请用 read_file、列目录用 list_dir（它们受工作区与已授权目录约束）；"
             "不要用本工具的 type/cat/Get-Content/dir 去读文件、也不要访问工作区外的路径——"
             "shell 留给真正需要执行的命令。**"
@@ -323,7 +480,7 @@ class RunShellTool(Tool):
         command = (params.get("command") or "").strip()
         if not command:
             raise ToolError("命令不能为空")
-        argv = _SHELLS[self.shell] + [command]
+        argv = build_argv(self.shell, command)
         if params.get("background"):
             if self._procs is None:
                 raise ToolError("当前环境未启用后台进程支持，请直接前台执行。")
@@ -348,9 +505,9 @@ class RunShellTool(Tool):
                 argv,
                 cwd=str(self.workspace),
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8", errors="replace",   # 必显式 utf-8：Windows 中文环境 text=True 默认 GBK，
-                                                       # 撞命令的 UTF-8 输出会 UnicodeDecodeError 崩/卡住
+                # **二进制管道 + 自己解码**（_StreamDecoder）：text=True 的 read() 会阻塞到读满/EOF，
+                # 既让"实时流输出"名不副实，也让停在提示上的命令看不见提示。解码仍是 utf-8/replace——
+                # 必显式 utf-8：Windows 中文环境默认 GBK，撞命令的 UTF-8 输出会 UnicodeDecodeError 崩/卡住。
                 stdin=subprocess.DEVNULL,             # 交互式命令（npm create / npm init 等）拿到 EOF 快速失败
                 env=hardened_env(),                   # 非交互硬化：防 git 分页器/凭据/编辑器、apt y/n 等挂死
                 **kwargs,
@@ -367,8 +524,8 @@ class RunShellTool(Tool):
                 pgid = os.getpgid(proc.pid)           # 趁子进程还活着抓好进程组号，供收尾/超时整组杀
             except OSError:
                 pgid = proc.pid
-        out_sink = {"parts": [], "total": 0, "truncated": False, "artifact": None}
-        err_sink = {"parts": [], "total": 0, "truncated": False, "artifact": None}
+        out_sink = {"parts": [], "total": 0, "truncated": False, "artifact": None, "ts": 0.0}
+        err_sink = {"parts": [], "total": 0, "truncated": False, "artifact": None, "ts": 0.0}
         def _mk_tee(kind):
             """溢出时才开产物（ADR 0021）；没接产物入口就返回 None，行为同以前=丢弃。"""
             if self._artifacts is None:
@@ -401,7 +558,7 @@ class RunShellTool(Tool):
         suspected = _looks_long_running(command)
         wait_timeout = min(self.timeout, _PROBE_SECONDS) if suspected else self.timeout
         try:
-            proc.wait(timeout=wait_timeout)
+            waiting_on = _wait_with_prompt_watch(proc, wait_timeout, (out_sink, err_sink))
         except subprocess.TimeoutExpired:
             _terminate_tree(proc, pgid, job)          # 杀整棵树：连同启动的 GUI/子进程一起关，别留孤儿卡住
             if suspected:
@@ -409,11 +566,23 @@ class RunShellTool(Tool):
                     f"这条命令看起来是**常驻/不会自己退出的服务**（dev server / watch / REPL），"
                     f"前台跑 {wait_timeout}s 仍未退出，已终止（含其子进程）。**请改用 background:true 后台启动**，"
                     "再用 read_process_output 看输出、stop_process 停止——别前台重试，只会再被杀。")
+            # 笼统的超时按概率把三种成因分开讲：混成一句会让模型把"等输入"的命令也丢去 background，
+            # 结果它在后台照样等输入、更没人管（真机反复出现过）。
             raise ToolError(
-                f"命令超时（>{self.timeout}s）已终止（含其启动的子进程）。"
-                "**若启动的是不会自己退出的常驻程序（GUI 应用 / dev server / watch / 安装向导），必须改用 "
-                "background:true 后台启动**——前台执行会一直等它退出，只会再次超时，别重试前台。"
-                "若是交互式命令（会问 y/n），加非交互参数（如 --yes / -y）。")
+                f"命令超时（>{self.timeout}s）已终止（含其启动的子进程）。按可能性排查：\n"
+                "① **它根本不会自己退出**（GUI 应用 / dev server / watch / 安装向导）→ 改用 "
+                "background:true 后台启动，再用 read_process_output 看输出；前台重试只会再超时。\n"
+                "② 它确实慢（装依赖 / 编译 / 全量测试）→ 缩小范围分批跑，或同样改 background:true 再轮询输出。\n"
+                "③ 它在等输入但没打印出可识别的提示 → 加非交互参数（--yes / -y / --non-interactive）后重试。")
+        if waiting_on is not None:
+            _terminate_tree(proc, pgid, job)
+            raise ToolError(
+                f"命令停在**交互提示**上等输入（已静止 {int(_PROMPT_QUIET_SECONDS)}s），已终止。\n"
+                f"提示原文：`{waiting_on}`\n"
+                "hermes 执行命令的环境**没有终端、stdin 已关闭，没人能替它敲这个回答**。"
+                "请改成非交互写法重跑：加 --yes / -y / --non-interactive / --force 之类参数，"
+                "或一次把参数给全（如 `npm create vite@latest app -- --template react`），"
+                "或换一条不需要确认的等价命令。**别原样重试**，只会再次停在同一处。")
         # 直接子进程已退出：先杀掉任何被它 `&` 留下、继承了管道的孤儿——前台契约=同步跑完，命令退出后
         # 不该还有它派生的进程存活（正是最初 GUI 挂住的根因）。**必须先杀再 join**：孤儿占着管道写端时
         # 读线程的 read() 会一直阻塞等 EOF（读不到 shell 已写入的短输出如 "started"）；杀掉孤儿→写端全关
