@@ -496,6 +496,64 @@ def test_skill_creator_skill():
     print("✓ 内置 skill-creator 合规 + 自检脚本对所有内置技能判通过")
 
 
+def test_promote_skill(tmp: Path):
+    """技能换层：项目级 → 全局、全局 → 项目；覆盖要显式、越界与不存在要挡住。"""
+    from agentcore.bridge import Api
+    from agentcore.config import (
+        AgentConfig, AppConfig, MCPConfig, MemoryConfig, ModelConfig, StorageConfig,
+    )
+    import agentcore.bridge.api as _apimod
+    import agentcore.paths as _paths
+    import agentcore.bridge.conversation as _convmod
+    _apimod.persist_model_selection = lambda **k: None
+    # 两处都要改：_skills_root() 运行时 `from ..paths import APP_DIR`；
+    # conversation 的扫描用的是它自己模块级导入的 APP_DIR（导入时就绑定了）
+    _old_app, _old_conv = _paths.APP_DIR, _convmod.APP_DIR
+    _paths.APP_DIR = _convmod.APP_DIR = tmp / "app"
+
+    ws = tmp / "ws"
+    write_skill(ws / ".hermes" / "skills", "futures-monitor", desc="查盯盘数据。当用户问动量时用。",
+                body="## 命令表\n跑 `futures momentum`。")
+    api = Api(AppConfig(
+        active_model="m1",
+        models={"m1": ModelConfig(provider="anthropic", model="x", api_key_env="K")},
+        agent=AgentConfig(workspaces_root=str(tmp / "root"), auto_conventions=False),
+        storage=StorageConfig(enabled=True, db_path=str(tmp / "h.db")),
+        memory=MemoryConfig(enabled=False), mcp=MCPConfig(enabled=False),
+    ))
+    conv = api.active
+    conv.workspace = ws
+    conv._refresh_skills()
+    def src_of(name):      # 内置技能也在列表里，按名字取
+        return next(s.source for s in conv._skills if s.name == name)
+    assert src_of("futures-monitor") == "project"
+
+    r = api.promote_skill("futures-monitor", "global")
+    assert r["ok"], r
+    assert (tmp / "app" / "skills" / "futures-monitor" / "SKILL.md").is_file()
+
+    # 同名再来一次：默认不覆盖，且要能被前端识别成"已存在"以便问一句
+    r2 = api.promote_skill("futures-monitor", "global")
+    assert not r2["ok"] and r2.get("exists"), r2
+    assert api.promote_skill("futures-monitor", "global", overwrite=True)["ok"]
+
+    # 反向：全局的复制回另一个项目
+    ws2 = tmp / "ws2"
+    ws2.mkdir()
+    conv.workspace = ws2
+    conv._refresh_skills()
+    assert src_of("futures-monitor") == "global"       # 换了项目，只剩全局那份
+    r3 = api.promote_skill("futures-monitor", "project")
+    assert r3["ok"], r3
+    assert (ws2 / ".hermes" / "skills" / "futures-monitor" / "SKILL.md").is_file()
+
+    assert not api.promote_skill("不存在的", "global")["ok"]
+    assert not api.promote_skill("futures-monitor", "别处")["ok"]     # scope 只认两个值
+    api.close()
+    _paths.APP_DIR, _convmod.APP_DIR = _old_app, _old_conv
+    print("✓ 技能换层：项目↔全局、覆盖要显式、非法 scope 与不存在的技能被挡")
+
+
 def main() -> int:
     import tempfile
 
@@ -509,6 +567,7 @@ def main() -> int:
         test_discover_and_override, test_discover_isolates_bad_skill,
         test_progressive_disclosure_blocks, test_allowed_tools_not_auto_approved,
         test_load_skill_tool, test_skill_dirs_order, test_load_skill_reads_latest,
+        test_promote_skill,
         test_conversation_integration, test_report_checker_cli,
     ]
     n = 0

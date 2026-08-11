@@ -3537,6 +3537,8 @@ async function renderSkillsPane() {
       (u && u.status === "update"
         ? `<button class="skill-update" data-name="${escapeHtml(s.name)}">更新</button>` : "") +
       `<button class="skill-view" data-name="${escapeHtml(s.name)}">查看</button>` +
+      ((a) => a ? `<button class="skill-scope" data-name="${escapeHtml(s.name)}" data-scope="${a.scope}" ` +
+        `title="${escapeHtml(a.title)}">${escapeHtml(a.label)}</button>` : "")(skillScopeAction(s.source)) +
       (s.source === "builtin" ? "" :
         `<button class="skill-del" data-name="${escapeHtml(s.name)}" title="删除">✕</button>`) +
       `</span></div>` +
@@ -3617,6 +3619,20 @@ async function renderSkillsPane() {
     closeSettings();
     submitMessage(v, skillCreatorPrompt(target), []);
   });
+
+  // 「装到全局 / 复制到本项目」：同名已存在时问一次再覆盖，绝不静默盖掉别人的技能
+  provDetailEl.querySelectorAll(".skill-scope").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const { name, scope } = b.dataset;
+      const where = scope === "global" ? "全局技能目录" : "本项目（.hermes/skills）";
+      let r = await window.pywebview.api.promote_skill(name, scope, false);
+      if (r && !r.ok && r.exists) {
+        if (!window.confirm(`${where}里已经有「${name}」了，覆盖它？`)) return;
+        r = await window.pywebview.api.promote_skill(name, scope, true);
+      }
+      showToast(r && r.ok ? `✅ 已复制到${where}` : "⚠ " + ((r && r.error) || "复制失败"));
+      if (r && r.ok) renderSkillsPane();
+    }));
 
   provDetailEl.querySelectorAll(".skill-view").forEach((b) =>
     b.addEventListener("click", () => showSkillDetail(b.dataset.name)));
@@ -4506,17 +4522,56 @@ async function previewDiff(path) {
   }
   const pre = document.createElement("pre");
   pre.className = "ws-pv-code ws-diff";
-  res.diff.split("\n").forEach((line) => {
+  // 逐行标注行号（pure.js 算），代码行可点 → 就这一行给定向反馈
+  annotateDiffLines(res.diff).forEach((e) => {
     const span = document.createElement("span");
-    span.className = "diff-line" +
-      (line.startsWith("+") && !line.startsWith("+++") ? " add" :
-       line.startsWith("-") && !line.startsWith("---") ? " del" :
-       line.startsWith("@@") ? " hunk" :
-       (line.startsWith("+++") || line.startsWith("---")) ? " meta" : "");
-    span.textContent = line + "\n";
+    span.className = "diff-line " + e.kind + (e.kind === "meta" || e.kind === "hunk" ? "" : " dl-click");
+    span.textContent = e.text + "\n";
+    if (e.kind !== "meta" && e.kind !== "hunk") {
+      span.title = "点这行提意见";
+      span.addEventListener("click", () => openLineFeedback(pre, span, path, e));
+    }
     pre.appendChild(span);
   });
   wsPreview.appendChild(pre);
+}
+
+// 行内反馈框：紧贴被点的那行插入，Enter 发送 / Shift+Enter 换行 / Esc 取消。
+// 发出去的是「file:line + 该行原文 + 你的话」——比在输入框里描述"第几行那个地方"准得多。
+function openLineFeedback(pre, span, path, entry) {
+  const old = pre.querySelector(".dl-feedback");
+  if (old) old.remove();
+  pre.querySelectorAll(".dl-sel").forEach((n) => n.classList.remove("dl-sel"));
+  span.classList.add("dl-sel");
+
+  const box = document.createElement("div");
+  box.className = "dl-feedback";
+  const anchor = entry.newLine != null ? `${path}:${entry.newLine}`
+                                       : `${path}（原第 ${entry.oldLine} 行）`;
+  box.innerHTML = `<div class="dl-fb-head">对 <b>${escapeHtml(anchor)}</b> 提意见</div>` +
+    '<textarea class="dl-fb-input" rows="2" placeholder="这里哪儿不对 / 要改成什么？Enter 发送，Shift+Enter 换行"></textarea>' +
+    '<div class="dl-fb-acts"><button class="ws-btn dl-fb-send">发送</button>' +
+    '<button class="ws-btn dl-fb-cancel">取消</button></div>';
+  span.after(box);
+  const ta = box.querySelector(".dl-fb-input");
+  ta.focus();
+
+  const close = () => { span.classList.remove("dl-sel"); box.remove(); };
+  const send = () => {
+    const note = ta.value.trim();
+    if (!note) { showToast("先写一句意见"); return; }
+    const v = activeView();
+    if (!v) { showToast("先开一个会话"); return; }
+    close();
+    submitMessage(v, formatLineFeedback(path, entry, note), []);
+  };
+  box.querySelector(".dl-fb-send").addEventListener("click", send);
+  box.querySelector(".dl-fb-cancel").addEventListener("click", close);
+  ta.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); close(); }
+    ev.stopPropagation();      // 别让 Esc 冒到浮层栈把面板一起关了
+  });
 }
 
 function renderTreeNode(node) {
