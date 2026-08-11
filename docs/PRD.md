@@ -321,6 +321,10 @@
 - FR-10.3 **后台命令/长进程**：`run_powershell` 支持 `background:true`——起 dev server/watch 等长进程，
   返回进程 id；配 `list_processes`/`read_process_output`/`stop_process`；关窗/停止时清理子进程。
   解锁"启动服务→测试→看日志"的 Web 开发场景。
+  - **非交互硬化 + 交互提示识别**（✅ 定版 v3.61.0，2026-08-11，Windows 真机验证通过）：环境变量
+    补齐（npm/ssh/gh/dotnet/CI 等）+ PowerShell 进度条前缀；命令停在交互提示上时**认出来并点名提示原文**
+    （保守判据：还活着 + 最后一行像提示 + 静止≥5s），不再干等满 180s；超时文案按成因拆三条。
+    **立场：不做全局 auto-yes**（确认框是防误删的最后一道闸）。顺带修好前台"实时流输出"其实不实时。
 - FR-10.4 **压缩升级 + prompt caching**：压缩摘要从启发式截断升级为**模型生成**（一次便宜调用，
   质量对标 /compact）；anthropic 协议加 `cache_control` 前缀缓存（长会话成本/延迟显著下降，
   方舟端点是否支持需实测，不支持则优雅跳过）。

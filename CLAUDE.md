@@ -82,6 +82,15 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - **WebView2 死锁坑（v3.51 评审踩过）**：**别在 pywebview 的 `js_api` 方法里同步调 `window.evaluate_js` 推流式事件**——WebView2 下 js_api 处理函数返回前 JS 执行结果无法回传，首个 `evaluate_js` 就死锁：方法永不返回、前端 `await` 永远 pending（症状＝按钮一直转、事件一个不出）。**规避**：凡是"边跑边 emit"的长任务都走**后台 worker 线程**（照 `conversation.enqueue`/`_worker_loop`、`run_design_review` 的模式），js_api 立即返回、事件由线程 emit、前端靠事件（非 await 返回值）驱动渲染与收尾。**Chromium/Playwright 复现不出**（WebView2 专属）。
 - **WebView2 滚动坑（v3.37 踩过）**：对话区 `.chat` 是滚动容器，某些 CSS 会让 WebView2 在内容**异步重排**时把 `scrollHeight` 暂时算塌（→ 滚轮跳回顶部、几轮后自愈），**Chromium/Playwright 复现不出**（WebView2 专属）。已知触发：① 给元素只设 `overflow-x:auto`（`overflow-y` 连带变 `auto`、成滚动容器）；② `<hr>` 用 `border:none;border-top` 重构盒子；③ 嵌套列表加 `margin`（嵌套 margin 合并）；④ 给 `table` 加 `display:block`。**规避**：宽表格用外层 `.table-wrap` div 滚动（别动 table 的 display）；列表只用 `padding` 缩进别用 margin；hr 只改色别重构；`.chat` 已加 `overflow-anchor:none`。改对话区 CSS 后**务必真机滚长对话验**，别只信 Chromium 截图。
 
+- **shell 前台读输出必须用二进制 `read1()`，别"清理"回 `text=True`**（2026-08-11 踩过）：
+  `TextIOWrapper.read(4096)` **会阻塞到读满 4096 字符或 EOF**——于是"实时流输出"对绝大多数命令不实时、
+  停在交互提示上的命令也看不见提示。现在是二进制管道 + `_StreamDecoder`（增量 utf-8 + 换行归一）。
+  `test_encoding_guard` 只管 `text=True` 分支，改回去它**不会报**。相关纪律：凡"边跑边 X"的功能，
+  测试要钉住**到达时间**，只断言"收到了"会让"结束时一次性吐出"也全绿。
+- **交互式命令：不做全局 auto-yes**。`hardened_env()` 里会改语义的开关（`CI`/`GIT_SSH_COMMAND`）用
+  `setdefault` 尊重用户；**不设 `TERM=dumb`**（git 会 "press RETURN"，多一个挂死点）；
+  **不注入 `$ConfirmPreference='None'`**（等于替用户对 `Remove-Item -Recurse` 这类点了"是"）。
+  提示识别（`looks_waiting_input`）只在「还活着 + 最后一行像提示 + 静止≥5s」三条同时成立时才下结论。
 - **只读命令不弹权限确认是设计如此（别当 bug 查）**：智能确认分级（`auto_approve_safe` 默认开，v3.44 起）
   会自动放行 `dir`/`Get-Date`/`whoami`/`git status`/`pytest` 等只读命令（白名单在 `permissions.py` 的 `_SAFE_LEADING`）。
   免确认共三种原因（命中 allow 规则 / 本会话「全部允许」/ 只读白名单），**UI 已在执行行标注「（免确认：原因）」**

@@ -6,6 +6,45 @@
 
 ## [Unreleased]
 
+## [3.61.0] - 2026-08-11
+
+**shell 非交互硬化补齐（P1）+ 交互提示识别（P2）+ 顺带修好"实时流输出"**。✅ Windows 真机验证通过。
+
+### Fixed（版本号一致性）
+- `src/agentcore/__init__.py` 的 `__version__` 停在 3.55.0（pyproject 已到 3.60.1）。它是
+  `updater.current_version()` 在读不到包元数据时的回退值——**打包成 exe 的场景正好可能走这条**，
+  于是会把自己当成旧版、误报"有新版本"。本次一并对齐到 3.61.0。
+
+### Fixed
+- **前台"实时流输出"其实一直不实时**（v3.52 加的功能，名不副实）：读的是 `TextIOWrapper.read(4096)`，
+  而它**会阻塞到读满 4096 字符或 EOF**（实测：命令先 `printf` 一段再 `sleep`，`read` 要等进程结束才返回）。
+  于是输出攒不满 4096 字符的命令（绝大多数）只在退出时一次性吐出来。改为读底层二进制 `read1()`
+  （有多少给多少）+ `_StreamDecoder` 自己做增量 utf-8 解码与换行归一。**这也是 P2 能成立的前提**——
+  提示文字卡在缓冲里，外面根本看不见。注意：Popen 因此改成二进制管道，`test_encoding_guard` 只管
+  `text=True` 的分支，别"顺手"改回 `text=True`。
+- **交互式命令必然干等满 180s 再报一句笼统超时**：现在盯着输出尾巴认交互提示（`looks_waiting_input`），
+  命中即终止并**点名提示原文**。判据刻意保守，三条同时成立才算：进程还活着 + 输出**最后一行**像提示 +
+  已静止 ≥5s——只靠模式匹配会误伤（`--help` 里就有 `[y/N]`、日志里也有 `Password:`）。实测
+  `npm create` 式提示：**180s → 5.3s**。
+- **超时文案拆成三种成因**（①不自退 ②真的慢 ③在等输入）。老文案把"不自退"和"等 y/n"挤在一句里，
+  模型会把交互式命令也丢去 `background:true`——后台照样没人回答，只是换个地方挂着。
+
+### Added
+- **非交互环境变量补齐**（`hardened_env()`）：`NPM_CONFIG_YES`/`npm_config_yes`（npm/npx 的
+  "Ok to proceed? (y)"）、`GIT_SSH_COMMAND=ssh -o BatchMode=yes`（ssh 首次连主机的 yes/no）、
+  `SSH_ASKPASS_REQUIRE=never`、`GH_PROMPT_DISABLED`、`COMPOSER_NO_INTERACTION`、`HUSKY=0`、
+  `DOTNET_NOLOGO`/`DOTNET_CLI_TELEMETRY_OPTOUT`/`DOTNET_SKIP_FIRST_TIME_EXPERIENCE`、
+  `POWERSHELL_UPDATECHECK=Off`、`PIP_DISABLE_PIP_VERSION_CHECK`、`HOMEBREW_NO_AUTO_UPDATE`、`NO_COLOR`。
+  其中 `CI=1` 与 `GIT_SSH_COMMAND` 会改变命令语义，用 `setdefault`：用户显式设过就按他的来。
+  **刻意不设 `TERM=dumb`**——git 会打印 "terminal is not fully functional - press RETURN"，反而多一个挂死点。
+- **PowerShell 进度条前缀** `$ProgressPreference='SilentlyContinue';`：PS 5.1 的进度条在无窗口环境下能把
+  `Invoke-WebRequest`/`Expand-Archive` 拖慢一个数量级，慢到撞 timeout 就像"卡死"。**只关进度显示，
+  不碰 `$ConfirmPreference`/`$ErrorActionPreference`**——那两个是替用户偷偷 auto-yes / 吞错误，属越界。
+- 工具描述里明说执行环境无终端、stdin 已关闭，要求一开始就加非交互参数（让模型先手规避，而不是撞一次再改）。
+
+### 未做（下一段）
+`write_process_input`（模型侧回答提示）+ 工具块行内输入行（人接管），见 DEVLOG。
+
 ## [3.60.1] - 2026-08-11
 
 **补 v3.60.0 漏提交的一个文件**：`conversation.py` 里把 `strategy_store` 传给主循环与子 Agent 的接线

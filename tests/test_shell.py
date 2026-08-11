@@ -159,6 +159,22 @@ def test_foreground_streams_output_deltas():
     assert "[exit code] 0" in str(out), "结束仍返回完整结果"
 
 
+def test_foreground_stream_is_actually_realtime_not_buffered_until_exit():
+    # 顺带修掉的老问题：原来读的是 TextIOWrapper.read(4096)，**会阻塞到读满或 EOF** → 输出攒不满
+    # 4096 字符的命令（绝大多数）根本不会边跑边推，只在退出时一次性吐出来，"实时流输出"名不副实。
+    # 现在读 read1()：命令还没退出就该收到第一段。
+    stamps = []
+    t0 = time.time()
+
+    def _on(kind, delta):
+        if "EARLY" in delta:
+            stamps.append(time.time())
+
+    _tool(timeout=20).run({"command": "printf 'EARLY\\n'; sleep 3", "background": False}, stream=_on)
+    assert stamps, "命令跑完前应已推出第一段增量"
+    assert stamps[0] - t0 < 2.0, f"第一段应几乎立刻到达（实测 {stamps[0] - t0:.1f}s），不该等到进程退出"
+
+
 def test_foreground_stream_optional_backward_compatible():
     # 不传 stream（老调用方式）仍照常工作。
     out = _tool().run({"command": "echo hi", "background": False})
@@ -271,6 +287,141 @@ def test_win_terminate_tree_survives_hanging_taskkill():
     finally:
         shell.sys.platform, shell.subprocess.run = orig_plat, orig_run
     assert killed["proc"] is True, "taskkill 超时后仍须 proc.kill() 兜底"
+
+
+# ---- P1：非交互硬化补齐 + PowerShell 进度条前缀 ----
+
+def test_noninteractive_env_covers_npm_ssh_gh_and_ci():
+    # 真机反复撞超时后补的一批：npm 的 "Ok to proceed? (y)"、ssh 首次连主机的 yes/no、gh 交互问答、
+    # 以及覆盖面最大的 CI=1。这些拿不到就只能等超时。
+    names = ["CI", "NPM_CONFIG_YES", "npm_config_yes", "SSH_ASKPASS_REQUIRE", "GH_PROMPT_DISABLED",
+             "GIT_SSH_COMMAND", "HUSKY", "COMPOSER_NO_INTERACTION", "NO_COLOR", "HOMEBREW_NO_AUTO_UPDATE"]
+    cmd = "; ".join(f'echo "{n}=$(printenv {n})"' for n in names)
+    out = _tool().run({"command": cmd, "background": False})
+    for expect in ("CI=1", "NPM_CONFIG_YES=true", "npm_config_yes=true", "SSH_ASKPASS_REQUIRE=never",
+                   "GH_PROMPT_DISABLED=1", "HUSKY=0", "COMPOSER_NO_INTERACTION=1", "NO_COLOR=1",
+                   "HOMEBREW_NO_AUTO_UPDATE=1"):
+        assert expect in out, f"未注入 {expect}；实际：\n{out}"
+    assert "BatchMode=yes" in out, "GIT_SSH_COMMAND 应带 BatchMode（ssh 首次连主机的 yes/no 会挂死）"
+
+
+def test_user_set_ci_is_respected_not_overridden():
+    # CI 会改变测试框架行为（jest 不写新快照等），属"改语义"的开关 → 用户显式设过就不许覆盖。
+    from agentcore.tools.shell import hardened_env
+    os.environ["CI"] = "0"
+    try:
+        assert hardened_env()["CI"] == "0", "用户显式设的 CI 被硬化覆盖了"
+    finally:
+        os.environ.pop("CI", None)
+    assert hardened_env()["CI"] == "1", "用户没设时应给上 CI=1"
+
+
+def test_no_term_dumb_injected():
+    # 刻意不设 TERM=dumb：git 会打印 "terminal is not fully functional - press RETURN" 反而多一个挂死点。
+    from agentcore.tools.shell import hardened_env
+    assert hardened_env().get("TERM") != "dumb", "TERM=dumb 会给 git 造出新的挂死点，不该注入"
+
+
+def test_powershell_gets_progress_prefix_other_shells_untouched():
+    # PS 5.1 的进度条在无窗口环境下能把 Invoke-WebRequest 拖慢一个数量级 → 慢到撞 timeout 像"卡死"。
+    # 只关进度显示；bash 等不受影响；**不注入 $ConfirmPreference（那是替用户 auto-yes，越界）**。
+    from agentcore.tools.shell import build_argv
+    ps = build_argv("powershell", "Invoke-WebRequest http://x -OutFile a.zip")
+    assert ps[:4] == ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
+    assert ps[-1].startswith("$ProgressPreference='SilentlyContinue'; ")
+    assert "Invoke-WebRequest" in ps[-1]
+    assert "ConfirmPreference" not in ps[-1] and "ErrorActionPreference" not in ps[-1]
+    assert build_argv("bash", "echo hi") == ["bash", "-lc", "echo hi"]
+    assert build_argv("cmd", "dir") == ["cmd", "/c", "dir"]
+
+
+# ---- P2：交互提示识别（认出"在等你敲字"，别干等满 timeout 再报一句笼统超时）----
+
+def test_looks_waiting_input_recognizes_real_prompts():
+    from agentcore.tools.shell import looks_waiting_input
+    pos = [
+        "Need to install the following packages:\n  create-vite@5.2.3\nOk to proceed? (y)",
+        "Overwrite existing file? [y/N]",
+        "Do you want to continue? [Y/n] ",
+        "The authenticity of host 'github.com' can't be established.\n"
+        "Are you sure you want to continue connecting (yes/no)?",
+        "Password:",
+        "Enter passphrase for key '/root/.ssh/id_rsa':",
+        "Username for 'https://github.com':",
+        "Press any key to continue . . .",
+        "请按任意键继续. . .",
+        "? Select a framework › - Use arrow-keys.",
+        "--More--",
+        "是否继续？",
+    ]
+    for t in pos:
+        assert looks_waiting_input(t), f"应认出交互提示：{t!r}"
+
+
+def test_looks_waiting_input_ignores_prompts_that_are_not_the_last_line():
+    # 关键防误伤：--help 文本里就有 [y/N]、日志里也会出现 Password:——只要后面还有别的输出就不算。
+    from agentcore.tools.shell import looks_waiting_input
+    neg = [
+        "usage: rm [-f | -i] ...\n  -i  prompt [y/N] before every removal\nDone.",
+        "Password: ok\nauthenticated, fetching...",
+        "added 231 packages in 12s",
+        "note: pass --yes to skip confirmation",
+        "",
+        None,
+        "x" * 400 + " [y/N]",          # 超长行多半是数据/日志，不当提示
+    ]
+    for t in neg:
+        assert not looks_waiting_input(t), f"不该判成交互提示：{str(t)[:60]!r}"
+
+
+def test_foreground_prompt_is_detected_and_killed_before_timeout():
+    # 端到端：命令打出提示后干等 → 应在"静止阈值"附近被识别并终止，报错点名提示原文 + 指向非交互参数，
+    # 而不是等满 timeout 报一句笼统的超时。
+    import agentcore.tools.shell as shell
+    orig_quiet = shell._PROMPT_QUIET_SECONDS
+    shell._PROMPT_QUIET_SECONDS = 1.0
+    tool = _tool(timeout=30)                     # 大 timeout：没识别出来就会等满 30s
+    t0 = time.time()
+    raised = None
+    try:
+        tool.run({"command": "printf 'Ok to proceed? (y)'; sleep 30", "background": False})
+    except ToolError as e:
+        raised = str(e)
+    finally:
+        shell._PROMPT_QUIET_SECONDS = orig_quiet
+    elapsed = time.time() - t0
+    assert raised is not None, "停在提示上的命令应被识别并抛错"
+    assert "Ok to proceed? (y)" in raised, f"报错应带上提示原文，便于模型改写命令；实际：{raised}"
+    assert "--yes" in raised and "别原样重试" in raised
+    assert "background:true" not in raised, "等输入 ≠ 常驻服务，别把模型引去后台起（后台照样没人回答）"
+    assert elapsed < 12, f"应在静止阈值附近就终止，而非等满 timeout；实测 {elapsed:.1f}s"
+
+
+def test_busy_command_printing_prompt_like_text_is_not_killed():
+    # 防误杀：输出里出现过 [y/N] 但命令一直在刷输出（没静止）→ 不该被当成在等输入。
+    import agentcore.tools.shell as shell
+    orig_quiet = shell._PROMPT_QUIET_SECONDS
+    shell._PROMPT_QUIET_SECONDS = 1.0
+    try:
+        out = _tool(timeout=20).run(
+            {"command": "echo 'prompt [y/N]'; for i in 1 2 3 4 5 6; do echo working $i; sleep 0.5; done",
+             "background": False})
+    finally:
+        shell._PROMPT_QUIET_SECONDS = orig_quiet
+    assert "[exit code] 0" in out and "working 6" in out, f"仍在刷输出的命令被误杀了：{out}"
+
+
+def test_plain_timeout_message_separates_three_causes():
+    # 老文案把"不自退"和"等输入"挤在一句 → 模型把交互式命令也丢去 background、在后台继续没人理。
+    tool = _tool(timeout=1)
+    raised = None
+    try:
+        tool.run({"command": "sleep 30", "background": False})
+    except ToolError as e:
+        raised = str(e)
+    assert raised is not None
+    assert "①" in raised and "②" in raised and "③" in raised, f"超时文案应分列成因；实际：{raised}"
+    assert "background:true" in raised and "--yes" in raised
 
 
 if __name__ == "__main__":
