@@ -652,3 +652,20 @@ test("permissionsNavBadge：只数面板放行的规则，零条不显示", () =
   assert.deepEqual(permissionsNavBadge(["run_bash(futures *)", "git_status"]),
     { text: "放行 2", tone: "muted" });
 });
+
+// ===== 一键技能化：两个入口共用的提示词 =====
+const { skillCreatorPrompt } = require("../../web/pure.js");
+
+test("skillCreatorPrompt：点名技能、要求真跑取样与自检；给了目标就带上，没给则先问用户", () => {
+  const withTarget = skillCreatorPrompt("  python -m mytool  ");
+  assert.ok(withTarget.includes("skill-creator"));          // 必须点名技能，否则可能不触发
+  assert.ok(withTarget.includes("「python -m mytool」"));   // 目标带上且去掉首尾空白
+  assert.ok(withTarget.includes("真跑一条只读命令"));       // 契约靠实测，不许猜
+  assert.ok(withTarget.includes("自检"));
+  assert.ok(!withTarget.includes("先问我"), withTarget);    // 已经给了目标就别再问
+
+  const noTarget = skillCreatorPrompt("");
+  assert.ok(noTarget.includes("先问我"), noTarget);          // 没给目标 → 先问清楚再动手
+  assert.equal(skillCreatorPrompt(null), noTarget);          // null/undefined 与空串一致
+  assert.equal(skillCreatorPrompt(undefined), noTarget);
+});

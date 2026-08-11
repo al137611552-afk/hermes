@@ -2493,6 +2493,7 @@ function renderHistory(v, messages) {
 const SLASH_COMMANDS = [
   { cmd: "/add-dir", arg: "<目录路径>", desc: "授权一个工作区外的目录，文件工具之后可读其中文件" },
   { cmd: "/crazy", arg: "<目标>", desc: "🤖 自主模式：无人值守，AI 自己写目标+循环干到底（免确认，慎用）" },
+  { cmd: "/技能化", arg: "<程序入口或路径>", desc: "🧪 把一个程序做成技能：摸接口→真跑取样→写 SKILL.md→自检" },
   { cmd: "/help", arg: "", desc: "列出所有可用命令" },
 ];
 const slashMenu = document.getElementById("slash-menu");
@@ -2629,6 +2630,9 @@ async function handleSlashCommand(v, text) {
     addSysLine(v, `🤖 自主模式启动：${arg}\n无人值守、免确认、AI 自己写目标循环干到底；随时点「停止」中止。`);
     try { await window.pywebview.api.start_autonomous(arg, 0); }
     catch (e) { addSysLine(v, "⚠ 启动失败：" + e); }
+  } else if (cmd === "/技能化") {
+    // 入口只负责把统一的提示词发出去，真正的流程写在内置 skill-creator 技能里
+    submitMessage(v, skillCreatorPrompt(arg), []);
   } else if (cmd === "/help") {
     const list = allSlashCommands();
     const fmt = (c) => `  ${c.cmd}${c.arg ? " " + c.arg : ""}　—　${c.desc}`;
@@ -3558,7 +3562,8 @@ async function renderSkillsPane() {
     `</div>`;
 
   provDetailEl.innerHTML =
-    '<div class="prov-d-head"><span class="prov-d-title">🧩 技能</span></div>' +
+    '<div class="prov-d-head"><span class="prov-d-title">🧩 技能</span>' +
+      '<button class="ws-btn skill-fromprog" type="button" title="把本机的一个程序/CLI 做成技能">+ 从程序生成技能</button></div>' +
     '<p class="settings-hint">技能＝把「某类活怎么干」打包好的说明＋脚本＋模板。hermes 只把技能的名字和' +
     '适用场景常驻上下文（很省），任务对得上时才读完整说明——装几十个也不会拖慢对话。' +
     '格式对齐 Agent Skills 公共规范，社区现成技能可直接用。</p>' +
@@ -3599,6 +3604,20 @@ async function renderSkillsPane() {
   });
   provDetailEl.querySelectorAll(".skill-update").forEach((b) =>
     b.addEventListener("click", () => confirmUpdate(skillUpdates[b.dataset.name])));
+  // 「+ 从程序生成技能」：填个入口 → 关设置面板 → 在对话里发起（与 /技能化 同一段提示词）
+  const fromProg = provDetailEl.querySelector(".skill-fromprog");
+  if (fromProg) fromProg.addEventListener("click", () => {
+    const v = activeView();
+    if (!v) { showToast("先开一个会话再来"); return; }
+    const target = window.prompt(
+      "要把哪个程序做成技能？填它的调用入口或路径，例如：\n" +
+      "  futures\n  python -m mytool\n  D:\\work\\scripts\\report.py\n\n" +
+      "留空也行——留空我会先问你几个问题。", "");
+    if (target === null) return;               // 取消
+    closeSettings();
+    submitMessage(v, skillCreatorPrompt(target), []);
+  });
+
   provDetailEl.querySelectorAll(".skill-view").forEach((b) =>
     b.addEventListener("click", () => showSkillDetail(b.dataset.name)));
   provDetailEl.querySelectorAll(".skill-del").forEach((b) =>
