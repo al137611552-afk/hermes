@@ -527,7 +527,89 @@
     config: "配置目录", project: "本项目（.hermes/skills）",
   };
 
+  // 焦点环绕（浮层 focus trap 用）：Tab 到末尾回到开头，Shift+Tab 到开头绕到末尾。
+  // 当前焦点不在浮层内时（cur<0）：Tab 进第一个、Shift+Tab 进最后一个。
+  function wrapFocusIndex(len, cur, shift) {
+    if (!len) return -1;
+    if (cur < 0) return shift ? len - 1 : 0;
+    return shift ? (cur - 1 + len) % len : (cur + 1) % len;
+  }
+
+  // ---- 设置面板导航：分组 + 状态徽标（对标主流设置：分区标题 + 行内状态，不必点进去才知道）----
+
+  // 固定面板（非 provider）。顺序即展示顺序；group 决定归到哪一区。
+  const SETTINGS_PANES = [
+    { key: "__browser__", label: "🌐 浏览器穿透", group: "capabilities" },
+    { key: "__mcp__", label: "🔌 MCP 扩展", group: "capabilities" },
+    { key: "__hooks__", label: "🪝 Hooks", group: "capabilities" },
+    { key: "__skills__", label: "🧩 技能", group: "capabilities" },
+    { key: "__appearance__", label: "🎨 外观", group: "general" },
+    { key: "__features__", label: "🛠 功能开关", group: "general" },
+    { key: "__limits__", label: "📊 限额与预算", group: "general" },
+  ];
+  const SETTINGS_GROUPS = [
+    { id: "models", title: "模型服务" },
+    { id: "capabilities", title: "扩展能力" },
+    { id: "general", title: "通用" },
+  ];
+
+  // 各面板的导航徽标。约定：没什么可说时回 null（不显示），别拿「0」占位制造噪音。
+  // tone: ok=已连通(绿) / warn=有问题(黄) / muted=只是计数(灰)。
+
+  function mcpNavBadge(r) {
+    const servers = (r && r.servers) || {};
+    const connected = (r && r.connected) || {};
+    const names = Object.keys(servers).filter((n) => servers[n] && servers[n].enabled);
+    if (!names.length) return null;
+    let tools = 0, down = 0;
+    names.forEach((n) => {
+      const k = (connected[n] || []).length;
+      tools += k;
+      if (!k) down += 1;
+    });
+    if (down) return { text: `${down} 未连上`, tone: "warn" };
+    return { text: `${tools} 工具`, tone: "ok" };
+  }
+
+  function browserNavBadge(s) {
+    if (!s || !s.enabled) return null;          // 未启用＝默认态，不用喊
+    if (s.connected) return { text: "已连上", tone: "ok" };
+    return { text: s.node ? "装配中" : "缺 Node", tone: "warn" };
+  }
+
+  function skillsNavBadge(skills) {
+    const n = (skills || []).length;
+    return n ? { text: String(n), tone: "muted" } : null;
+  }
+
+  function hooksNavBadge(hooks) {
+    const n = ((hooks || []).filter((h) => !h || h.enabled !== false)).length;
+    return n ? { text: String(n), tone: "muted" } : null;
+  }
+
+  // 把 provider 列表 + 固定面板拼成分组导航。badges: {面板key: {text,tone}}；空组自动丢掉。
+  function buildSettingsNav(providers, badges) {
+    const b = badges || {};
+    const items = {
+      models: (providers || []).map((p) => ({
+        key: p.key, label: p.label, kind: "provider", dot: !!p.enabled, badge: null,
+      })),
+      capabilities: [], general: [],
+    };
+    SETTINGS_PANES.forEach((p) => {
+      (items[p.group] || (items[p.group] = [])).push({
+        key: p.key, label: p.label, kind: "pane", dot: null, badge: b[p.key] || null,
+      });
+    });
+    return SETTINGS_GROUPS
+      .map((g) => ({ id: g.id, title: g.title, items: items[g.id] || [] }))
+      // 空组不占位；但「模型服务」永远留着——它挂着「+ 自定义服务」入口，一个 provider 都没有时更要能加
+      .filter((g) => g.items.length || g.id === "models");
+  }
+
   return {
+    SETTINGS_PANES, SETTINGS_GROUPS, buildSettingsNav, wrapFocusIndex,
+    mcpNavBadge, browserNavBadge, skillsNavBadge, hooksNavBadge,
     SKILL_GRADES, skillGradeBadge, installConfirmLevel, filterMarketEntries,
     groupSkillsBySource, SOURCE_LABELS, skillCountLabel,
     UPDATE_STATUS, updateStatusLabel, summarizeUpdateCheck,

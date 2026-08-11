@@ -21,6 +21,10 @@
   --ok: #6fcf97;      --ok-bg: rgba(111, 207, 151, .16);   --ok-line: rgba(111, 207, 151, .45);
   --warn: #d8c860;    --warn-bg: rgba(216, 200, 96, .16);   --warn-line: rgba(216, 200, 96, .45);
   --danger: #ff8080;  --danger-bg: rgba(255, 128, 128, .16); --danger-line: rgba(255, 128, 128, .45);
+  /* 层级 token：顶层浮层只用这三档，别再手写魔数（技能模态曾写 60 被设置面板压住） */
+  --z-overlay: 9000;       /* 全屏遮罩面板：设置 / 快捷键 */
+  --z-modal: 9500;         /* 叠在遮罩面板之上的模态：技能详情/预览 */
+  --z-toast: 10000;        /* 全局提示，永远最上层 */
 }
 
 /* 浅色主题：覆盖表面/文本/边框；代码块(--code-bg)刻意不动，保持暗底配深色高亮 */
@@ -550,7 +554,7 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
   opacity: 0;
   pointer-events: none;
   transition: opacity .25s ease, transform .25s ease;
-  z-index: 10000;   /* 高于设置面板(9998)，提示不被遮在下层 */
+  z-index: var(--z-toast);   /* 高于设置面板与模态，提示不被遮在下层 */
 }
 #toast.show {
   opacity: 1;
@@ -1175,7 +1179,7 @@ body.plan-on .composer::before {
 
 /* ===== 设置面板（API Key + 模型档案）：左 tab 导航 + 右内容，对标主流设置 ===== */
 .settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5);
-  display: flex; align-items: center; justify-content: center; z-index: 9998; }
+  display: flex; align-items: center; justify-content: center; z-index: var(--z-overlay); }
 .settings-overlay[hidden] { display: none; }
 .settings-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
   width: min(760px, 94vw); height: min(560px, 88vh); display: flex; flex-direction: column;
@@ -1272,6 +1276,14 @@ body.plan-on .composer::before {
 .prov-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prov-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
 .prov-dot.on { background: var(--ok); }
+/* 分组小标题（模型服务 / 扩展能力 / 通用）：对标主流设置的分区导航 */
+.prov-group { font-size: 11px; letter-spacing: .06em; color: var(--muted); padding: 12px 12px 4px; }
+.prov-list > .prov-group:first-child { padding-top: 2px; }
+/* 行内状态徽标：绿=已连通 / 黄=有问题 / 灰=计数 */
+.prov-badge { flex: 0 0 auto; font-size: 11px; line-height: 1.6; padding: 0 6px;
+  border-radius: 8px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.prov-badge.ok { color: var(--ok); border-color: var(--ok-line); }
+.prov-badge.warn { color: var(--warn); border-color: var(--warn-line); }
 .prov-add { margin-top: 6px; background: transparent; border: 1px dashed var(--border);
   color: var(--muted); border-radius: 8px; padding: 9px; cursor: pointer; font-size: 12.5px; }
 .prov-add:hover { border-color: var(--accent); color: var(--text); }
@@ -1363,7 +1375,6 @@ body.plan-on .composer::before {
 .prov-del-svc { background: transparent; border: 1px solid var(--border); color: var(--muted);
   border-radius: 8px; padding: 5px 12px; cursor: pointer; font-size: 12px; }
 .prov-del-svc:hover { border-color: #d9534f; color: #d9534f; }
-.prov-item.prov-special { margin-top: 6px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; padding-top: 12px; }
 .br-busy { margin-top: 14px; color: var(--accent); font-size: 13px; }
 /* 浏览器穿透 · 手动安装说明（下载超时时的兜底，命令一键复制） */
 .br-manual { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
@@ -1580,7 +1591,7 @@ body.plan-on .composer::before {
 
 /* 技能预览 / 详情模态 */
 .skill-modal {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 60;
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: var(--z-modal);
   display: flex; align-items: center; justify-content: center;
 }
 .sm-box {

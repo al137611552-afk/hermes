@@ -499,3 +499,81 @@ test("summarizeUpdateCheck：如实分类计数，不把查不了的算成'已�
   // 全部最新时也不该出现误导性的绝对说法
   assert.equal(summarizeUpdateCheck([{ status: "current" }]), "1 个已是最新");
 });
+
+// ===== 设置面板导航：分组 + 状态徽标 =====
+const {
+  buildSettingsNav, mcpNavBadge, browserNavBadge, skillsNavBadge, hooksNavBadge,
+} = require("../../web/pure.js");
+
+test("buildSettingsNav：provider 归模型服务，固定面板按组分到扩展能力/通用", () => {
+  const groups = buildSettingsNav(
+    [{ key: "ark", label: "火山方舟", enabled: true }, { key: "ds", label: "DeepSeek", enabled: false }],
+    {},
+  );
+  assert.deepEqual(groups.map((g) => g.id), ["models", "capabilities", "general"]);
+  const models = groups[0];
+  assert.equal(models.title, "模型服务");
+  assert.deepEqual(models.items.map((i) => i.key), ["ark", "ds"]);
+  assert.deepEqual(models.items.map((i) => i.dot), [true, false]);   // 亮灭点＝enabled
+  assert.deepEqual(groups[1].items.map((i) => i.key),
+    ["__browser__", "__mcp__", "__hooks__", "__skills__"]);
+  assert.deepEqual(groups[2].items.map((i) => i.key), ["__appearance__", "__features__", "__limits__"]);
+  assert.ok(groups[1].items.every((i) => i.kind === "pane"));
+});
+
+test("buildSettingsNav：徽标按 key 挂到对应面板；没有 provider 时模型服务组仍保留（要能加自定义）", () => {
+  const groups = buildSettingsNav([], { __mcp__: { text: "3 工具", tone: "ok" } });
+  assert.equal(groups[0].id, "models");
+  assert.deepEqual(groups[0].items, []);
+  const mcp = groups[1].items.find((i) => i.key === "__mcp__");
+  assert.deepEqual(mcp.badge, { text: "3 工具", tone: "ok" });
+  const hooks = groups[1].items.find((i) => i.key === "__hooks__");
+  assert.equal(hooks.badge, null);   // 没给徽标就是不显示，不拿 0 占位
+});
+
+test("mcpNavBadge：全连上报工具数，有掉线优先报未连上，停用的不算", () => {
+  assert.equal(mcpNavBadge(null), null);
+  assert.equal(mcpNavBadge({ servers: {} }), null);
+  // 只有停用的 server → 不显示徽标
+  assert.equal(mcpNavBadge({ servers: { fs: { enabled: false } }, connected: {} }), null);
+  assert.deepEqual(
+    mcpNavBadge({ servers: { fs: { enabled: true }, git: { enabled: true } },
+      connected: { fs: ["fs__a", "fs__b"], git: ["git__c"] } }),
+    { text: "3 工具", tone: "ok" });
+  // 一个没连上 → 报问题而不是报还剩多少工具（问题优先）
+  assert.deepEqual(
+    mcpNavBadge({ servers: { fs: { enabled: true }, git: { enabled: true } },
+      connected: { fs: ["fs__a"] } }),
+    { text: "1 未连上", tone: "warn" });
+});
+
+test("browserNavBadge：未启用不显示；启用未连上区分缺 Node 与装配中", () => {
+  assert.equal(browserNavBadge(null), null);
+  assert.equal(browserNavBadge({ enabled: false, node: true }), null);
+  assert.deepEqual(browserNavBadge({ enabled: true, connected: true, tools: 23 }),
+    { text: "已连上", tone: "ok" });
+  assert.deepEqual(browserNavBadge({ enabled: true, connected: false, node: true }),
+    { text: "装配中", tone: "warn" });
+  assert.deepEqual(browserNavBadge({ enabled: true, connected: false, node: false }),
+    { text: "缺 Node", tone: "warn" });
+});
+
+test("skillsNavBadge / hooksNavBadge：计数徽标，零个不显示；停用的 hook 不计", () => {
+  assert.equal(skillsNavBadge([]), null);
+  assert.equal(skillsNavBadge(null), null);
+  assert.deepEqual(skillsNavBadge([{ name: "a" }, { name: "b" }]), { text: "2", tone: "muted" });
+  assert.equal(hooksNavBadge([]), null);
+  assert.deepEqual(hooksNavBadge([{ enabled: true }, { enabled: false }, {}]),
+    { text: "2", tone: "muted" });
+});
+
+const { wrapFocusIndex } = require("../../web/pure.js");
+
+test("wrapFocusIndex：Tab 到末尾绕回开头，Shift+Tab 反向；焦点在浮层外时从两端进", () => {
+  assert.equal(wrapFocusIndex(3, 0, false), 1);
+  assert.equal(wrapFocusIndex(3, 2, false), 0);    // 末尾 → 开头
+  assert.equal(wrapFocusIndex(3, 0, true), 2);     // 开头 + Shift → 末尾
+  assert.equal(wrapFocusIndex(3, -1, false), 0);   // 焦点不在浮层内
+  assert.equal(wrapFocusIndex(3, -1, true), 2);
+  assert.equal(wrapFocusIndex(0, -1, false), -1);  // 浮层里没有可聚焦元素
+});

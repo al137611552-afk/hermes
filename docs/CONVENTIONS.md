@@ -54,6 +54,10 @@ hermes-dev/
 
 - 原生 ES Module，`"use strict"`。
 - 命名 `camelCase`；与 Python 桥交互的事件名集中管理。
+- **可脱 DOM 的纯逻辑写 `web/pure.js`**（Node 可单测），`app.js` 只负责渲染与事件。
+- **顶层浮层不手写 z-index**：只用 `--z-overlay / --z-modal / --z-toast` 三个 token，
+  并且**必须走浮层栈** `pushLayer/popLayer`（层级自动叠、Esc 只关最上层、焦点困在最上层、
+  关闭还焦点）。曾因技能模态自己写 `z-index: 60` 被设置面板(9998)压在下层。
 
 ## 6. 架构原则（硬约束）
 
