@@ -566,6 +566,17 @@
     return shift ? (cur - 1 + len) % len : (cur + 1) % len;
   }
 
+  // ---- 一键技能化（P2）：/技能化 与 🧩 技能页按钮共用同一段提示词 ----
+  // 放这里而不是各写一份：两个入口给的指令必须一模一样，否则同一个功能两种行为。
+  function skillCreatorPrompt(target) {
+    const t = String(target || "").trim();
+    return "（使用 `skill-creator` 技能）把" + (t ? `「${t}」` : "我的一个程序") +
+      "做成 hermes 技能：先摸清接口（--help / 读源码），**真跑一条只读命令**拿真实输出，" +
+      "据此写 SKILL.md，然后跑技能自检脚本改到通过。" +
+      (t ? "" : "开始前先问我：程序入口怎么调、哪些子命令是只读的、技能名叫什么。") +
+      "做完告诉我生成了什么、取样跑的哪条命令、自检结果，并问我要不要顺手绑一个斜杠命令。";
+  }
+
   // ---- 设置面板导航：分组 + 状态徽标（对标主流设置：分区标题 + 行内状态，不必点进去才知道）----
 
   // 固定面板（非 provider）。顺序即展示顺序；group 决定归到哪一区。
@@ -655,7 +666,7 @@
 
   return {
     SETTINGS_PANES, SETTINGS_GROUPS, buildSettingsNav, wrapFocusIndex,
-    mergeSlashCommands, findCustomCommand,
+    mergeSlashCommands, findCustomCommand, skillCreatorPrompt,
     mcpNavBadge, browserNavBadge, skillsNavBadge, hooksNavBadge, commandsNavBadge,
     permissionsNavBadge,
     SKILL_GRADES, skillGradeBadge, installConfirmLevel, filterMarketEntries,

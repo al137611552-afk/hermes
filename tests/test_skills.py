@@ -362,6 +362,7 @@ def test_builtin_skills_valid():
     for s in skills:
         parse_skill_md((s.path / "SKILL.md").read_text(encoding="utf-8"), strict=True)
         assert s.name == s.path.name, f"内置技能 name 必须与目录名一致：{s.name} vs {s.path.name}"
+    assert any(s.name == "skill-creator" for s in skills)
     rr = next(s for s in skills if s.name == "research-report")
     loaded = load_skill_body(rr)
     assert len(loaded.body) < MAX_BODY_CHARS      # 未被截断
@@ -467,13 +468,41 @@ def test_report_checker_cli(tmp: Path):
     print("✓ 报告自检脚本 CLI：退出码 0/1/2 分别对应 通过/有问题/用法错")
 
 
+def test_skill_creator_skill():
+    """内置 skill-creator：资源齐全，且它的自检脚本对**所有内置技能**都判通过。
+
+    自检脚本自己也要被验——研发时它误伤过本技能与 research-report（尖括号用法示意、
+    散文里提到 TODO、脚本里的测试语料被当成密钥），规则收窄后必须钉住不再复发。
+    """
+    import subprocess
+    import sys as _sys
+
+    skills, _ = discover_skills([(BUILTIN_SKILLS, "global")])
+    sc = next(s for s in skills if s.name == "skill-creator")
+    loaded = load_skill_body(sc)
+    files = list_skill_files(loaded)
+    assert any(f.endswith("check_skill.py") for f in files), files
+    assert len(loaded.body) < MAX_BODY_CHARS
+    assert loaded.body.count("\n") < 500
+
+    checker = sc.path / "scripts" / "check_skill.py"
+    r = subprocess.run([_sys.executable, str(checker), "--self-test"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    for s2 in skills:                       # 内置技能必须都能过自己的自检
+        r2 = subprocess.run([_sys.executable, str(checker), str(s2.path)],
+                            capture_output=True, text=True)
+        assert r2.returncode == 0, f"{s2.name} 没过自检：{r2.stdout}{r2.stderr}"
+    print("✓ 内置 skill-creator 合规 + 自检脚本对所有内置技能判通过")
+
+
 def main() -> int:
     import tempfile
 
     tests = [
         test_parse_minimal, test_parse_optional_fields, test_parse_rejects_invalid,
         test_parse_tolerates_bom_and_crlf, test_body_truncated,
-        test_builtin_skills_valid, test_report_checker, test_name_normalized_for_third_party,
+        test_builtin_skills_valid, test_skill_creator_skill, test_report_checker, test_name_normalized_for_third_party,
         test_long_description_truncated_for_third_party,
     ]
     tmp_tests = [
