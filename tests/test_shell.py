@@ -392,8 +392,11 @@ def test_foreground_prompt_is_detected_and_killed_before_timeout():
     elapsed = time.time() - t0
     assert raised is not None, "停在提示上的命令应被识别并抛错"
     assert "Ok to proceed? (y)" in raised, f"报错应带上提示原文，便于模型改写命令；实际：{raised}"
-    assert "--yes" in raised and "别原样重试" in raised
-    assert "background:true" not in raised, "等输入 ≠ 常驻服务，别把模型引去后台起（后台照样没人回答）"
+    assert "--yes" in raised and "别原样前台重试" in raised
+    # P3 之后后台是能回答的，所以文案给两条出路，但**顺序有讲究**：非交互写法在前、
+    # 起后台再 write_process_input 在后（能不交互就别交互）。
+    i_noninteractive, i_background = raised.index("--yes"), raised.index("write_process_input")
+    assert i_noninteractive < i_background, f"应先劝非交互写法，再给后台回答的出口；实际：{raised}"
     assert elapsed < 12, f"应在静止阈值附近就终止，而非等满 timeout；实测 {elapsed:.1f}s"
 
 

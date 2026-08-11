@@ -827,6 +827,16 @@ function renderToolResult(v, data) {
     });
     box.appendChild(chip);
   });
+  // 后台进程停在交互提示上（P3 / ADR 0022）：就地给一行输入框，**人可以直接回答**，
+  // 不必等模型想明白。走的是与模型侧同一条 stdin 通道，区别只在谁敲——用户亲手输入不再过 gate。
+  const waiting = extractWaitingProcess(out);
+  if (waiting) {
+    box.appendChild(renderProcInput(waiting, v));
+    // 工具块默认是收起的 <details>（产物芯片就故意留在收起态）。但这条不一样：它在**等你操作**，
+    // 藏起来等于没做。同权限确认条的道理——需要你拿主意的东西必须自己冒出来。
+    const det = box.closest("details");
+    if (det) det.open = true;
+  }
   if (data.image) {
     // 截屏等返回图片的工具：在结果下方展示缩略图
     const img = document.createElement("img");
@@ -841,6 +851,59 @@ function renderToolResult(v, data) {
     result.appendChild(renderDiffBlock(data.diff));
   }
   scrollView(v);
+}
+
+// 后台进程等输入 → 一行"人接管"输入框（贴在报出提示的那条工具结果下方，就是你正在看的地方）。
+// 刻意**不做**成完整终端（ConPTY + xterm.js）：那要新原生依赖，还会让一堆命令切回交互模式
+// （进度条/分页器），与非交互硬化对着干。要解决的问题只有一个——卡在提示上时能敲个 y。
+function renderProcInput(waiting, v) {
+  const box = document.createElement("div");
+  box.className = "proc-input";
+  box.innerHTML = '<div class="proc-input-head">⌨ 进程 #' + waiting.id + ' 在等输入：<code>' +
+    escapeHtml(waiting.prompt) + '</code></div>';
+  const row = document.createElement("div");
+  row.className = "proc-input-row";
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.className = "proc-input-text";
+  inp.placeholder = "输入回答后回车，如 y";
+  const send = document.createElement("button");
+  send.className = "ws-btn";
+  send.textContent = "发送";
+  const kill = document.createElement("button");
+  kill.className = "ws-btn";
+  kill.textContent = "终止";
+  kill.title = "不想回答就直接终止这个后台进程";
+  const done = (msg) => {
+    box.innerHTML = '<div class="proc-input-head proc-input-done">' + escapeHtml(msg) + "</div>";
+  };
+  const doSend = async () => {
+    const text = inp.value.trim();
+    if (!text) { showToast("先写点内容"); return; }
+    send.disabled = kill.disabled = inp.disabled = true;
+    const r = await window.pywebview.api.write_process_input(waiting.id, text, v.cid);
+    if (r && r.ok) done("已输入：" + text + "（进程接下来的输出，让模型再读一次或看后续工具结果）");
+    else {
+      send.disabled = kill.disabled = inp.disabled = false;
+      showToast((r && r.error) || "写入失败");
+    }
+  };
+  send.addEventListener("click", doSend);
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); doSend(); }
+    e.stopPropagation();      // 别冒到全局快捷键/浮层栈
+  });
+  kill.addEventListener("click", async () => {
+    send.disabled = kill.disabled = inp.disabled = true;
+    const r = await window.pywebview.api.stop_background_process(waiting.id, v.cid);
+    if (r && r.ok) done("已终止进程 #" + waiting.id);
+    else { send.disabled = kill.disabled = inp.disabled = false; showToast((r && r.error) || "终止失败"); }
+  });
+  row.appendChild(inp);
+  row.appendChild(send);
+  row.appendChild(kill);
+  box.appendChild(row);
+  return box;
 }
 
 // 内联 diff 块：复用 .diff-line 配色（+绿 / -红 / @@ 蓝）

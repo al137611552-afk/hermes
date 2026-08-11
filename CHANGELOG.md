@@ -6,6 +6,35 @@
 
 ## [Unreleased]
 
+## [3.62.0] - 2026-08-11
+
+**交互式命令能回答了（P3 + B-lite，ADR 0022）**：一条 stdin 通道，两个入口——模型侧
+`write_process_input` 工具（过权限 gate）+ 工具块里的行内输入行（人接管，不过 gate）。
+✅ Windows 真机验证通过。
+
+### Added
+- **`write_process_input` 工具**：向运行中的**后台进程** stdin 写一行，用于回答它的交互提示。
+  `dangerous=True` → 每句输入都过权限确认，用户看得清写的是什么。拒绝多行（一次一行，
+  否则会把后续几个提示一股脑答掉）；只读角色（researcher/reviewer/tester）不可用。
+- **`read_process_output` 会指路**：后台进程停在提示上时，结果里附
+  「这个进程似乎停在交互提示上等输入：`<原文>`，要回答就用 write_process_input(id=N, text="y")」。
+  判据与前台同一套（`looks_waiting_input` + 静止阈值 + 进程还活着），后台阈值 2s（判错只是多一句提示）。
+- **行内输入行（人接管）**：报出提示的那条工具结果下方直接给一行输入框 + 发送/终止，走同一条通道。
+  纯逻辑 `extractWaitingProcess` 在 pure.js（认结构不认整句措辞）；桥接
+  `Api.write_process_input` / `Api.stop_background_process`。**渲染时强制展开所在的工具块**——
+  工具块默认收起，等你操作的东西藏起来等于没做。
+- **前台撞到提示时的文案改成两条出路**：① 首选非交互写法 ② 确实没有就用 `background:true`
+  重起 + `write_process_input` 回答。顺序有讲究，有测试钉住「非交互在前」。
+
+### Fixed
+- **后台进程读线程按行迭代，看不到不带换行的交互提示**（`Ok to proceed? (y) ` 会一直压在缓冲里）。
+  改 `read1()` + 增量解码，与前台同一套 `_StreamDecoder`。**这是"起后台再回答"能成立的地基。**
+
+### 决策留档
+ADR 0022：**不做全局 auto-yes**（确认框是防误删的最后一道闸）、**不做完整集成终端**
+（ConPTY+xterm.js 与非交互硬化对着干）、**前台不等人**（`/crazy` 无人值守不能卡在提示上等人，
+人接管只存在于后台通道）。
+
 ## [3.61.0] - 2026-08-11
 
 **shell 非交互硬化补齐（P1）+ 交互提示识别（P2）+ 顺带修好"实时流输出"**。✅ Windows 真机验证通过。

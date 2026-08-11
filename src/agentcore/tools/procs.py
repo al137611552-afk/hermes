@@ -19,11 +19,14 @@ import threading
 import time
 
 from .base import Tool, ToolError
-from .shell import hardened_env, _win_create_job, _win_assign_job, _win_kill_job
+from .shell import (hardened_env, looks_waiting_input, _StreamDecoder,
+                    _win_create_job, _win_assign_job, _win_kill_job)
 
 MAX_BUF_CHARS = 200_000   # 每进程输出环形缓冲上限
 MAX_READ_CHARS = 50_000   # 单次 read_process_output 返回上限
 MAX_PROCS = 8             # 每对话并发后台进程上限
+PROMPT_QUIET_SECONDS = 2.0  # 后台进程静止多久后才敢说它"停在提示上等输入"（前台是 5s：前台判错要杀
+                            # 进程，代价大；后台只是多给一句提示，可以更灵敏）
 
 # 实时预览面板（UX Tier1-②）：从 dev server 输出/命令里识别本地 URL，供前端 iframe 自动对准。
 _LOCAL_URL_RE = re.compile(
@@ -78,6 +81,7 @@ class _Entry:
         self.trimmed = False    # 是否丢过最旧输出
         self.tee = None         # ADR 0021 §7：读线程边收边落盘的完整日志产物（None=没接产物入口）
         self.started_at = time.time()
+        self.last_output_at = 0.0   # 最后一次有输出的时刻（判"是不是停在提示上等输入"）
 
     def status(self) -> str:
         code = self.proc.poll()
@@ -114,7 +118,12 @@ class ProcessManager:
         try:
             proc = subprocess.Popen(
                 argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
+                # stdin 开 PIPE（原来是 DEVNULL）：后台进程是**唯一还能回答交互提示**的形态，
+                # 由 write_process_input 往里写（过权限 gate）。注意这不等于"自动 yes"——
+                # 每一句都是模型或用户显式发出、可见、可确认的（ADR 0022）。
+                stdin=subprocess.PIPE,
+                # 二进制管道 + 自己解码：同 shell.py 的理由，`for line in stdout` 只按行切，
+                # **交互提示恰恰不带换行**（"Ok to proceed? (y) "），按行读就永远看不到它。
                 env=hardened_env(),   # 同前台：非交互硬化，防后台 dev server 因分页/凭据/编辑器提示卡住
                 **kwargs,
             )
@@ -138,23 +147,68 @@ class ProcessManager:
         return entry
 
     def _reader(self, entry: _Entry) -> None:
-        """读线程：把进程输出收进环形缓冲，同时 tee 一份完整日志到产物（进程退出/管道关闭即结束）。"""
+        """读线程：把进程输出收进环形缓冲，同时 tee 一份完整日志到产物（进程退出/管道关闭即结束）。
+
+        用 `read1()` 而非按行迭代：**交互提示不带换行**（`Ok to proceed? (y) `），按行读会把它
+        一直压在缓冲里，`read_process_output` 永远看不到 → "起后台再回答"这条路根本走不通。
+        """
+        dec = _StreamDecoder()
         try:
-            for line in entry.proc.stdout:  # type: ignore[union-attr]
-                if entry.tee is not None:
-                    entry.tee.write(line)   # 落盘在裁剪之前：被环形缓冲冲掉的早期输出仍留在产物里
-                with self._lock:
-                    entry.buffer += line
-                    if len(entry.buffer) > MAX_BUF_CHARS:
-                        cut = len(entry.buffer) - MAX_BUF_CHARS
-                        entry.buffer = entry.buffer[cut:]
-                        entry.read_upto = max(0, entry.read_upto - cut)
-                        entry.trimmed = True
+            stream = entry.proc.stdout
+            while True:
+                raw = stream.read1(4096)  # type: ignore[union-attr]
+                chunk = dec.feed(raw or b"", final=not raw)
+                if chunk:
+                    if entry.tee is not None:
+                        entry.tee.write(chunk)  # 落盘在裁剪之前：被环形缓冲冲掉的早期输出仍留在产物里
+                    with self._lock:
+                        entry.buffer += chunk
+                        entry.last_output_at = time.time()
+                        if len(entry.buffer) > MAX_BUF_CHARS:
+                            cut = len(entry.buffer) - MAX_BUF_CHARS
+                            entry.buffer = entry.buffer[cut:]
+                            entry.read_upto = max(0, entry.read_upto - cut)
+                            entry.trimmed = True
+                if not raw:
+                    break
         except (OSError, ValueError):
             pass
         finally:
             if entry.tee is not None:
                 entry.tee.close()   # 进程结束即定稿；文件在这之前也一直可读（append + flush）
+
+    # ---- 写输入（P3 / ADR 0022）---------------------------------------------
+
+    def write_input(self, pid_id: int, text: str, submit: bool = True) -> str:
+        """往运行中的后台进程 stdin 写一行。**这是"能回答提示"的唯一通道**。
+
+        写进去的内容会**回显进输出缓冲**（`[已输入] …`）——终端里你敲的字本来就会回显，
+        这里进程拿不到 TTY 不会自己回显，那就由我们补上：否则日志上下文对不齐，
+        模型（和人）翻记录时看不出这个 `y` 是谁答的。
+        """
+        entry = self._get(pid_id)
+        if entry.proc.poll() is not None:
+            raise ToolError(f"进程 #{pid_id} 已经结束（{entry.status()}），没法再写输入。")
+        stdin = entry.proc.stdin
+        if stdin is None:
+            raise ToolError(f"进程 #{pid_id} 没有可写的 stdin（可能不是本对话 background 启动的）。")
+        payload = text if not submit else (text + "\n")
+        try:
+            stdin.write(payload.encode("utf-8"))
+            stdin.flush()
+        except (BrokenPipeError, OSError, ValueError) as e:
+            raise ToolError(
+                f"往进程 #{pid_id} 写输入失败（{e.__class__.__name__}）——它可能刚退出或已关闭 stdin。"
+                "用 read_process_output 看看它最后输出了什么。")
+        echo = f"\n[已输入] {text}\n"
+        if entry.tee is not None:
+            entry.tee.write(echo)
+        with self._lock:
+            entry.buffer += echo
+            entry.last_output_at = time.time()
+        return (f"已向进程 #{pid_id} 写入：{text}"
+                + ("（含回车）" if submit else "（未加回车）")
+                + "\n用 read_process_output 看它接下来的反应。")
 
     # ---- 查询 / 读输出 -----------------------------------------------------
 
@@ -203,7 +257,24 @@ class ProcessManager:
         art = entry.tee.artifact if entry.tee is not None else None
         return {"new_output": new, "status": entry.status(),
                 "trimmed": trimmed, "truncated": truncated,
-                "artifact_rel": art.rel if art else "", "artifact_id": art.id if art else ""}
+                "artifact_rel": art.rel if art else "", "artifact_id": art.id if art else "",
+                "waiting_on": self.waiting_prompt(pid_id)}
+
+    def waiting_prompt(self, pid_id: int) -> "str | None":
+        """这个后台进程是不是**停在交互提示上等输入**？是则返回提示原文。
+
+        判据与前台一致（`looks_waiting_input` + 静止阈值 + 进程还活着），保持一套口径：
+        前台会因此被杀掉并劝改写命令，后台则给出"可以用 write_process_input 回答"的出口。
+        """
+        entry = self._procs.get(pid_id)
+        if entry is None or entry.proc.poll() is not None:
+            return None
+        with self._lock:
+            tail = entry.buffer[-2000:]
+            last_at = entry.last_output_at
+        if not last_at or (time.time() - last_at) < PROMPT_QUIET_SECONDS:
+            return None
+        return looks_waiting_input(tail)
 
     # ---- 停止 / 清理 -------------------------------------------------------
 
@@ -300,7 +371,59 @@ class ProcessOutputTool(Tool):
             parts.append(f"[提示] 本次新增超 {MAX_READ_CHARS} 字符，只保留末尾" + handle)
         parts.append(f"[新增输出]\n{r['new_output'].rstrip()}" if r["new_output"].strip()
                      else "(无新输出)")
+        if r.get("waiting_on"):
+            # 认出"它停在提示上等你回答"，并直接给出出口——这是后台相对前台的**唯一**优势：
+            # 前台没有句柄、只能杀掉劝你改命令；后台还能回答。
+            parts.append(
+                f"[提示] 这个进程似乎**停在交互提示上等输入**：`{r['waiting_on']}`\n"
+                f"       要回答就用 write_process_input(id={pid_id}, text=\"y\")；"
+                "不该继续就 stop_process。")
         return "\n".join(parts)
+
+
+class ProcessInputTool(Tool):
+    """往运行中的后台进程写一行输入（P3 / ADR 0022）。
+
+    **立场**：hermes 不做全局 auto-yes（确认框是防误删的最后一道闸），但可以"逐次、看得见、
+    过确认地回答"。所以这是个 dangerous 工具：每一句输入都会弹权限确认，用户能看清写的是什么。
+    """
+
+    dangerous = True
+    name = "write_process_input"
+    description = (
+        "向某个**运行中的后台进程**的 stdin 写一行（用于回答它的交互提示：y/n、选项、名称等）。"
+        "典型用法：命令需要交互 → 用 run_<shell> 的 background:true 起 → read_process_output 看到提示 "
+        "→ 本工具回答 → 再 read_process_output 看反应。"
+        "**注意：能不交互就别交互**——优先给命令加 --yes/-y/--non-interactive 或一次把参数给全；"
+        "只有在没有非交互写法时才用这条路。危险确认（删除/覆盖/发布）请如实转达给用户，别替他答应。"
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer", "description": "list_processes 里的进程编号"},
+            "text": {"type": "string", "description": "要写入的一行内容，如 y / 1 / my-app（不含换行）"},
+            "submit": {"type": "boolean",
+                       "description": "是否自动补回车提交，默认 true。少数需要单键响应的场景设 false。"},
+        },
+        "required": ["id", "text"],
+    }
+
+    def __init__(self, manager: ProcessManager) -> None:
+        self._m = manager
+
+    def run(self, params: dict) -> str:
+        try:
+            pid_id = int(params.get("id"))
+        except (TypeError, ValueError):
+            raise ToolError("id 应为整数（list_processes 里的进程编号）")
+        text = params.get("text")
+        if text is None or not str(text).strip():
+            raise ToolError("text 不能为空（要回答什么就写什么，如 y）")
+        text = str(text)
+        if "\n" in text or "\r" in text:
+            # 一次一行：多行会把后续几个提示一股脑answered掉，用户在确认条上也看不清到底答了什么。
+            raise ToolError("text 只能是一行（要连续回答多个提示，就分多次调用，每次一行）。")
+        return self._m.write_input(pid_id, text, submit=params.get("submit", True) is not False)
 
 
 class ProcessStopTool(Tool):
