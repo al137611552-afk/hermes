@@ -566,6 +566,66 @@
     return shift ? (cur - 1 + len) % len : (cur + 1) % len;
   }
 
+  // ---- diff 行内定向反馈（UX Tier2-③）----
+  // 把 unified diff 逐行标注上「这行在新/旧文件里是第几行」。行号靠 @@ -a,b +c,d @@ 推算——
+  // 反馈要能定位到 file:line，行号错了整条反馈就是错的，所以这段必须单测。
+  function annotateDiffLines(diff) {
+    const out = [];
+    let oldNo = 0, newNo = 0;
+    String(diff || "").split("\n").forEach((text) => {
+      const hunk = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/.exec(text);
+      if (hunk) {
+        oldNo = parseInt(hunk[1], 10);
+        newNo = parseInt(hunk[2], 10);
+        out.push({ text, kind: "hunk", oldLine: null, newLine: null });
+        return;
+      }
+      if (text.startsWith("+++") || text.startsWith("---") || text.startsWith("diff ") ||
+          text.startsWith("index ") || text.startsWith("new file") || text.startsWith("deleted file")) {
+        out.push({ text, kind: "meta", oldLine: null, newLine: null });
+        return;
+      }
+      if (text.startsWith("\\")) {                 // "\ No newline at end of file"
+        out.push({ text, kind: "meta", oldLine: null, newLine: null });
+        return;
+      }
+      if (text.startsWith("+")) {
+        out.push({ text, kind: "add", oldLine: null, newLine: newNo++ });
+      } else if (text.startsWith("-")) {
+        out.push({ text, kind: "del", oldLine: oldNo++, newLine: null });
+      } else {
+        // 上下文行（含 diff 末尾的空串）
+        out.push({ text, kind: "ctx", oldLine: oldNo++, newLine: newNo++ });
+      }
+    });
+    return out;
+  }
+
+  // 一条行内反馈组装成发给模型的消息。锚点用「新文件行号」，删除行只有旧行号则标明。
+  function formatLineFeedback(path, entry, note) {
+    const e = entry || {};
+    const n = String(note || "").trim();
+    const anchor = e.newLine != null
+      ? `${path}:${e.newLine}`
+      : `${path}（原第 ${e.oldLine} 行，已删除）`;
+    const code = String(e.text || "").replace(/\n$/, "");
+    return `关于 \`${anchor}\` 这一行：\n\n\`\`\`diff\n${code}\n\`\`\`\n\n${n}`;
+  }
+
+  // 技能卡片上的"换个层"按钮：项目级 → 装到全局（换项目也能用）；
+  // 全局/内置 → 复制到本项目（只在这个项目里改一份，不动原来那份）。
+  // 配置目录来源的不给按钮——那是用户自己在 config 里指的路径，别替他搬家。
+  function skillScopeAction(source) {
+    if (source === "project") {
+      return { scope: "global", label: "装到全局", title: "复制到全局技能目录，所有项目都能用" };
+    }
+    if (source === "global" || source === "builtin") {
+      return { scope: "project", label: "复制到本项目",
+               title: "在本项目复制一份，可单独修改（同名时项目级优先）" };
+    }
+    return null;
+  }
+
   // ---- 一键技能化（P2）：/技能化 与 🧩 技能页按钮共用同一段提示词 ----
   // 放这里而不是各写一份：两个入口给的指令必须一模一样，否则同一个功能两种行为。
   function skillCreatorPrompt(target) {
@@ -666,7 +726,8 @@
 
   return {
     SETTINGS_PANES, SETTINGS_GROUPS, buildSettingsNav, wrapFocusIndex,
-    mergeSlashCommands, findCustomCommand, skillCreatorPrompt,
+    mergeSlashCommands, findCustomCommand, skillCreatorPrompt, skillScopeAction,
+    annotateDiffLines, formatLineFeedback,
     mcpNavBadge, browserNavBadge, skillsNavBadge, hooksNavBadge, commandsNavBadge,
     permissionsNavBadge,
     SKILL_GRADES, skillGradeBadge, installConfirmLevel, filterMarketEntries,

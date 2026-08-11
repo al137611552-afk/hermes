@@ -669,3 +669,65 @@ test("skillCreatorPrompt：点名技能、要求真跑取样与自检；给了�
   assert.equal(skillCreatorPrompt(null), noTarget);          // null/undefined 与空串一致
   assert.equal(skillCreatorPrompt(undefined), noTarget);
 });
+
+// ===== 技能换层按钮 =====
+const { skillScopeAction } = require("../../web/pure.js");
+
+test("skillScopeAction：项目级→装到全局，全局/内置→复制到本项目，配置目录不给按钮", () => {
+  assert.deepEqual(skillScopeAction("project").scope, "global");
+  assert.equal(skillScopeAction("project").label, "装到全局");
+  assert.equal(skillScopeAction("global").scope, "project");
+  assert.equal(skillScopeAction("builtin").scope, "project");   // 复制一份才能改内置技能
+  assert.equal(skillScopeAction("config"), null);               // 用户自己指的路径，别替他搬家
+  assert.equal(skillScopeAction(""), null);
+});
+
+// ===== diff 行内定向反馈 =====
+const { annotateDiffLines, formatLineFeedback } = require("../../web/pure.js");
+
+const DIFF = [
+  "--- a/x.py", "+++ b/x.py",
+  "@@ -10,4 +10,5 @@ def f():",
+  "     ctx1",
+  "-    old line",
+  "+    new line",
+  "+    added",
+  "     ctx2",
+  "@@ -30,2 +31,2 @@",
+  "-    gone",
+  "+    back",
+].join("\n");
+
+test("annotateDiffLines：行号按 @@ 推算——新增只涨新行号、删除只涨旧行号、上下文两边都涨", () => {
+  const rows = annotateDiffLines(DIFF);
+  const at = (i) => ({ kind: rows[i].kind, old: rows[i].oldLine, new: rows[i].newLine });
+  assert.deepEqual(at(0), { kind: "meta", old: null, new: null });
+  assert.deepEqual(at(2), { kind: "hunk", old: null, new: null });
+  assert.deepEqual(at(3), { kind: "ctx", old: 10, new: 10 });
+  assert.deepEqual(at(4), { kind: "del", old: 11, new: null });
+  assert.deepEqual(at(5), { kind: "add", old: null, new: 11 });
+  assert.deepEqual(at(6), { kind: "add", old: null, new: 12 });
+  assert.deepEqual(at(7), { kind: "ctx", old: 12, new: 13 });
+  // 第二个 hunk 要重置行号，不能接着上一个数
+  assert.deepEqual(at(9), { kind: "del", old: 30, new: null });
+  assert.deepEqual(at(10), { kind: "add", old: null, new: 31 });
+});
+
+test("annotateDiffLines：'\\ No newline' 与文件头不占行号，空输入不炸", () => {
+  const rows = annotateDiffLines("@@ -1,1 +1,1 @@\n-a\n+b\n\\ No newline at end of file");
+  assert.equal(rows[3].kind, "meta");
+  assert.equal(rows[3].newLine, null);
+  assert.deepEqual(annotateDiffLines(""), [{ text: "", kind: "ctx", oldLine: 0, newLine: 0 }]);
+  assert.deepEqual(annotateDiffLines(null), [{ text: "", kind: "ctx", oldLine: 0, newLine: 0 }]);
+});
+
+test("formatLineFeedback：锚到 file:新行号，删除行标明是原行号", () => {
+  const rows = annotateDiffLines(DIFF);
+  const add = formatLineFeedback("src/x.py", rows[5], "  这里应该用 >= 而不是 >  ");
+  assert.ok(add.includes("`src/x.py:11`"), add);
+  assert.ok(add.includes("```diff\n+    new line\n```"), add);
+  assert.ok(add.trim().endsWith("这里应该用 >= 而不是 >"), add);   // 用户的话去掉首尾空白
+
+  const del = formatLineFeedback("src/x.py", rows[4], "这行不该删");
+  assert.ok(del.includes("原第 11 行，已删除"), del);
+});

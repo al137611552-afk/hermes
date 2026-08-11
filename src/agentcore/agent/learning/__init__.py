@@ -15,9 +15,11 @@ from .engine import (
     StrategyStore,
     aggregate,
     propose,
+    render_advice,
+    shadow_report,
 )
 
 __all__ = [
     "Aggregate", "Candidate", "Strategy", "StrategyStore",
-    "aggregate", "propose",
+    "aggregate", "propose", "render_advice", "shadow_report",
 ]

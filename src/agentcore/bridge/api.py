@@ -827,6 +827,40 @@ class Api:
         self.active._refresh_skills()   # 装完立刻可用，不必重启
         return {"ok": True, "path": str(target), **self.active.get_skills()}
 
+    def promote_skill(self, name: str, scope: str = "global", overwrite: bool = False) -> dict:
+        """把一个技能复制到另一层：scope=global → <APP_DIR>/skills；scope=project → <工作区>/.hermes/skills。
+
+        用途：`skill-creator` 生成的技能默认只落项目级，换项目就没了——这里给它一个"装到全局"的入口；
+        反向（全局 → 本项目）用于只想在某个项目里改一份，不动全局那份。
+        复制走 skillhub.install_skill：它会先校验 SKILL.md 合法且 name 与目录名一致，装了也能被发现。
+        """
+        from ..skillhub import HubError, install_skill as do_install
+        name = (name or "").strip()
+        found = next((s for s in self.active._skills if s.name == name), None)
+        if found is None:
+            return {"ok": False, "error": f"没有名为「{name}」的技能"}
+        if scope == "project":
+            root = self.active.workspace / ".hermes" / "skills"
+        elif scope == "global":
+            root = self._skills_root()
+        else:
+            return {"ok": False, "error": f"scope 只能是 global 或 project，收到 {scope!r}"}
+        src = Path(found.path)
+        try:
+            if src.resolve() == (root / name).resolve():
+                return {"ok": False, "error": "源和目标是同一个位置"}
+        except OSError:
+            pass
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            target = do_install(src, root, overwrite=bool(overwrite))
+        except HubError as e:
+            return {"ok": False, "error": str(e), "exists": "已存在" in str(e)}
+        except OSError as e:
+            return {"ok": False, "error": f"复制失败：{e}"}
+        self.active._refresh_skills()
+        return {"ok": True, "name": name, "scope": scope, "path": str(target)}
+
     def uninstall_skill(self, name: str) -> dict:
         from ..skillhub import forget_install, uninstall_skill as do_uninstall
         if not do_uninstall((name or "").strip(), self._skills_root()):

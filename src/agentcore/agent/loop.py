@@ -170,7 +170,8 @@ def _latest_user_text(messages) -> str:
     return ""
 
 
-def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps, threshold=2):
+def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps, threshold=2,
+                            on_failure=None):
     """块E：同一条路（指纹）反复**非瞬时**失败 → 注入"此路已 N 次不通"事实，促模型换思路。
 
     瞬时 IO 失败**不计**（那是 block D 自动重试的活，不是死路）。每条失败记入 WorldState
@@ -191,8 +192,18 @@ def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps,
         cross = None
         if failure_memory is not None:
             try:
-                failure_memory.record(fp, nontransient, detail=text[:200])
+                # 先看历史再记：要知道"这次失败之前，这条路是不是已经known dead"。
+                prior = failure_memory.known_deadend(fp, 1)
+                # 记「做法」标签供块G 离线聚合。ADR-0014 明说不建决策引擎，模型的 Decision
+                # 拿不到；能如实记的是两条：**用了哪个工具**（工具选择就是做法，且 fingerprint 是
+                # 哈希、事后反查不出工具名），以及**是不是被提示过仍走同一条路**（RETRY_SAME 的强证据，
+                # 也直接回答"提示到底有没有用"）。以前这个字段从来没传过，块G 的 evidence 恒为空。
+                repeated = fp in nudged_fps or prior is not None
+                label = c.name + ("|after_nudge" if repeated else "")
+                failure_memory.record(fp, nontransient, decision=label, detail=text[:200])
                 cross = failure_memory.known_deadend(fp, threshold)
+                if on_failure is not None:
+                    on_failure(fp, list(nontransient), label)   # 块G 消费/影子用，纯观测
             except Exception:  # noqa: BLE001 — 记忆故障绝不影响主循环
                 cross = None
         if (n >= threshold or cross is not None) and fp not in nudged_fps:
@@ -414,6 +425,7 @@ class AgentLoop:
         retry_max_attempts: int = 2,
         retry_backoff_base: float = 0.5,
         failure_memory=None,
+        strategy_store=None,
         deadend_threshold: int = 2,
         research_refine: bool = False,
         research_refine_max: int = 1,
@@ -431,6 +443,9 @@ class AgentLoop:
         self.retry_max_attempts = retry_max_attempts
         self.retry_backoff_base = retry_backoff_base
         self.failure_memory = failure_memory    # 块E：跨会话死路记忆（FailureMemory 实例）；None=关
+        # 块G 运行时消费（ADR 0017）：只读 StrategyStore。None=不消费；
+        # 有 store 但没有 active 策略时也是彻底 no-op（render_advice 返回空串）。
+        self.strategy_store = strategy_store
         self.deadend_threshold = deadend_threshold  # 同一条路累计失败 ≥ 此值 → 提示换思路
         self.research_refine = research_refine   # 块H2：联网搜索不达标→提示重搜；False=关
         self.research_refine_max = research_refine_max  # 同一 query 最多催重搜几次（防无限）
@@ -639,11 +654,26 @@ class AgentLoop:
             if self.failure_memory is not None:
                 try:
                     out_by_id = {r["tool_use_id"]: r.get("content", "") for r in results}
-                    df = detect_repeated_failure(calls, out_by_id, world, self.failure_memory,
-                                                 deadend_fps, self.deadend_threshold)
+                    seen_classes: list = []
+                    df = detect_repeated_failure(
+                        calls, out_by_id, world, self.failure_memory,
+                        deadend_fps, self.deadend_threshold,
+                        on_failure=lambda _fp, classes, _label: seen_classes.extend(classes))
                     if df:
                         inject_blocks.append({"type": "text", "text": df})
                         emit("deadend_hint", {"text": df})
+                    # 块G：影子记录（只记不改路）+ 已生效策略注入（没有 active 策略＝零注入）
+                    if self.strategy_store is not None and seen_classes:
+                        from .learning import render_advice, shadow_report
+                        items = self.strategy_store.list()
+                        sr = shadow_report(items, seen_classes)
+                        if sr:
+                            emit("learning_shadow", sr)
+                        advice = render_advice(items, seen_classes)
+                        if advice:
+                            inject_blocks.append({"type": "text", "text": advice})
+                            emit("learning_advice", {"text": advice,
+                                                     "strategies": sr.get("active", [])})
                 except Exception:  # noqa: BLE001
                     pass
             # 块H2/H3a：联网搜索不达标/不对题 → 提示重搜。**全局预算**封顶（research_max_rounds）：
