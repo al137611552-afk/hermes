@@ -587,6 +587,75 @@ def merge_feature_flags(data: dict, path: "Path | None" = None) -> dict:
     return data
 
 
+# ── 用户放行的权限规则（FR-11.4b）────────────────────────────────────────────
+# 运行时覆盖文件（同 user_mcp.json 那套）：GUI「🔐 权限」面板与对话里点「总是允许这类」写它，
+# load_config 把它并进 data['agent']['permissions']['allow']。
+#
+# 为什么要持久化：以前「总是允许这类」只写进本会话 gate，**重启就丢**——用户以为放行了，
+# 下次照旧弹窗，于是养成闭眼点同意的习惯，反而更危险。规则可见（面板列出）、可撤（一键删）
+# 才谈得上"用户明示放行"。deny 仍只在 config.yaml 手编：那是硬拦，不该被 GUI 顺手改掉。
+USER_PERMISSIONS_FILE = "user_permissions.json"
+MAX_USER_RULES = 200
+
+
+def read_user_permissions(path: "Path | None" = None) -> list:
+    """读用户放行的规则列表（不存在/坏档返回 []）。"""
+    p = path or (APP_DIR / USER_PERMISSIONS_FILE)
+    if not p.is_file():
+        return []
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        rules = d.get("allow") if isinstance(d, dict) else d
+        return [str(r) for r in rules if str(r).strip()] if isinstance(rules, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def write_user_permissions(rules: list, path: "Path | None" = None) -> list:
+    p = path or (APP_DIR / USER_PERMISSIONS_FILE)
+    clean, seen = [], set()
+    for r in rules or []:
+        r = str(r).strip()
+        if r and r not in seen:
+            seen.add(r)
+            clean.append(r)
+    clean = clean[:MAX_USER_RULES]
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"allow": clean}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return clean
+
+
+def add_user_permission(rule: str, path: "Path | None" = None) -> list:
+    """追加一条放行规则（已存在则原样返回）。返回全量规则。"""
+    rule = (rule or "").strip()
+    if not rule:
+        return read_user_permissions(path)
+    return write_user_permissions(read_user_permissions(path) + [rule], path)
+
+
+def remove_user_permission(rule: str, path: "Path | None" = None) -> list:
+    """撤销一条放行规则。返回全量规则。"""
+    rule = (rule or "").strip()
+    return write_user_permissions([r for r in read_user_permissions(path) if r != rule], path)
+
+
+def merge_user_permissions(data: dict, path: "Path | None" = None) -> dict:
+    """把用户放行的规则并进 data['agent']['permissions']['allow']（与 config.yaml 手编的并存）。"""
+    rules = read_user_permissions(path)
+    if not rules:
+        return data
+    agent = dict(data.get("agent") or {})
+    perms = dict(agent.get("permissions") or {})
+    allow = list(perms.get("allow") or [])
+    for r in rules:
+        if r not in allow:
+            allow.append(r)
+    perms["allow"] = allow
+    agent["permissions"] = perms
+    data["agent"] = agent
+    return data
+
+
 # ── 统一「限额与预算」面板（GUI 改数值参数，免手编 config.yaml）────────────────
 # 单一数据源 LIMITS_SPEC 同时驱动：① 校验/持久化 ② 前端渲染。key = "section.field" 点分路径。
 # 留空/0 的语义由各字段默认与 zero 提示表达；merge_limits 把保存值覆盖进对应 config 段。
@@ -982,6 +1051,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     data = merge_browser_mcp(data)  # GUI 一键开关启用的浏览器穿透（Playwright MCP；穿透 browser 优先）
     data = merge_feature_flags(data)  # GUI「功能开关」面板保存的 agent 开关（覆盖 config.yaml 默认）
     data = merge_limits(data)         # GUI「限额与预算」面板保存的数值参数（覆盖各段默认）
+    data = merge_user_permissions(data)  # 用户放行的权限规则（面板加的 / 点「总是允许这类」记下的）
     _resolve_shell(data)              # shell: auto / 缺省 → 按系统选（Windows→powershell，macOS/Linux→bash）
     return AppConfig(**data)
 

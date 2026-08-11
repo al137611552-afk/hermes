@@ -227,6 +227,165 @@ def test_gate_no_auto_safe_callable_is_old_behavior():
     assert len(emitted) == 1
 
 
+# ---- FR-11.4b：规则持久化（可见、可撤、重启仍在）--------------------------
+
+def test_user_permissions_overlay():
+    """覆盖层读写：去重、撤销、合并进 config 的 allow（与 config.yaml 手编的并存）。"""
+    import tempfile
+    from pathlib import Path
+    from agentcore.config import (
+        add_user_permission, merge_user_permissions, read_user_permissions,
+        remove_user_permission,
+    )
+    with tempfile.TemporaryDirectory() as td:
+        f = Path(td) / "user_permissions.json"
+        assert read_user_permissions(f) == []
+        add_user_permission("run_bash(futures *)", f)
+        add_user_permission("git_status", f)
+        add_user_permission("git_status", f)                     # 重复不叠加
+        assert read_user_permissions(f) == ["run_bash(futures *)", "git_status"]
+
+        data = merge_user_permissions(
+            {"agent": {"permissions": {"allow": ["write_file(docs/*)"], "deny": ["run_bash(rm *)"]}}}, f)
+        allow = data["agent"]["permissions"]["allow"]
+        assert allow == ["write_file(docs/*)", "run_bash(futures *)", "git_status"], allow
+        assert data["agent"]["permissions"]["deny"] == ["run_bash(rm *)"]   # deny 不受面板影响
+
+        remove_user_permission("git_status", f)
+        assert read_user_permissions(f) == ["run_bash(futures *)"]
+
+
+def test_allow_rule_persists():
+    """点「总是允许这类」要落盘——以前只进本会话、重启就丢，用户以为放行了却照旧弹窗。"""
+    import threading
+    from agentcore.agent.gate import ALLOW_RULE, PermissionGate
+
+    saved = []
+    emitted = []
+    g = PermissionGate(lambda req: emitted.append(req), on_rule_added=saved.append)
+
+    def decide():
+        while not emitted:
+            pass
+        g.resolve(emitted[-1]["id"], ALLOW_RULE)
+    threading.Thread(target=decide).start()
+    assert g.confirm("run_bash", {"command": "futures momentum --json"}) is True
+    assert saved == ["run_bash(futures*)"], saved          # 首词通配，不是放行整个 shell
+    # 同类命令这次不再弹确认（本会话内立即生效）
+    assert g.confirm("run_bash", {"command": "futures hotspot"}) is True
+    assert len(emitted) == 1
+
+
+def test_persist_failure_does_not_break_operation():
+    """落盘失败不能让这次操作失败——放行本身已经是用户的决定。"""
+    import threading
+    from agentcore.agent.gate import ALLOW_RULE, PermissionGate
+
+    def boom(_rule):
+        raise OSError("磁盘满了")
+
+    emitted = []
+    g = PermissionGate(lambda req: emitted.append(req), on_rule_added=boom)
+
+    def decide():
+        while not emitted:
+            pass
+        g.resolve(emitted[-1]["id"], ALLOW_RULE)
+    threading.Thread(target=decide).start()
+    assert g.confirm("run_bash", {"command": "ls"}) is True
+
+
+def test_gate_set_rules_hot_update():
+    """面板加规则后，运行中的会话立即免确认（不必重启）。"""
+    from agentcore.agent.gate import PermissionGate
+    g = PermissionGate(lambda req: None)
+    g.set_rules(allow=["run_bash(futures*)"])
+    assert g.confirm("run_bash", {"command": "futures momentum"}) is True
+    a, d = g.rules()
+    assert a == ["run_bash(futures*)"] and d == []
+
+
+def test_api_permission_rules():
+    """API 层：加/撤/列，以及给 exec 命令推导规则；撤销只认面板加的那些。"""
+    import tempfile
+    from pathlib import Path
+    import agentcore.config as _cfg
+    import agentcore.bridge.api as _apimod
+    import agentcore.bridge.conversation as _convmod
+    from agentcore.bridge import Api
+    from agentcore.config import (
+        AgentConfig, AppConfig, MCPConfig, MemoryConfig, ModelConfig, StorageConfig,
+    )
+    _apimod.persist_model_selection = lambda **k: None
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        old_cfg_app, old_conv_app = _cfg.APP_DIR, _convmod.APP_DIR
+        _cfg.APP_DIR = tmp / "app"          # 覆盖层写临时目录，别碰真配置
+        _convmod.APP_DIR = tmp / "app"
+        try:
+            ws = tmp / "ws"
+            (ws / ".hermes" / "commands").mkdir(parents=True)
+            (ws / ".hermes" / "commands" / "动量.md").write_text(
+                "---\nmode: exec\ncommand: futures momentum --top 20 --json\n---\n", encoding="utf-8")
+            api = Api(AppConfig(
+                active_model="m1",
+                models={"m1": ModelConfig(provider="anthropic", model="x", api_key_env="K")},
+                agent=AgentConfig(workspaces_root=str(tmp / "root"), auto_conventions=False,
+                                  shell="bash", permissions={"allow": ["git_status"],
+                                                             "deny": ["run_bash(rm *)"]}),
+                storage=StorageConfig(enabled=True, db_path=str(tmp / "h4.db")),
+                memory=MemoryConfig(enabled=False), mcp=MCPConfig(enabled=False),
+            ))
+            conv = api.active
+            conv.workspace = ws
+
+            sg = api.suggest_permission_for_command("动量")
+            assert sg["ok"] and sg["rule"] == "run_bash(futures*)", sg
+
+            r = api.add_permission(sg["rule"])
+            assert r["ok"] and conv.gate.confirm("run_bash", {"command": "futures hotspot"}) is True
+            got = api.get_permissions()
+            assert sg["rule"] in got["allow"] and sg["rule"] in got["user_allow"]
+            assert "git_status" in got["allow"] and "git_status" not in got["user_allow"]
+            assert got["deny"] == ["run_bash(rm *)"]
+
+            # config.yaml 手编的规则不许在面板撤（面板只管自己加的）
+            assert api.remove_permission("git_status")["ok"] is False
+            assert api.remove_permission(sg["rule"])["ok"] is True
+            assert sg["rule"] not in api.get_permissions()["allow"]
+
+            assert api.add_permission("这不是规则(")["ok"] in (True, False)   # 不抛异常即可
+            api.close()
+        finally:
+            _cfg.APP_DIR, _convmod.APP_DIR = old_cfg_app, old_conv_app
+
+
+def test_explain_reasons():
+    """裁决原因要能被 UI 说清楚：规则 / 本会话全部允许 / 只读白名单 / 要问 / 拦截。"""
+    from agentcore.agent.gate import PermissionGate as G
+    g = G(lambda req: None, allow=["run_bash(futures*)"], deny=["run_bash(rm *)"],
+          auto_safe=lambda: True)
+    assert g.explain("run_bash", {"command": "futures momentum"}) == G.BY_RULE
+    assert g.explain("run_bash", {"command": "rm -rf x"}) == G.DENY_RULE
+    assert g.explain("run_bash", {"command": "ls -l"}) == G.BY_SAFE          # 只读白名单
+    assert g.explain("run_bash", {"command": "python x.py"}) == G.ASK        # 不在白名单 → 要问
+    assert g.auto_reason("run_bash", {"command": "python x.py"}) == ""       # 要问就没有"免确认原因"
+    assert "只读" in g.auto_reason("run_bash", {"command": "ls -l"})
+
+    # 本会话「全部允许」：原因要与规则区分开——用户点过一次就全免，最该被说明白
+    g2 = G(lambda req: None, auto_safe=lambda: False)
+    g2._allow_all = True
+    assert g2.explain("run_bash", {"command": "python x.py"}) == G.BY_SESSION
+    assert "本会话" in g2.auto_reason("run_bash", {"command": "python x.py"})
+    # 免确认态下毁灭性命令仍强制拦
+    assert g2.explain("run_bash", {"command": "rm -rf /"}) == G.DESTRUCTIVE
+
+    # 关掉智能分级：只读命令也要问（与 C1 用例里"想全部确认就关它"一致）
+    g3 = G(lambda req: None, auto_safe=lambda: False)
+    assert g3.explain("run_bash", {"command": "ls -l"}) == G.ASK
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()
