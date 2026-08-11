@@ -579,10 +579,11 @@ class RunShellTool(Tool):
             raise ToolError(
                 f"命令停在**交互提示**上等输入（已静止 {int(_PROMPT_QUIET_SECONDS)}s），已终止。\n"
                 f"提示原文：`{waiting_on}`\n"
-                "hermes 执行命令的环境**没有终端、stdin 已关闭，没人能替它敲这个回答**。"
-                "请改成非交互写法重跑：加 --yes / -y / --non-interactive / --force 之类参数，"
-                "或一次把参数给全（如 `npm create vite@latest app -- --template react`），"
-                "或换一条不需要确认的等价命令。**别原样重试**，只会再次停在同一处。")
+                "前台执行**没有终端、stdin 已关闭**，没人能替它敲这个回答。两条出路，按顺序试：\n"
+                "① **首选**改成非交互写法重跑：加 --yes / -y / --non-interactive / --force，"
+                "或一次把参数给全（如 `npm create vite@latest app -- --template react`）。\n"
+                "② 确实没有非交互写法时：用 background:true 重新起，再 read_process_output 看到提示、"
+                "用 write_process_input 逐条回答。\n**别原样前台重试**，只会再次停在同一处。")
         # 直接子进程已退出：先杀掉任何被它 `&` 留下、继承了管道的孤儿——前台契约=同步跑完，命令退出后
         # 不该还有它派生的进程存活（正是最初 GUI 挂住的根因）。**必须先杀再 join**：孤儿占着管道写端时
         # 读线程的 read() 会一直阻塞等 EOF（读不到 shell 已写入的短输出如 "started"）；杀掉孤儿→写端全关

@@ -731,3 +731,27 @@ test("formatLineFeedback：锚到 file:新行号，删除行标明是原行号",
   const del = formatLineFeedback("src/x.py", rows[4], "这行不该删");
   assert.ok(del.includes("原第 11 行，已删除"), del);
 });
+
+// ---- P3 / ADR 0022：后台进程等输入 → 人接管输入行 ----
+const { extractWaitingProcess } = require("../../web/pure.js");
+
+test("extractWaitingProcess：从 read_process_output 结果里认出进程号与提示原文", () => {
+  const out = [
+    "[状态] running",
+    "[新增输出]",
+    "Need to install create-vite@5.2.3",
+    "Ok to proceed? (y)",
+    "[提示] 这个进程似乎**停在交互提示上等输入**：`Ok to proceed? (y)`",
+    '       要回答就用 write_process_input(id=7, text="y")；不该继续就 stop_process。',
+  ].join("\n");
+  assert.deepEqual(extractWaitingProcess(out), { id: 7, prompt: "Ok to proceed? (y)" });
+});
+
+test("extractWaitingProcess：没等输入 / 非字符串 → null（别到处冒输入框）", () => {
+  assert.equal(extractWaitingProcess("[状态] running\n[新增输出]\nbuilding..."), null);
+  // 提到了工具名但不是"在等输入"那种结果：不该触发
+  assert.equal(extractWaitingProcess("可以用 write_process_input(id=3, text=\"y\") 回答"), null);
+  assert.equal(extractWaitingProcess(""), null);
+  assert.equal(extractWaitingProcess(null), null);
+  assert.equal(extractWaitingProcess(42), null);
+});

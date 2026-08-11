@@ -283,6 +283,18 @@
     return out;
   }
 
+  // 后台进程停在交互提示上（P3 / ADR 0022）：从 read_process_output 的结果里认出「几号进程 +
+  // 提示原文」，前端据此在这条工具结果下方渲染一行输入框，让**人**也能直接回答，
+  // 不必干等模型自己想明白。认结构（进程号 + 提示原文的引号）而不是认整句措辞。
+  const WAITING_RE = /停在交互提示上等输入[^`]*`([^`]+)`[\s\S]{0,200}?write_process_input\(id=(\d+)/;
+
+  function extractWaitingProcess(text) {
+    if (!text || typeof text !== "string") return null;
+    const m = WAITING_RE.exec(text);
+    if (!m) return null;
+    return { id: parseInt(m[2], 10), prompt: m[1] };
+  }
+
   // 工具结果的结构化评估（块B 事实层，见 docs/adr/0014）→ 一行人读摘要。
   // eval = {metrics, signals, issues, confidence, score}。有 issues=有问题(warn)，
   // 否则按是否有 signals 给 ok/中性。返回 null 表示无可展示事实（不渲染）。
@@ -740,7 +752,7 @@
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
     accumulateUsage, estimateCostUsd, MODEL_PRICING,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
-    formatEval, extractArtifacts, debateHeader,
+    formatEval, extractArtifacts, extractWaitingProcess, debateHeader,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
     DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_MAIN, DEBATE_MAIN_LABEL, debateMainRoundLabel,
     DEBATE_STATUS_ZH, splitVerdictProse, verdictTally, debateConvergedText,

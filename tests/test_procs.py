@@ -199,6 +199,111 @@ def test_preview_targets_empty_when_no_url(tmp: Path):
     assert m.preview_targets() == []
 
 
+# ---- P3：回答后台进程的交互提示（write_process_input / ADR 0022）----------------
+
+_PROMPT_CMD = "printf 'Ok to proceed? (y) '; read ans; echo \"[answered:$ans]\"; sleep 0.2"
+
+
+def test_prompt_without_newline_is_visible_before_process_exits(tmp: Path):
+    # 地基：交互提示**不带换行**。原来读线程按行迭代（for line in stdout），提示会一直压在缓冲里，
+    # read_process_output 永远看不到它 → "起后台再回答"这条路根本走不通。现在按 read1 收。
+    m = ProcessManager()
+    e = m.start(BASH + [_PROMPT_CMD], str(tmp), _PROMPT_CMD)
+    assert _wait(lambda: "Ok to proceed?" in m.read(e.id)["new_output"] or "Ok to proceed?" in e.buffer), \
+        f"进程还没退出就该能看到不带换行的提示；实际缓冲={e.buffer!r}"
+    assert e.proc.poll() is None, "此时进程应仍在等输入（没退出）"
+    m.stop(e.id)
+
+
+def test_waiting_prompt_detected_then_answered_end_to_end(tmp: Path):
+    import agentcore.tools.procs as procs
+    orig = procs.PROMPT_QUIET_SECONDS
+    procs.PROMPT_QUIET_SECONDS = 0.3          # 压缩静止阈值，测试跑得快
+    try:
+        m = ProcessManager()
+        e = m.start(BASH + [_PROMPT_CMD], str(tmp), _PROMPT_CMD)
+        assert _wait(lambda: m.waiting_prompt(e.id) is not None), "静止后应判定为'停在提示上等输入'"
+        assert "Ok to proceed?" in m.waiting_prompt(e.id)
+        # read_process_output 应把出口一起给出来（这是后台相对前台的唯一优势）
+        out = _reg(tmp, m).get("read_process_output").run({"id": e.id})
+        assert "停在交互提示上等输入" in out and "write_process_input" in out, out
+        # 真回答
+        msg = m.write_input(e.id, "y")
+        assert "已向进程" in msg
+        assert _wait(lambda: "[answered:y]" in e.buffer), f"进程应收到 y 并继续；缓冲={e.buffer!r}"
+        assert "[已输入] y" in e.buffer, "写进去的内容要回显进日志，否则事后看不出这个 y 是谁答的"
+        assert _wait(lambda: e.proc.poll() is not None), "答完后进程应自己结束"
+        assert m.waiting_prompt(e.id) is None, "已退出的进程不该再报'在等输入'"
+    finally:
+        procs.PROMPT_QUIET_SECONDS = orig
+
+
+def test_no_waiting_hint_while_output_still_flowing(tmp: Path):
+    # 防误报：输出里出现过提示样文本、但进程还在刷输出 → 不该说它在等输入。
+    import agentcore.tools.procs as procs
+    orig = procs.PROMPT_QUIET_SECONDS
+    procs.PROMPT_QUIET_SECONDS = 0.3
+    cmd = "echo 'continue? [y/N]'; for i in 1 2 3 4 5 6; do echo tick $i; sleep 0.2; done"
+    try:
+        m = ProcessManager()
+        e = m.start(BASH + [cmd], str(tmp), cmd)
+        seen = []
+        for _ in range(12):
+            seen.append(m.waiting_prompt(e.id))
+            time.sleep(0.1)
+        assert all(s is None for s in seen), f"仍在刷输出时不该判成等输入：{seen}"
+        m.stop(e.id)
+    finally:
+        procs.PROMPT_QUIET_SECONDS = orig
+
+
+def test_write_input_errors_are_actionable(tmp: Path):
+    m = ProcessManager()
+    tool = _reg(tmp, m).get("write_process_input")
+    assert tool is not None and tool.dangerous, "write_process_input 必须过权限 gate（每句输入都要用户看得见）"
+    # 不存在的进程
+    for bad, expect in ((999, "没有进程"), ("x", "整数")):
+        try:
+            tool.run({"id": bad, "text": "y"})
+            raise AssertionError("应报错")
+        except ToolError as ex:
+            assert expect in str(ex), str(ex)
+    # 空 / 多行
+    e = m.start(BASH + ["sleep 5"], str(tmp), "sleep 5")
+    for bad_text, expect in (("", "不能为空"), ("  ", "不能为空"), ("y\nn", "只能是一行")):
+        try:
+            tool.run({"id": e.id, "text": bad_text})
+            raise AssertionError(f"应拒绝 {bad_text!r}")
+        except ToolError as ex:
+            assert expect in str(ex), str(ex)
+    # 已退出的进程
+    m.stop(e.id)
+    assert _wait(lambda: e.proc.poll() is not None)
+    try:
+        tool.run({"id": e.id, "text": "y"})
+        raise AssertionError("已退出的进程应报错")
+    except ToolError as ex:
+        assert "已经结束" in str(ex), str(ex)
+
+
+def test_write_input_submit_false_sends_no_newline(tmp: Path):
+    # 少数场景要单键响应（不补回车）。用 `read -n 1` 验：不补回车也应被读到。
+    cmd = "printf 'press: '; read -n 1 c; echo \"[got:$c]\"; sleep 0.2"
+    m = ProcessManager()
+    e = m.start(BASH + [cmd], str(tmp), cmd)
+    assert _wait(lambda: "press:" in e.buffer)
+    m.write_input(e.id, "k", submit=False)
+    assert _wait(lambda: "[got:k]" in e.buffer), f"submit=false 应原样写入不加回车；缓冲={e.buffer!r}"
+
+
+def test_readonly_roles_cannot_write_process_input():
+    # 只读角色（researcher/reviewer/tester）能看后台进程，但**不能往里写**——写输入是有副作用的动作。
+    from agentcore.tools.delegate import ROLES
+    for r in ("researcher", "reviewer", "tester"):
+        assert not ROLES[r].allows("write_process_input"), f"{r} 不该能写进程输入"
+    assert ROLES["general"].allows("write_process_input")
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

@@ -14,7 +14,8 @@ from .fs import EditFileTool, ListDirTool, MultiEditTool, ReadFileTool, WriteFil
 from .git import GitBranchTool, GitCommitTool, GitDiffTool, GitLogTool, GitStatusTool
 from .memory import ForgetTool, RecallTool, RememberTool
 from .notes import NotesBinding, UpdateNotesTool
-from .procs import ProcessListTool, ProcessOutputTool, ProcessStopTool
+from .procs import (ProcessInputTool, ProcessListTool, ProcessOutputTool,
+                    ProcessStopTool)
 from .screenshot import ScreenshotTool
 from .search import GlobSearchTool, GrepSearchTool
 from .searchcode import SearchCodeTool
@@ -118,6 +119,7 @@ def build_registry(
             ProcessListTool(process_manager),
             ProcessOutputTool(process_manager),
             ProcessStopTool(process_manager),
+            ProcessInputTool(process_manager),   # 回答后台进程的交互提示（dangerous，过 gate）
         ]
     if web is not None and getattr(web, "enabled", False):
         # 联网检索（FR-11.1）：只读、免 gate；enabled:false 不注册（行为同 3.0.0）

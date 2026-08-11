@@ -1530,6 +1530,35 @@ class Api:
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e), "targets": []}
 
+    def write_process_input(self, pid_id: int, text: str, cid: "int | None" = None) -> dict:
+        """人接管：往某个后台进程的 stdin 写一行（P3 / ADR 0022 的"人"入口）。
+
+        与模型侧 `write_process_input` 工具共用同一条通道（`ProcessManager.write_input`），
+        区别只在**谁在敲**：这条是用户在 UI 上亲手输入的，**不过权限 gate**——
+        用户自己就是授权本身，再弹一个"你确定要输入 y 吗"是纯噪声。
+        """
+        conv = self.conversations.get(int(cid)) if cid else None
+        conv = conv or getattr(self, "active", None)
+        procs = getattr(conv, "procs", None) if conv is not None else None
+        if procs is None:
+            return {"ok": False, "error": "当前会话没有后台进程管理器"}
+        try:
+            return {"ok": True, "message": procs.write_input(int(pid_id), str(text))}
+        except Exception as e:  # noqa: BLE001 — ToolError 等一律转成人话回前端
+            return {"ok": False, "error": str(e)}
+
+    def stop_background_process(self, pid_id: int, cid: "int | None" = None) -> dict:
+        """人接管的另一半：不想回答就直接终止这个后台进程（同上，不过 gate）。"""
+        conv = self.conversations.get(int(cid)) if cid else None
+        conv = conv or getattr(self, "active", None)
+        procs = getattr(conv, "procs", None) if conv is not None else None
+        if procs is None:
+            return {"ok": False, "error": "当前会话没有后台进程管理器"}
+        try:
+            return {"ok": True, "message": procs.stop(int(pid_id))}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e)}
+
     def open_external(self, url: str) -> dict:
         """用系统默认浏览器打开外部链接（FR-11.1 验证反馈：对话里的 URL 点击曾把
         WebView 整窗导航走且无返回，现由前端拦截所有 <a> 点击转到本方法）。"""

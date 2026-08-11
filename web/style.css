@@ -503,6 +503,24 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
   max-width: 320px; max-height: 240px; margin-top: 6px;
   border-radius: 6px; border: 1px solid var(--border);
 }
+/* 后台进程等输入 → 人接管的一行输入（P3 / ADR 0022）。用与权限确认条同族的警告色：
+   两者是同一类"需要你拿个主意"的时刻，别让用户学两套视觉语言。 */
+.proc-input {
+  margin: 6px 0 2px; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--text);
+}
+.proc-input-head { font-size: 12px; margin-bottom: 6px; }
+.proc-input-head code {
+  background: var(--panel-2); padding: 1px 6px; border-radius: 4px; word-break: break-all;
+}
+.proc-input-done { margin-bottom: 0; opacity: .8; }
+.proc-input-row { display: flex; gap: 6px; align-items: center; }
+.proc-input-text {
+  flex: 1; min-width: 0; padding: 4px 8px; font-size: 13px;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text);
+}
+.proc-input-text:focus { outline: none; border-color: var(--accent); }
 .vision-block { border-color: #3a4a6a; }
 .vision-block .tool-name { color: #7fa8ff; }
 
