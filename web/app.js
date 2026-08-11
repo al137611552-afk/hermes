@@ -4589,12 +4589,16 @@ async function previewDiff(path) {
   annotateDiffLines(res.diff).forEach((e) => {
     const span = document.createElement("span");
     span.className = "diff-line " + e.kind + (e.kind === "meta" || e.kind === "hunk" ? "" : " dl-click");
-    span.textContent = e.text + "\n";
+    // 换行必须放在 span **外面**（同 renderDiffBlock 那份已验证的写法）：`.diff-line.add/.del`
+    // 是 `display:inline-block`，写在里面的行尾 \n 会被它自己吞掉；父容器又是 white-space:pre
+    // （不换行），于是 +/- 行会和下一行**挤在同一行**互相盖住。
+    span.textContent = e.text;
     if (e.kind !== "meta" && e.kind !== "hunk") {
       span.title = "点这行提意见";
       span.addEventListener("click", () => openLineFeedback(pre, span, path, e));
     }
     pre.appendChild(span);
+    pre.appendChild(document.createTextNode("\n"));
   });
   wsPreview.appendChild(pre);
 }
@@ -4615,7 +4619,10 @@ function openLineFeedback(pre, span, path, entry) {
     '<textarea class="dl-fb-input" rows="2" placeholder="这里哪儿不对 / 要改成什么？Enter 发送，Shift+Enter 换行"></textarea>' +
     '<div class="dl-fb-acts"><button class="ws-btn dl-fb-send">发送</button>' +
     '<button class="ws-btn dl-fb-cancel">取消</button></div>';
-  span.after(box);
+  // 插在该行的换行符**之后**：换行是 span 的兄弟节点（见 previewDiff），插在它前面会在
+  // 反馈框下方多出一条空行。
+  const nl = span.nextSibling;
+  (nl && nl.nodeType === 3 ? nl : span).after(box);
   const ta = box.querySelector(".dl-fb-input");
   ta.focus();
 

@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+## [3.62.1] - 2026-08-12
+
+⚠ **本版未经 Windows 真机验证**（用户要求先定版推送）：修的是布局流问题，机制是标准 CSS 行为、
+Chromium 与 WebView2 同源，开发机 Playwright 真渲染验过（62/62）；开机后请顺手看一眼工作区 diff。
+
+### Fixed
+- **工作区 diff：增删行与下一行挤在同一行互相盖住**（v3.60.0 引入，一直没被发现）。
+  `.diff-line.add/.del` 是 `display:inline-block`，行尾 `\n` 写在 span **里面**会被它自己吞掉；
+  父容器 `<pre>` 又是 `white-space:pre`（不换行）→ 每个 `+`/`-` 行都和紧跟它的那行重叠。
+  实测：`+# added A`、`+# added B`、` # line11` 三行的 `top` 全是 373px。
+  修法＝照抄对话流内联 diff（`renderDiffBlock`，早已验证）的写法：**换行放在 span 外面**当兄弟节点。
+  顺带把行内反馈框插到换行符之后，免得框下面多一条空行。
+  **为什么单测没抓到**：`annotateDiffLines` 的行号推算全对（前端 96 项全绿），坏的是 CSS 布局流——
+  只有真渲染 + 量几何位置才看得见。
+
+### Added
+- `scripts/diag_diff_ui.py`：diff 行内反馈的 UI 自检（真实 `index.html` + `app.js` + 真 `ChangeLedger`
+  产出的 diff，Playwright 逐行点击核对锚点/消息格式/键盘行为/几何位置，62 项）。
+  自带活性：把上面那个修复去掉，「每行独占一行」立刻变红。
+
 ## [3.62.0] - 2026-08-11
 
 **交互式命令能回答了（P3 + B-lite，ADR 0022）**：一条 stdin 通道，两个入口——模型侧
