@@ -550,6 +550,7 @@ class Conversation:
             retry_max_attempts=res.config.agent.retry_max_attempts,
             retry_backoff_base=res.config.agent.retry_backoff_base,
             failure_memory=self._get_failure_memory(res.config.agent.failure_memory),
+            strategy_store=self._get_strategy_store(res.config.agent.failure_memory),
             deadend_threshold=res.config.agent.deadend_threshold,
             research_refine=res.config.agent.research_refine,
             research_refine_max=res.config.agent.research_refine_max,
@@ -1759,6 +1760,7 @@ class Conversation:
             retry_max_attempts=cfg.agent.retry_max_attempts,
             retry_backoff_base=cfg.agent.retry_backoff_base,
             failure_memory=self._get_failure_memory(cfg.agent.failure_memory),
+            strategy_store=self._get_strategy_store(cfg.agent.failure_memory),
             deadend_threshold=cfg.agent.deadend_threshold,
             research_refine=cfg.agent.research_refine,
             research_refine_max=cfg.agent.research_refine_max,
@@ -2078,6 +2080,25 @@ class Conversation:
     def _make_hook_runner(self):
         """按当前工作区 + config.agent.hooks 建可编程 hooks 运行器（无 hook 时返回 None，零开销）。"""
         return make_hook_runner(self.workspace, self.res.config.agent.hooks)
+
+    def _get_strategy_store(self, enabled: bool):
+        """块G：懒建并复用 StrategyStore（data/strategies.json），**只读消费**。
+
+        与失败记忆同一个开关：没有失败语料就谈不上策略。打不开就降级 None（不消费），绝不阻断对话。
+        注意这里只提供"读"——proposed→active 的审批仍是离线人工动作（approve 强制 golden_passed）。
+        """
+        if not enabled:
+            return None
+        st = getattr(self, "_strategy_store_cache", None)
+        if st is None:
+            try:
+                from ..config import ROOT
+                from ..agent.learning import StrategyStore
+                st = StrategyStore(ROOT / "data" / "strategies.json")
+            except Exception:  # noqa: BLE001
+                st = None
+            self._strategy_store_cache = st
+        return st
 
     def _get_failure_memory(self, enabled: bool):
         """块E：懒建并复用单个 FailureMemory（跨会话死路记忆，data/failures.db）。
