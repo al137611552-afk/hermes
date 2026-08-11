@@ -229,6 +229,81 @@ def test_end_to_end_one_explainable_strategy():
         assert store.active()[0].suggestion == c.suggestion
 
 
+
+# ---- 运行时消费（接线）：通路先接好，行为零变化 ----------------------------
+
+def test_render_advice_is_noop_without_active():
+    """没有 active 策略 → 必须是彻底的 no-op（空串）。这是"提前接线"敢做的全部理由。"""
+    from agentcore.agent.learning import Strategy, render_advice
+    assert render_advice([], ["logic"]) == ""
+    assert render_advice(None, ["logic"]) == ""
+    prop = Strategy(id="S-1", error_class="logic", suggestion="别盲改",
+                    rationale="", evidence={}, status="proposed")
+    assert render_advice([prop], ["logic"]) == ""          # proposed 没人点头，绝不生效
+    ret = Strategy(id="S-2", error_class="logic", suggestion="退役的",
+                   rationale="", evidence={}, status="retired")
+    assert render_advice([ret], ["logic"]) == ""           # 退役＝关掉
+    act = Strategy(id="S-3", error_class="logic", suggestion="先读证据",
+                   rationale="", evidence={}, status="active")
+    assert render_advice([act], []) == ""                  # 本轮没失败分类 → 不注入
+    assert render_advice([act], ["not_found"]) == ""       # 分类对不上 → 不注入
+
+
+def test_render_advice_matches_and_cites():
+    """命中要带出处（策略 id），条数与长度都有上限——注入不能喧宾夺主。"""
+    from agentcore.agent.learning import Strategy, render_advice
+    mk = lambda i: Strategy(id=f"S-{i}", error_class="logic", suggestion=f"做法{i}",
+                            rationale="", evidence={}, status="active")
+    text = render_advice([mk(1), mk(2), mk(3)], ["logic"])
+    assert "策略 S-1" in text and "策略 S-2" in text, text
+    assert "S-3" not in text, text                          # 超出 max_items 被截
+    long = Strategy(id="S-9", error_class="logic", suggestion="x" * 900,
+                    rationale="", evidence={}, status="active")
+    assert len(render_advice([long], ["logic"])) <= 400
+
+
+def test_shadow_report():
+    """影子模式：记下"若有策略会命中谁"，applied 标明这轮到底有没有真生效。"""
+    from agentcore.agent.learning import Strategy, shadow_report
+    items = [
+        Strategy(id="A", error_class="logic", suggestion="", rationale="", evidence={}, status="active"),
+        Strategy(id="P", error_class="logic", suggestion="", rationale="", evidence={}, status="proposed"),
+        Strategy(id="X", error_class="not_found", suggestion="", rationale="", evidence={}, status="active"),
+    ]
+    r = shadow_report(items, ["logic"])
+    assert r["classes"] == ["logic"] and r["active"] == ["A"] and r["proposed"] == ["P"]
+    assert r["applied"] is True
+    r2 = shadow_report([items[1]], ["logic"])               # 只有候选、没生效
+    assert r2["applied"] is False and r2["proposed"] == ["P"]
+    assert shadow_report(items, []) == {}                   # 本轮没失败 → 不发事件
+
+
+def test_loop_wiring_is_inert_without_strategies():
+    """端到端接线：有 store 但没 active 策略时，注入块与事件都不该出现 learning 内容。"""
+    import tempfile
+    from pathlib import Path
+    from agentcore.agent.learning import StrategyStore, render_advice, shadow_report
+    from agentcore.agent.loop import detect_repeated_failure
+    from agentcore.agent.world_state import FailureMemory, WorldState
+
+    class C:
+        def __init__(self, name, inp, cid):
+            self.name, self.input, self.id = name, inp, cid
+
+    with tempfile.TemporaryDirectory() as d:
+        store = StrategyStore(Path(d) / "s.json")           # 空 store
+        fm = FailureMemory(Path(d) / "f.db")
+        seen = []
+        detect_repeated_failure([C("run_bash", {"command": "pytest"}, "t1")],
+                                {"t1": "Traceback ... AssertionError: boom"},
+                                WorldState(), fm, set(), threshold=2,
+                                on_failure=lambda fp, cls, lb: seen.extend(cls))
+        assert seen, "回调必须把本轮失败分类交出来，否则块G 拿不到输入"
+        assert render_advice(store.list(), seen) == ""      # 零注入
+        sr = shadow_report(store.list(), seen)
+        assert sr and sr["applied"] is False and sr["active"] == []   # 影子照记
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

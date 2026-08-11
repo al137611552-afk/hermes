@@ -245,3 +245,55 @@ class StrategyStore:
     def active(self) -> list:
         """当前**已生效**策略（运行时若要消费，只读这个；本块暂不接线）。"""
         return self.list("active")
+
+# ── 运行时消费（接线，ADR 0017 §"active() 留作将来运行时只读消费接口"）──────────
+#
+# 两条纪律写进代码：
+# ① **没有 active 策略时必须是彻底的 no-op**（返回空串）——通路可以先接好、行为零变化，
+#    这样集成 bug 早暴露，而不是等有语料那天才发现管子是通的还是堵的。
+# ② **注入必须带出处**（策略 id），否则就是黑箱：用户看不出模型为什么突然换了做法。
+MAX_ADVICE_ITEMS = 2       # 一次最多注入几条，防喧宾夺主
+MAX_ADVICE_CHARS = 400     # 总长封顶；超了截断并标明
+
+
+def render_advice(strategies, error_classes, *,
+                  max_items: int = MAX_ADVICE_ITEMS, max_chars: int = MAX_ADVICE_CHARS) -> str:
+    """把命中本轮错误分类的 **active** 策略渲染成注入文本。没命中 → 空串（no-op）。
+
+    只认 status=active：proposed 的是还没人点头的建议，绝不许影响运行时。
+    """
+    classes = {getattr(c, "value", c) for c in (error_classes or [])}
+    if not classes:
+        return ""
+    hits = [s for s in (strategies or [])
+            if getattr(s, "status", "") == "active" and s.error_class in classes]
+    if not hits:
+        return ""
+    lines = ["[历史教训] 同类失败以前反复出现过，下面是已生效的应对策略（带出处，可在设置里退役）："]
+    for s in hits[:max(1, max_items)]:
+        lines.append(f"- 「{s.error_class}」：{s.suggestion}（策略 {s.id}）")
+    text = "\n".join(lines)
+    if len(text) > max_chars:
+        text = text[:max_chars - 1].rstrip() + "…"
+    return text
+
+
+def shadow_report(strategies, error_classes) -> dict:
+    """影子模式：本轮这些错误分类**若有策略会命中谁**——只记录，不影响任何选路。
+
+    这样语料是"带标注地"积累：等要判断策略有没有用时，手里是配对数据而不是一堆原始失败。
+    没有分类时返回 {}（调用方据此不发事件）。
+    """
+    classes = sorted({getattr(c, "value", c) for c in (error_classes or [])})
+    if not classes:
+        return {}
+    act, prop = [], []
+    for s in (strategies or []):
+        if s.error_class not in classes:
+            continue
+        if getattr(s, "status", "") == "active":
+            act.append(s.id)
+        elif getattr(s, "status", "") == "proposed":
+            prop.append(s.id)
+    return {"classes": classes, "active": act, "proposed": prop,
+            "applied": bool(act)}    # applied=False 即"有候选但没生效"，正是影子期要看的

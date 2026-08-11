@@ -195,6 +195,47 @@ def test_detect_cross_session_deadend_nudges_first_time():
     assert msg is not None and "失败" in msg
 
 
+def test_failure_record_carries_decision_label():
+    """失败记录要带「做法」标签：用了哪个工具 + 是不是提示过仍走同一条路。
+
+    以前这个字段从来没传过，块G（Learning）的 evidence["decisions"] 恒为空 —— 等于
+    "改进 Need→Decision" 的语料里没有 Decision。这条钉住它不再退化。
+    """
+    import tempfile
+    from pathlib import Path
+    from agentcore.agent.loop import detect_repeated_failure
+    from agentcore.agent.world_state import FailureMemory, WorldState
+
+    class C:
+        def __init__(self, name, inp, cid):
+            self.name, self.input, self.id = name, inp, cid
+
+    with tempfile.TemporaryDirectory() as td:
+        fm = FailureMemory(Path(td) / "f.db")
+        world = WorldState()
+        nudged = set()
+        call = C("run_bash", {"command": "pytest -q"}, "t1")
+        out = {"t1": "Traceback ... AssertionError: boom"}
+
+        detect_repeated_failure([call], out, world, fm, nudged, threshold=2)
+        rows = fm.rows()
+        assert len(rows) == 1, rows
+        assert rows[0]["decision"] == "run_bash", rows[0]      # 首次：只记工具
+        assert rows[0]["error_class"], rows[0]                 # 分类照旧
+
+        # 同一条路再失败一次：这次是"已知死路还再走"，标签要能看出来
+        detect_repeated_failure([call], out, world, fm, nudged, threshold=2)
+        labels = sorted(r["decision"] for r in fm.rows())
+        assert labels == ["run_bash", "run_bash|after_nudge"], labels
+
+        # 换个工具做同一件事：标签跟着变，聚合时才分得清"换没换路"
+        call2 = C("run_powershell", {"command": "pytest -q"}, "t2")
+        detect_repeated_failure([call2], {"t2": "Traceback ... AssertionError: boom"},
+                                world, fm, nudged, threshold=2)
+        assert any(r["decision"] == "run_powershell" for r in fm.rows()), fm.rows()
+        print("✓ 失败记录带做法标签（工具名 + after_nudge），块G 的 evidence 不再是空的")
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()
