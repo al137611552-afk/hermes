@@ -1589,6 +1589,14 @@ body.plan-on .composer::before {
 .me-unsupported { margin-left: auto; font-size: 11px; color: var(--muted); }
 .me-desc { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.5; }
 
+.perm-from { font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* ⌨ 命令管理页：标签 + 模式选择行 */
+.cmd-tag { font-size: 11px; padding: 0 6px; border-radius: 8px; margin-left: 6px;
+  border: 1px solid var(--border); color: var(--muted); font-weight: normal; }
+.cmd-modes { display: flex; align-items: center; gap: 14px; margin: 8px 0 2px; font-size: 13px; }
+.cmd-modes label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.cmd-modes .cmd-skill { margin-left: auto; width: auto; min-width: 150px; }
+
 /* 技能预览 / 详情模态 */
 .skill-modal {
   position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: var(--z-modal);

@@ -237,7 +237,9 @@ class Conversation:
         self.gate = PermissionGate(self._on_permission_request,
                                    allow=perm.allow, deny=perm.deny,
                                    # 闭包现读，🛠 面板切「智能确认分级」即时生效
-                                   auto_safe=lambda: self.res.config.agent.auto_approve_safe)
+                                   auto_safe=lambda: self.res.config.agent.auto_approve_safe,
+                                   # 「总是允许这类」落盘（FR-11.4b），重启后仍放行、面板里可撤
+                                   on_rule_added=self._persist_permission_rule)
         self._ask = AskUserBinding(lambda req: self.emit("ask_user", req))  # ask_user 工具的阻塞桥
         # 后台进程管理器（FR-10.3）：每对话一个、跨工作区切换保留；shutdown 时杀全部
         self.procs = ProcessManager()
@@ -330,6 +332,62 @@ class Conversation:
         self.state = "awaiting"
         self.emit("state", {"state": "awaiting"})
         self.emit("permission_request", req)
+
+    def _persist_permission_rule(self, rule: str) -> None:
+        """把「总是允许这类」推导出的规则写进用户覆盖层，并同步到内存 config（本进程立即一致）。"""
+        from ..config import add_user_permission
+        rules = add_user_permission(rule)
+        perm = self.res.config.agent.permissions
+        for r in rules:
+            if r not in perm.allow:
+                perm.allow.append(r)
+        self.emit("permission_rule_added", {"rule": rule})
+
+    def get_permissions(self) -> dict:
+        """当前生效的权限规则 + 哪些是用户自己放行的（面板据此决定哪条能撤）。"""
+        from ..config import read_user_permissions
+        perm = self.res.config.agent.permissions
+        user = read_user_permissions()
+        return {"allow": list(perm.allow), "deny": list(perm.deny), "user_allow": user}
+
+    def add_permission(self, rule: str) -> dict:
+        """面板加一条放行规则：落盘 + 内存 config + 当前会话 gate 立即生效。"""
+        from ..permissions import parse_rule
+        from ..config import add_user_permission
+        rule = (rule or "").strip()
+        tool, _glob = parse_rule(rule)
+        if not tool:
+            return {"ok": False, "error": "规则格式不对。示例：run_bash(futures *)、git_status"}
+        rules = add_user_permission(rule)
+        perm = self.res.config.agent.permissions
+        if rule not in perm.allow:
+            perm.allow.append(rule)
+        self.gate.set_rules(allow=perm.allow)
+        return {"ok": True, "rule": rule, "user_allow": rules}
+
+    def remove_permission(self, rule: str) -> dict:
+        """撤销一条用户放行规则（config.yaml 手编的不动——那是文件里的，去文件里改）。"""
+        from ..config import read_user_permissions, remove_user_permission
+        rule = (rule or "").strip()
+        if rule not in read_user_permissions():
+            return {"ok": False, "error": "这条规则不是在面板里加的（写在 config.yaml 里，请改文件）"}
+        rules = remove_user_permission(rule)
+        perm = self.res.config.agent.permissions
+        perm.allow[:] = [r for r in perm.allow if r != rule]
+        self.gate.set_rules(allow=perm.allow)
+        return {"ok": True, "user_allow": rules}
+
+    def suggest_permission_for_command(self, name: str) -> dict:
+        """给一条 exec 命令推导「免确认」规则（面板一键放行用）。"""
+        from ..permissions import suggest_rule
+        r = self.expand_command(name, "")
+        if not r.get("ok"):
+            return r
+        if r.get("mode") != "exec":
+            return {"ok": False, "error": "只有直接执行模式的命令需要免确认规则"}
+        tool = f"run_{self.res.config.agent.shell}"
+        return {"ok": True, "rule": suggest_rule(tool, {"command": r["command"]}),
+                "command": r["command"]}
 
     def resolve_permission(self, req_id: int, decision: str) -> dict:
         """前端确认条回调：唤醒等待的 confirm()，回到 running 态。"""
@@ -2223,6 +2281,120 @@ class Conversation:
             ],
             "errors": self._skill_errors,
         }
+
+    # ---- 自定义斜杠命令（FR-13.C1）------------------------------------------
+
+    def _discover_commands(self):
+        """扫当前工作区 + 全局的命令目录。扫不动就当没有命令，绝不拖垮对话。"""
+        from ..commands import command_dirs, discover_commands
+        try:
+            return discover_commands(command_dirs(self.workspace, APP_DIR))
+        except Exception as e:  # noqa: BLE001 — 命令是增强项，出错退化为"没有自定义命令"
+            return [], [f"扫描命令目录失败：{e}"]
+
+    def get_commands(self) -> dict:
+        """当前可用的自定义命令 + 解析错误（供补全菜单与管理面用）。"""
+        cmds, errors = self._discover_commands()
+        return {"commands": [c.to_dict() for c in cmds], "errors": errors}
+
+    def expand_command(self, name: str, arg: str = "") -> dict:
+        """展开一条命令：prompt 模式回最终提示词，exec 模式回最终命令行。前端据此决定怎么走。"""
+        from ..commands import render_exec, render_prompt
+        cmds, _ = self._discover_commands()
+        cmd = next((c for c in cmds if c.name == (name or "").strip()), None)
+        if cmd is None:
+            return {"ok": False, "error": f"没有名为 /{name} 的命令"}
+        out = {"ok": True, "mode": cmd.mode, "skill": cmd.skill, "name": cmd.name}
+        if cmd.mode == "exec":
+            out["command"] = render_exec(cmd, arg)
+            out["followup"] = cmd.body        # 非空＝输出回来后要模型按这段处理
+        else:
+            out["text"] = render_prompt(cmd, arg)
+        return out
+
+    def run_command(self, name: str, arg: str = "") -> dict:
+        """exec 模式：后台线程里跑命令行，立即返回（**绝不在 js_api 线程里同步跑**，见 CLAUDE.md 死锁坑）。"""
+        r = self.expand_command(name, arg)
+        if not r.get("ok"):
+            return r
+        if r.get("mode") != "exec":
+            return {"ok": False, "error": "该命令不是 exec 模式"}
+        threading.Thread(target=self._run_command_bg,
+                         args=(r["name"], r["command"], r.get("followup") or ""),
+                         daemon=True).start()
+        return {"ok": True, "started": True}
+
+    def save_command(self, name: str, spec: dict, scope: str = "project") -> dict:
+        """管理面新建/编辑一条命令。scope: project=<工作区>/.hermes/commands，global=<APP_DIR>/commands。
+
+        **写盘前先把生成的内容回读解析一遍**——绝不落一个自己都加载不了的命令文件
+        （那会变成管理面里一条"存了却用不了"的幽灵命令）。
+        """
+        from ..commands import BUILTIN_NAMES, CommandError, build_command_md, parse_command_md, validate_name
+        try:
+            name = validate_name(name)
+            if name in BUILTIN_NAMES:
+                raise CommandError(f"/{name} 是内置命令，换个名字")
+            text = build_command_md(spec or {})
+            parse_command_md(text, name=name)          # 回读校验：解析不过就别写
+        except CommandError as e:
+            return {"ok": False, "error": str(e)}
+        root = (APP_DIR / "commands") if scope == "global" \
+            else (self.workspace / ".hermes" / "commands")
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            path = root / f"{name}.md"
+            path.write_text(text, encoding="utf-8")
+        except OSError as e:
+            return {"ok": False, "error": f"写入失败：{e}"}
+        return {"ok": True, "name": name, "path": str(path), "scope": scope}
+
+    def delete_command(self, name: str) -> dict:
+        """删一条命令。只删命令目录里的文件（越界检查），不碰别处。"""
+        from ..commands import command_dirs
+        target = (name or "").strip()
+        roots = [r.resolve() for r, _s in command_dirs(self.workspace, APP_DIR)]
+        for root in roots:
+            path = (root / f"{target}.md")
+            try:
+                rp = path.resolve()
+            except OSError:
+                continue
+            if not str(rp).startswith(str(root)):      # 名字里带 ../ 之类，直接拒
+                return {"ok": False, "error": "非法命令名"}
+            if rp.is_file():
+                try:
+                    rp.unlink()
+                except OSError as e:
+                    return {"ok": False, "error": f"删除失败：{e}"}
+                return {"ok": True, "name": target, "path": str(rp)}
+        return {"ok": False, "error": f"没找到命令 /{target}"}
+
+    def _run_command_bg(self, name: str, command: str, followup: str) -> None:
+        """执行命令行：照常过权限 gate（命令不因为是"我自己写的"就免确认），结果推给前端。
+
+        要免确认走 `agent.permissions.allow` 里的具体命令前缀规则——那是用户明示放行的一条条命令，
+        而不是给"命令"这个身份开口子（同 ADR-0014 对技能 allowed-tools 的立场）。
+        """
+        tool_name = f"run_{self.res.config.agent.shell}"
+        # 免确认时把原因一起报出来——"没弹确认"有三种合法原因（规则/本会话全部允许/只读白名单），
+        # 长得一模一样，不说清楚用户只能猜是不是漏了确认（真机验证时正栽在这）。
+        auto = self.gate.auto_reason(tool_name, {"command": command})
+        self.emit("command_start", {"name": name, "command": command, "auto": auto})
+        try:
+            if not self.gate.confirm(tool_name, {"command": command}):
+                self.emit("command_done", {"name": name, "ok": False, "output": "",
+                                           "error": "已拒绝执行"})
+                return
+            tool = self.registry.get(tool_name)
+            output = tool.run({"command": command})
+        except Exception as e:  # noqa: BLE001 — 命令失败是常态，如实回给用户而不是崩掉
+            self.emit("command_done", {"name": name, "ok": False, "output": "", "error": str(e)})
+            return
+        self.emit("command_done", {"name": name, "ok": True, "output": output, "error": ""})
+        if followup:
+            # 有后续指示：把「跑了什么 + 输出」连同指示一起交给模型，走正常回合
+            self.enqueue(f"{followup}\n\n[已执行 `{command}`，输出如下]\n```\n{output}\n```")
 
     def _make_browser_reader(self):
         """接了浏览器穿透（browser_navigate + browser_snapshot）时，返回 `callable(url) -> str`。

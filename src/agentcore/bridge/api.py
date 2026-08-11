@@ -635,6 +635,46 @@ class Api:
         """当前会话可用的技能 + 解析错误（含内置/全局/项目级各自来源）。"""
         return {"ok": True, **self.active.get_skills()}
 
+    # ---- 自定义斜杠命令（FR-13.C1）：/盯盘 这类确定性入口 --------------------
+
+    def get_commands(self) -> dict:
+        """当前可用的自定义命令 + 解析错误（补全菜单与管理面都用它）。"""
+        return {"ok": True, **self.active.get_commands()}
+
+    def expand_command(self, name: str, arg: str = "") -> dict:
+        """展开一条命令：prompt 模式回最终提示词，exec 模式回最终命令行。"""
+        return self.active.expand_command(name, arg)
+
+    def run_command(self, name: str, arg: str = "") -> dict:
+        """执行 exec 模式命令（后台线程 + 权限 gate，立即返回）。"""
+        return self.active.run_command(name, arg)
+
+    def save_command(self, name: str, spec: dict, scope: str = "project") -> dict:
+        """新建/编辑一条自定义命令（scope: project=跟项目走 / global=全局可用）。"""
+        return self.active.save_command(name, spec, scope)
+
+    def delete_command(self, name: str) -> dict:
+        """删除一条自定义命令。"""
+        return self.active.delete_command(name)
+
+    # ---- 权限规则（FR-11.4b）：可见、可撤、重启仍在 ------------------------
+
+    def get_permissions(self) -> dict:
+        """当前生效的 allow/deny 规则，并标出哪些是面板加的（只有这些能在面板撤销）。"""
+        return {"ok": True, **self.active.get_permissions()}
+
+    def add_permission(self, rule: str) -> dict:
+        """加一条免确认规则（落盘 + 当前会话立即生效）。"""
+        return self.active.add_permission(rule)
+
+    def remove_permission(self, rule: str) -> dict:
+        """撤销一条面板加的免确认规则。"""
+        return self.active.remove_permission(rule)
+
+    def suggest_permission_for_command(self, name: str) -> dict:
+        """给一条 exec 命令推导免确认规则（命令管理面「免确认」按钮用）。"""
+        return self.active.suggest_permission_for_command(name)
+
     def get_skill_markets(self) -> dict:
         """技能市场清单：内置精选（随程序分发、已核实）+ 用户自己加的。"""
         from ..config import read_user_markets

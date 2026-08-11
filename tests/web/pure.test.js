@@ -516,8 +516,9 @@ test("buildSettingsNav：provider 归模型服务，固定面板按组分到扩�
   assert.deepEqual(models.items.map((i) => i.key), ["ark", "ds"]);
   assert.deepEqual(models.items.map((i) => i.dot), [true, false]);   // 亮灭点＝enabled
   assert.deepEqual(groups[1].items.map((i) => i.key),
-    ["__browser__", "__mcp__", "__hooks__", "__skills__"]);
-  assert.deepEqual(groups[2].items.map((i) => i.key), ["__appearance__", "__features__", "__limits__"]);
+    ["__browser__", "__mcp__", "__hooks__", "__skills__", "__commands__"]);
+  assert.deepEqual(groups[2].items.map((i) => i.key),
+    ["__appearance__", "__features__", "__permissions__", "__limits__"]);
   assert.ok(groups[1].items.every((i) => i.kind === "pane"));
 });
 
@@ -576,4 +577,78 @@ test("wrapFocusIndex：Tab 到末尾绕回开头，Shift+Tab 反向；焦点在�
   assert.equal(wrapFocusIndex(3, -1, false), 0);   // 焦点不在浮层内
   assert.equal(wrapFocusIndex(3, -1, true), 2);
   assert.equal(wrapFocusIndex(0, -1, false), -1);  // 浮层里没有可聚焦元素
+});
+
+// ===== 自定义斜杠命令：合并与查找 =====
+const { mergeSlashCommands, findCustomCommand } = require("../../web/pure.js");
+
+const BUILTIN = [
+  { cmd: "/add-dir", arg: "<目录>", desc: "授权目录" },
+  { cmd: "/crazy", arg: "<目标>", desc: "自主模式" },
+  { cmd: "/help", arg: "", desc: "列出命令" },
+];
+const CUSTOM = [
+  { name: "盯盘", slash: "/盯盘", description: "查期货盯盘数据", mode: "prompt",
+    argument_hint: "[动量|热点]", source: "project" },
+  { name: "动量", slash: "/动量", description: "直接跑动量排名", mode: "exec",
+    argument_hint: "", source: "global" },
+];
+
+test("mergeSlashCommands：内置在前、自定义在后，标出 custom 与 exec", () => {
+  const m = mergeSlashCommands(BUILTIN, CUSTOM);
+  assert.deepEqual(m.map((c) => c.cmd), ["/add-dir", "/crazy", "/help", "/盯盘", "/动量"]);
+  assert.equal(m[0].custom, false);
+  const dp = m.find((c) => c.cmd === "/盯盘");
+  assert.equal(dp.custom, true);
+  assert.equal(dp.arg, "[动量|热点]");
+  assert.equal(dp.mode, "prompt");
+  // exec 模式在菜单里要能一眼看出来——它不过模型、直接跑命令
+  assert.ok(m.find((c) => c.cmd === "/动量").desc.includes("直接执行"));
+});
+
+test("mergeSlashCommands：自定义不得顶掉同名内置命令（/crazy 是免确认入口）", () => {
+  const m = mergeSlashCommands(BUILTIN, [
+    { name: "crazy", slash: "/crazy", description: "冒充的", mode: "exec" },
+    ...CUSTOM,
+  ]);
+  assert.equal(m.filter((c) => c.cmd === "/crazy").length, 1);
+  assert.equal(m.find((c) => c.cmd === "/crazy").desc, "自主模式");   // 还是内置那条
+  assert.equal(m.find((c) => c.cmd === "/crazy").custom, false);
+});
+
+test("mergeSlashCommands：空输入与缺字段不炸", () => {
+  assert.deepEqual(mergeSlashCommands(null, null), []);
+  assert.deepEqual(mergeSlashCommands([], [{ description: "没名字" }]), []);
+  const m = mergeSlashCommands([], [{ name: "x" }]);
+  assert.equal(m[0].cmd, "/x");
+  assert.equal(m[0].desc, "自定义命令");   // 没写 description 也有兜底文案
+});
+
+test("findCustomCommand：按名字对到命令，找不到回 null", () => {
+  assert.equal(findCustomCommand(CUSTOM, "/盯盘").name, "盯盘");
+  assert.equal(findCustomCommand(CUSTOM, "盯盘").name, "盯盘");
+  assert.equal(findCustomCommand(CUSTOM, "/没有的"), null);
+  assert.equal(findCustomCommand(CUSTOM, "/"), null);
+  assert.equal(findCustomCommand(null, "/盯盘"), null);
+});
+
+const { commandsNavBadge } = require("../../web/pure.js");
+
+test("commandsNavBadge：坏文件优先报问题，其次报条数，零个不显示", () => {
+  assert.equal(commandsNavBadge([], []), null);
+  assert.equal(commandsNavBadge(null, null), null);
+  assert.deepEqual(commandsNavBadge([{ name: "盯盘" }, { name: "动量" }], []),
+    { text: "2", tone: "muted" });
+  // 存了却加载不了的命令必须显眼——比少显示个数字严重
+  assert.deepEqual(commandsNavBadge([{ name: "盯盘" }], ["坏的.md：exec 模式必须写 command"]),
+    { text: "1 个没加载", tone: "warn" });
+});
+
+const { permissionsNavBadge } = require("../../web/pure.js");
+
+test("permissionsNavBadge：只数面板放行的规则，零条不显示", () => {
+  assert.equal(permissionsNavBadge([]), null);
+  assert.equal(permissionsNavBadge(null), null);
+  assert.deepEqual(permissionsNavBadge(["run_bash(futures *)", "git_status"]),
+    { text: "放行 2", tone: "muted" });
 });
