@@ -2249,16 +2249,14 @@ function renderShortcuts() {
     ).join("") + "</div>"
   ).join("");
 }
-function openShortcuts() { renderShortcuts(); shortcutsOverlay.hidden = false; }
-function closeShortcuts() { shortcutsOverlay.hidden = true; }
+function openShortcuts() { renderShortcuts(); shortcutsOverlay.hidden = false; pushLayer(shortcutsOverlay, closeShortcuts); }
+function closeShortcuts() { shortcutsOverlay.hidden = true; popLayer(shortcutsOverlay); }
 if (shortcutsClose) shortcutsClose.addEventListener("click", closeShortcuts);
 if (shortcutsOverlay) shortcutsOverlay.addEventListener("click", (e) => {
   if (e.target === shortcutsOverlay) closeShortcuts();   // 点遮罩关闭
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && shortcutsOverlay && !shortcutsOverlay.hidden) {
-    e.preventDefault(); closeShortcuts(); return;
-  }
+  // Esc 关闭交给浮层栈统一处理（它在捕获阶段只关最上层），这里只管 ? / Ctrl+? 开合
   if (isHelpKey(e.key, e.ctrlKey || e.metaKey)) {
     const tag = (e.target && e.target.tagName) || "";
     const typing = tag === "INPUT" || tag === "TEXTAREA" || (e.target && e.target.isContentEditable);
@@ -2843,6 +2841,53 @@ if (_mqlDark) {
   else if (_mqlDark.addListener) _mqlDark.addListener(onSysTheme); // 旧 WebView 兜底
 }
 
+// ---- 浮层栈：设置 / 快捷键 / 技能模态共用 ----
+// 为什么要栈：以前每个浮层各写各的 z-index 与 Esc，技能模态写 60 被设置面板(9998)压在下面。
+// 统一入口后：层级按入栈顺序自动叠、Esc 只关最上层、焦点困在最上层、关掉还焦点给来处。
+const layerStack = [];
+const Z_OVERLAY_BASE =
+  parseInt(getComputedStyle(document.documentElement).getPropertyValue("--z-overlay"), 10) || 9000;
+const FOCUSABLE_SEL = 'a[href], button:not([disabled]), input:not([disabled]), ' +
+  'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusablesIn(el) {
+  return Array.from(el.querySelectorAll(FOCUSABLE_SEL)).filter((n) => n.offsetParent !== null);
+}
+
+function pushLayer(el, close) {
+  if (layerStack.some((l) => l.el === el)) return;   // 重复打开不重复入栈
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.style.zIndex = String(Z_OVERLAY_BASE + layerStack.length * 10);
+  layerStack.push({ el, close, prevFocus: document.activeElement });
+  const first = focusablesIn(el)[0];
+  if (first) first.focus();
+}
+
+function popLayer(el) {
+  const i = layerStack.findIndex((l) => l.el === el);
+  if (i < 0) return;                      // 已经弹出过（close 可能被重复调用）
+  const [layer] = layerStack.splice(i, 1);
+  el.style.zIndex = "";
+  if (layer.prevFocus && document.contains(layer.prevFocus)) layer.prevFocus.focus();
+}
+
+// 捕获阶段统一处理：Esc 关最上层、Tab 在最上层内环绕，不让下层的快捷键抢走
+document.addEventListener("keydown", (e) => {
+  const top = layerStack[layerStack.length - 1];
+  if (!top) return;
+  if (e.key === "Escape") {
+    e.preventDefault(); e.stopPropagation();
+    top.close();
+  } else if (e.key === "Tab") {
+    const items = focusablesIn(top.el);
+    if (!items.length) return;
+    const next = wrapFocusIndex(items.length, items.indexOf(document.activeElement), e.shiftKey);
+    e.preventDefault(); e.stopPropagation();
+    items[next].focus();
+  }
+}, true);
+
 // ---- 设置面板：Provider 中心（产品化③：provider 配一次 key/url/格式、下挂多个模型）----
 const settingsBtn = document.getElementById("settings-btn");
 const settingsOverlay = document.getElementById("settings-overlay");
@@ -2851,9 +2896,33 @@ const provListEl = document.getElementById("prov-list");
 const provDetailEl = document.getElementById("prov-detail");
 let provData = [];
 let provSelected = null;
+let navBadges = {};   // 左栏行内状态徽标：{面板key: {text,tone}}，见 refreshNavBadges
 
-async function openSettings() { await loadProviders(); settingsOverlay.hidden = false; }
-function closeSettings() { settingsOverlay.hidden = true; }
+async function openSettings() {
+  await loadProviders();
+  settingsOverlay.hidden = false;
+  pushLayer(settingsOverlay, closeSettings);
+  refreshNavBadges();          // 状态是本地查询，不阻塞面板打开，回来了再补上
+}
+function closeSettings() { settingsOverlay.hidden = true; popLayer(settingsOverlay); }
+
+// 左栏徽标：MCP 连通/浏览器穿透/技能数/hooks 数——不必点进去才知道状态。
+// 四个都是本地调用；任一失败就当"没状态"跳过，不能因为查状态把设置面板搞挂。
+async function refreshNavBadges() {
+  const get = async (fn) => { try { return await fn(); } catch (e) { return null; } };
+  const api = window.pywebview.api;
+  const [mcp, br, sk, hk] = await Promise.all([
+    get(() => api.get_mcp_servers()), get(() => api.get_browser_mcp_status()),
+    get(() => api.get_skills()), get(() => api.get_hooks()),
+  ]);
+  navBadges = {
+    __mcp__: mcpNavBadge(mcp),
+    __browser__: browserNavBadge(br),
+    __skills__: skillsNavBadge(sk && sk.skills),
+    __hooks__: hooksNavBadge(hk && hk.hooks),
+  };
+  if (!settingsOverlay.hidden) renderProviderList();
+}
 
 async function loadProviders() {
   const r = await window.pywebview.api.get_providers();
@@ -2866,63 +2935,34 @@ async function loadProviders() {
 }
 
 function renderProviderList() {
+  // 分组导航（模型服务 / 扩展能力 / 通用）+ 行内状态徽标；分组结构是 pure.js 的纯逻辑，这里只负责画。
   provListEl.innerHTML = "";
-  provData.forEach((p) => {
-    const row = document.createElement("button");
-    row.className = "prov-item" + (p.key === provSelected ? " active" : "");
-    row.innerHTML = `<span class="prov-name">${escapeHtml(p.label)}</span>` +
-      `<span class="prov-dot ${p.enabled ? "on" : ""}"></span>`;
-    row.addEventListener("click", () => { provSelected = p.key; renderProviderList(); renderProviderDetail(); });
-    provListEl.appendChild(row);
+  buildSettingsNav(provData, navBadges).forEach((g) => {
+    const title = document.createElement("div");
+    title.className = "prov-group";
+    title.textContent = g.title;
+    provListEl.appendChild(title);
+    g.items.forEach((it) => {
+      const row = document.createElement("button");
+      row.className = "prov-item" + (it.key === provSelected ? " active" : "");
+      row.setAttribute("aria-current", it.key === provSelected ? "true" : "false");
+      const right = it.badge
+        ? `<span class="prov-badge ${it.badge.tone}">${escapeHtml(it.badge.text)}</span>`
+        : (it.dot === null ? "" : `<span class="prov-dot ${it.dot ? "on" : ""}"></span>`);
+      row.innerHTML = `<span class="prov-name">${escapeHtml(it.label)}</span>` + right;
+      row.addEventListener("click", () => {
+        provSelected = it.key; renderProviderList(); renderProviderDetail();
+      });
+      provListEl.appendChild(row);
+    });
+    if (g.id === "models") {
+      const add = document.createElement("button");
+      add.className = "prov-add";
+      add.textContent = "+ 添加模型";
+      add.addEventListener("click", addCustomProvider);
+      provListEl.appendChild(add);
+    }
   });
-  // 添加模型（自定义服务）：紧跟在默认模型下面，符合"模型列表末尾加一个"的直觉
-  const add = document.createElement("button");
-  add.className = "prov-add";
-  add.textContent = "+ 添加模型";
-  add.addEventListener("click", addCustomProvider);
-  provListEl.appendChild(add);
-  // 浏览器穿透（特殊项：一键开关，深度调研用）
-  const br = document.createElement("button");
-  br.className = "prov-item prov-special" + (provSelected === "__browser__" ? " active" : "");
-  br.innerHTML = '<span class="prov-name">🌐 浏览器穿透</span>';
-  br.addEventListener("click", () => { provSelected = "__browser__"; renderProviderList(); renderProviderDetail(); });
-  provListEl.appendChild(br);
-  // MCP 扩展（特殊项：增删改外部 MCP server，不必手编 config.yaml）
-  const mc = document.createElement("button");
-  mc.className = "prov-item prov-special" + (provSelected === "__mcp__" ? " active" : "");
-  mc.innerHTML = '<span class="prov-name">🔌 MCP 扩展</span>';
-  mc.addEventListener("click", () => { provSelected = "__mcp__"; renderProviderList(); renderProviderDetail(); });
-  provListEl.appendChild(mc);
-  // Hooks（特殊项：工具调用前后跑自定义命令，守卫/动作）
-  const hk = document.createElement("button");
-  hk.className = "prov-item prov-special" + (provSelected === "__hooks__" ? " active" : "");
-  hk.innerHTML = '<span class="prov-name">🪝 Hooks</span>';
-  hk.addEventListener("click", () => { provSelected = "__hooks__"; renderProviderList(); renderProviderDetail(); });
-  provListEl.appendChild(hk);
-  // 技能（特殊项：已装技能管理 + 从市场浏览/扫描/安装）
-  const sk = document.createElement("button");
-  sk.className = "prov-item prov-special" + (provSelected === "__skills__" ? " active" : "");
-  sk.innerHTML = '<span class="prov-name">🧩 技能</span>';
-  sk.addEventListener("click", () => { provSelected = "__skills__"; renderProviderList(); renderProviderDetail(); });
-  provListEl.appendChild(sk);
-  // 外观（特殊项：浅色主题 + 字号，纯客户端）
-  const ap = document.createElement("button");
-  ap.className = "prov-item prov-special" + (provSelected === "__appearance__" ? " active" : "");
-  ap.innerHTML = '<span class="prov-name">🎨 外观</span>';
-  ap.addEventListener("click", () => { provSelected = "__appearance__"; renderProviderList(); renderProviderDetail(); });
-  provListEl.appendChild(ap);
-  // 功能开关（特殊项：默认关的进阶 agent 能力，即点即生效 + 持久化）
-  const fp = document.createElement("button");
-  fp.className = "prov-item prov-special" + (provSelected === "__features__" ? " active" : "");
-  fp.innerHTML = '<span class="prov-name">🛠 功能开关</span>';
-  fp.addEventListener("click", () => { provSelected = "__features__"; renderProviderList(); renderProviderDetail(); });
-  provListEl.appendChild(fp);
-  // 限额与预算（数值参数统一管理：token/轮次/时间/步数等，即改即生效 + 持久化）
-  const lm = document.createElement("button");
-  lm.className = "prov-item prov-special" + (provSelected === "__limits__" ? " active" : "");
-  lm.innerHTML = '<span class="prov-name">📊 限额与预算</span>';
-  lm.addEventListener("click", () => { provSelected = "__limits__"; renderProviderList(); renderProviderDetail(); });
-  provListEl.appendChild(lm);
 }
 
 async function renderBrowserPane() {
@@ -3009,6 +3049,7 @@ async function renderBrowserPane() {
     if (busy) { busy.hidden = false; busy.textContent = "⏳ 上次没装完，正在继续…"; }
     window.pywebview.api.set_browser_mcp(true).finally(() => { window.__brResuming = false; });
   }
+  refreshNavBadges();   // 面板内容变了（增删改/开关）→ 左栏徽标跟着刷新
 }
 
 // 浏览器穿透安装进度 / 完成（后台线程推来的全局事件，无 cid）
@@ -3191,6 +3232,7 @@ async function renderMcpPane() {
       renderMcpPane();
     } else showToast((res && res.error) || "保存失败");
   });
+  refreshNavBadges();   // 面板内容变了（增删改/开关）→ 左栏徽标跟着刷新
 }
 
 // ---- 设置面板：🧩 技能（FR-13.S2）------------------------------------------
@@ -3315,6 +3357,7 @@ async function renderSkillsPane() {
   addBtn.addEventListener("click", doAdd);
   addInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doAdd(); });
   if (skillMarketRepo) openMarket();
+  refreshNavBadges();   // 面板内容变了（增删改/开关）→ 左栏徽标跟着刷新
 }
 
 async function openMarket() {
@@ -3483,20 +3526,19 @@ async function showSkillDetail(name) {
 // 通用轻量模态（技能预览/详情用；已有的确认走 window.confirm）
 function showModal(title, html, onMount) {
   const old = document.getElementById("skill-modal");
-  if (old) old.remove();
+  if (old) { popLayer(old); old.remove(); }   // 顶掉旧模态时也要出栈，别留悬空层
   const el = document.createElement("div");
   el.id = "skill-modal";
   el.className = "skill-modal";
   el.innerHTML = `<div class="sm-box"><div class="sm-head"><span>${escapeHtml(title)}</span>` +
     `<button class="sm-close">✕</button></div><div class="sm-body">${html}</div></div>`;
   document.body.appendChild(el);
-  const close = () => el.remove();
+  const close = () => { popLayer(el); el.remove(); };
   el.querySelector(".sm-close").addEventListener("click", close);
   el.addEventListener("click", (e) => { if (e.target === el) close(); });
-  document.addEventListener("keydown", function esc(e) {
-    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); }
-  });
   if (onMount) onMount(el);
+  // 入栈：叠在设置面板之上、Esc 只关它、关掉焦点还给点开它的那一行
+  pushLayer(el, close);
 }
 
 async function renderHooksPane() {
@@ -3586,6 +3628,7 @@ async function renderHooksPane() {
     if (res && res.ok) { showToast("已保存"); resetForm(); renderHooksPane(); }
     else showToast((res && res.error) || "保存失败");
   });
+  refreshNavBadges();   // 面板内容变了（增删改/开关）→ 左栏徽标跟着刷新
 }
 
 async function renderFeaturePane() {
