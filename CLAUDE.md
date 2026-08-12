@@ -82,6 +82,21 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - **WebView2 死锁坑（v3.51 评审踩过）**：**别在 pywebview 的 `js_api` 方法里同步调 `window.evaluate_js` 推流式事件**——WebView2 下 js_api 处理函数返回前 JS 执行结果无法回传，首个 `evaluate_js` 就死锁：方法永不返回、前端 `await` 永远 pending（症状＝按钮一直转、事件一个不出）。**规避**：凡是"边跑边 emit"的长任务都走**后台 worker 线程**（照 `conversation.enqueue`/`_worker_loop`、`run_design_review` 的模式），js_api 立即返回、事件由线程 emit、前端靠事件（非 await 返回值）驱动渲染与收尾。**Chromium/Playwright 复现不出**（WebView2 专属）。
 - **WebView2 滚动坑（v3.37 踩过）**：对话区 `.chat` 是滚动容器，某些 CSS 会让 WebView2 在内容**异步重排**时把 `scrollHeight` 暂时算塌（→ 滚轮跳回顶部、几轮后自愈），**Chromium/Playwright 复现不出**（WebView2 专属）。已知触发：① 给元素只设 `overflow-x:auto`（`overflow-y` 连带变 `auto`、成滚动容器）；② `<hr>` 用 `border:none;border-top` 重构盒子；③ 嵌套列表加 `margin`（嵌套 margin 合并）；④ 给 `table` 加 `display:block`。**规避**：宽表格用外层 `.table-wrap` div 滚动（别动 table 的 display）；列表只用 `padding` 缩进别用 margin；hr 只改色别重构；`.chat` 已加 `overflow-anchor:none`。改对话区 CSS 后**务必真机滚长对话验**，别只信 Chromium 截图。
 
+- **`hidden` 属性会被作者样式的 `display:` 盖掉（已踩三次：`.ws-reopen` / `#send` / v3.63 的 `.trace-bar`）**：
+  给元素写了 `display:flex/inline-flex` 就**必须**补一条 `.x[hidden] { display: none; }`，否则 `el.hidden=true`
+  但屏幕上照常显示（症状：一启动就常驻一条本不该出现的状态条）。**自检要量渲染结果**
+  （`offsetWidth || offsetHeight || getClientRects().length`）——断言 `el.hidden` 属性会一路全绿。
+- **新浮层必须入浮层栈 `pushLayer/popLayer`（v3.63 踩过）**：栈在**捕获阶段**统一处理 Esc（只关最上层 +
+  `stopPropagation`）与 Tab 环绕。不入栈＝Esc 被下层吃掉（症状：Esc 关了设置面板，你的弹窗还杵着），
+  自己在 overlay 上挂的 Esc 监听**永远收不到事件**。同理别在浮层里另写一份 Esc/Tab 处理。
+- **别蹭老组件的 CSS 类（v3.63 踩过）**：`style.css` 是一个按功能顺序追加的大文件，**后写的同特异性规则永远赢**。
+  新面板蹭 `.settings-body` → 被它后面的 `display:flex` 盖掉，整块压成一列竖排字；`.trace-modal` 的
+  `height:auto` 被后面的 `.settings-modal` 固定高度盖掉。**要么完全自带样式，要么用 `.a.b` 提特异性**。
+  同源提醒：新 UI 若要复用老状态机（如 `composerState` 的运行态），也得把自己接进去——评审跑在
+  后台线程不进 `streaming`，结果停止键一直不出现。
+- **加新工具时，先把提示词里指向旧做法的路标一起改**（v3.63 踩过）：`request_handoff` 装好了，但
+  `config.yaml` 系统提示词与 `delegate.py` 的 researcher 指令里「遇登录墙先用 ask_user」还在，模型照旧路走。
+  **提示词里的具体指令压得过新工具的 description**，改工具集时 `grep` 一遍旧工具名。
 - **shell 前台读输出必须用二进制 `read1()`，别"清理"回 `text=True`**（2026-08-11 踩过）：
   `TextIOWrapper.read(4096)` **会阻塞到读满 4096 字符或 EOF**——于是"实时流输出"对绝大多数命令不实时、
   停在交互提示上的命令也看不见提示。现在是二进制管道 + `_StreamDecoder`（增量 utf-8 + 换行归一）。

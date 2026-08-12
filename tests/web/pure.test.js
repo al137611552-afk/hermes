@@ -755,3 +755,160 @@ test("extractWaitingProcess：没等输入 / 非字符串 → null（别到处�
   assert.equal(extractWaitingProcess(null), null);
   assert.equal(extractWaitingProcess(42), null);
 });
+
+// ===== 换手面板（ADR 0023）：真实目标 + 凭据边界，两条安全立场钉在这里 =====
+const { handoffPanelText, handoffTargetKind, HANDOFF_PRIVACY } = require("../../web/pure.js");
+
+test("handoffTargetKind：URL / 路径 / 应用名分得开（面板据此标注目标类型）", () => {
+  assert.equal(handoffTargetKind("https://example.com/login"), "url");
+  assert.equal(handoffTargetKind("HTTP://EXAMPLE.COM"), "url");
+  assert.equal(handoffTargetKind("C:\\Users\\me\\.env"), "path");
+  assert.equal(handoffTargetKind("/etc/hosts"), "path");
+  assert.equal(handoffTargetKind("~/.ssh/config"), "path");
+  assert.equal(handoffTargetKind("src/app.js"), "path");
+  assert.equal(handoffTargetKind("Chrome"), "app");
+  assert.equal(handoffTargetKind("微信"), "app");
+});
+
+test("handoffPanelText：真实目标与凭据边界声明永远在（换手是天然钓鱼位）", () => {
+  const t = handoffPanelText({
+    id: 1, reason: "这站要短信验证码", target: "https://bank.example.com/login",
+    verify: "重新 snapshot 看是否出现账户名", unattended: false,
+  });
+  assert.equal(t.target, "https://bank.example.com/login");   // 原样显示，不省略不美化
+  assert.equal(t.targetLabel, "网址");
+  assert.equal(t.reason, "这站要短信验证码");
+  assert.equal(t.verify, "重新 snapshot 看是否出现账户名");
+  assert.equal(t.privacy, HANDOFF_PRIVACY);
+  assert.match(t.privacy, /不读取、不回传/);
+  assert.equal(t.hint, "");
+});
+
+test("handoffPanelText：字段缺失也不会显示空白目标（用户得知道自己在给谁登录）", () => {
+  const t = handoffPanelText({});
+  assert.equal(t.reason, "（未说明原因）");
+  assert.equal(t.target, "（未给出目标）");
+  assert.equal(t.verify, "");
+  assert.equal(t.privacy, HANDOFF_PRIVACY);
+  assert.equal(handoffPanelText(null).privacy, HANDOFF_PRIVACY);
+});
+
+test("handoffPanelText：无人值守下提示会超时收成阻塞——不会被当成完成", () => {
+  const t = handoffPanelText({ reason: "要登录", target: "https://a", unattended: true });
+  assert.match(t.hint, /阻塞：待人工换手/);
+  assert.match(t.hint, /不会被记成完成/);
+});
+
+// ===== 轨迹录制（ADR 0023 决策 4/7）：状态条文案 + 草案校验 =====
+const {
+  traceBarText, traceNameHint, traceDraftIssues, traceComposePayload,
+} = require("../../web/pure.js");
+
+test("traceBarText：一眼看得出录了多久、录到多少步（状态条是防忘关的那道兜底）", () => {
+  assert.equal(traceBarText({ recording: true, steps: 3, seconds: 65 }),
+    "正在录制轨迹 · 已录 3 步 · 01:05");
+  assert.equal(traceBarText({ recording: true, steps: 0, seconds: 0 }),
+    "正在录制轨迹 · 已录 0 步 · 00:00");
+  assert.match(traceBarText({ recording: true, steps: 120, seconds: 10, full: true }), /已录满/);
+});
+
+test("traceNameHint：技能名不合规范只提醒、不阻拦（ADR 0015 §4 接收宽容）", () => {
+  assert.equal(traceNameHint("annual-report"), "");
+  assert.equal(traceNameHint(""), "");
+  assert.match(traceNameHint("Annual Report"), /小写字母与连字符/);
+});
+
+test("traceDraftIssues：一步不留 / 一个变量不留都要拦一下", () => {
+  const draft = {
+    steps: [{ label: "a", keep: false }],
+    params: [{ name: "{{网址}}", value: "https://a", keep: false }],
+  };
+  const issues = traceDraftIssues(draft);
+  assert.match(issues.join("；"), /至少留一步/);
+  assert.match(issues.join("；"), /流水账/);          // 决策 7：不参数化＝只是这一次的流水账
+  // 正常草案：不报任何问题
+  assert.deepEqual(traceDraftIssues({
+    steps: [{ label: "a", keep: true }],
+    params: [{ name: "{{网址}}", value: "https://a", keep: true }],
+    skill_name: "annual-report",
+  }), []);
+  // 压根没抽到变量：不该拿"没变量"去烦用户
+  assert.deepEqual(traceDraftIssues({ steps: [{ label: "a" }], params: [] }), []);
+});
+
+test("traceComposePayload：勾掉的步骤与变量不进后端入参", () => {
+  const p = traceComposePayload({
+    goal: " 查年报 ", skill_name: " annual-report ", description: " 说明 ", scope: "global",
+    steps: [{ kind: "tool", label: "a", tool: "web_search", keep: true },
+            { kind: "tool", label: "b", keep: false }],
+    params: [{ name: " {{网址}} ", value: "https://a", keep: true },
+             { name: "{{日期}}", value: "2026-01-01", keep: false }],
+  });
+  assert.equal(p.goal, "查年报");
+  assert.equal(p.skill_name, "annual-report");
+  assert.equal(p.scope, "global");
+  assert.deepEqual(p.steps.map((s) => s.label), ["a"]);
+  assert.deepEqual(p.params, [{ name: "{{网址}}", value: "https://a" }]);
+});
+
+test("traceComposePayload：范围只认 project/global（脏值一律回落项目级）", () => {
+  assert.equal(traceComposePayload({ scope: "系统盘" }).scope, "project");
+  assert.equal(traceComposePayload({}).scope, "project");
+  assert.equal(traceComposePayload(null).scope, "project");
+});
+
+// ===== 真机第二轮抓到的三条（划选评审门槛 / 评审运行态 / 停止键）=====
+const {
+  canReviewSelection, REVIEW_MIN_CHARS, SEL_REVIEW_MIN_CHARS,
+} = require("../../web/pure.js");
+
+test("划选评审门槛 ≥ 后端下限，且不至于高到划一整段都不浮（原来卡 200 就是这么坏的）", () => {
+  assert.ok(SEL_REVIEW_MIN_CHARS >= REVIEW_MIN_CHARS, "浮出来却被拒 = 更糟的体验");
+  assert.ok(SEL_REVIEW_MIN_CHARS <= 120, "门槛过高＝用户以为功能坏了");
+  assert.equal(canReviewSelection("太短"), false);
+  assert.equal(canReviewSelection("方".repeat(SEL_REVIEW_MIN_CHARS - 1)), false);
+  assert.equal(canReviewSelection("方".repeat(SEL_REVIEW_MIN_CHARS)), true);
+  assert.equal(canReviewSelection("  " + "方".repeat(SEL_REVIEW_MIN_CHARS) + "  "), true);
+  assert.equal(canReviewSelection(null), false);
+});
+
+test("composerState：评审进行中也算「正在跑」——停止键必须露出来", () => {
+  const st = composerState({ reviewRunning: true });
+  assert.equal(st.running, true);
+  assert.equal(st.stopHidden, false);   // 没这条 → 评审一发起就只能干等（真机踩到）
+  assert.equal(st.sendHidden, true);
+  // 三种运行态互不影响
+  assert.equal(composerState({ streaming: true }).stopHidden, false);
+  assert.equal(composerState({ crazyRunning: true }).stopHidden, false);
+  assert.equal(composerState({}).stopHidden, true);
+});
+
+// ===== 换手 × 浏览器：人得**有地方**动手（真机指出的设计漏洞）=====
+const { handoffBrowserHint } = require("../../web/pure.js");
+
+test("无头浏览器下的换手：明说「你在自己 Chrome 里登录不算数」并给一键切换", () => {
+  const h = handoffBrowserHint("url", { enabled: true, headed: false });
+  assert.equal(h.level, "warn");
+  assert.equal(h.action, "switch");
+  assert.match(h.text, /无头/);
+  assert.match(h.text, /不算数/);
+});
+
+test("有头时仍要点明「在弹出的那个窗口里登录」（独立 profile，不是日常 Chrome）", () => {
+  const h = handoffBrowserHint("url", { enabled: true, headed: true });
+  assert.equal(h.level, "info");
+  assert.match(h.text, /不是你平时用的 Chrome/);
+});
+
+test("压根没开浏览器穿透：告诉用户此路不通，别让他白登一次", () => {
+  const h = handoffBrowserHint("url", { enabled: false, headed: false });
+  assert.equal(h.level, "warn");
+  assert.equal(h.action, "");
+  assert.match(h.text, /浏览器穿透/);
+});
+
+test("非网页目标（本地路径/应用）不提浏览器的事", () => {
+  assert.equal(handoffBrowserHint("path", { enabled: true, headed: false }), null);
+  assert.equal(handoffBrowserHint("app", { enabled: false }), null);
+  assert.equal(handoffBrowserHint("url", null).level, "warn");   // 状态拿不到＝按最坏情况提示
+});

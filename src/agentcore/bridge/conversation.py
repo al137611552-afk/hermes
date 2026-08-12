@@ -41,8 +41,10 @@ from ..paths import APP_DIR, BUNDLE_DIR
 from ..skills import Skill, build_skills_block, discover_skills, skill_dirs
 from ..providers import Message, build_provider
 from ..store import make_title
+from ..trajectory import TrajectoryRecorder, build_skill_prompt, steps_from_dicts
 from ..tools import build_registry
 from ..tools.ask import AskUserBinding
+from ..tools.handoff import HandoffBinding
 from ..tools.delegate import (
     _READ_ONLY_TOOLS,
     SUBAGENT_DIRECTIVE,
@@ -82,6 +84,9 @@ _CRAZY_DIRECTIVE = (
     "3. **任务由多个相对独立的子系统/模块组成时，用 delegate 把它们拆给子 agent 并行开发**"
     "（如解析器/存储引擎/CLI 各一块），再自己负责集成联调——别什么都自己串行硬扛，独立的活并行更快；\n"
     "4. **阶段内的零碎决策**自己按合理默认定、别打扰用户（也别调 ask_user 工具，那在自主模式被自动放行、没用）。"
+    "**例外**：碰到**只有人类能做**的环节（登录 / 验证码 / 支付 / 真人验证）就调 `request_handoff`——"
+    "它在自主模式下**不会被自动放行**，会挂起等人来接管；没人接管则任务收在「阻塞：待人工换手」。"
+    "**绝不要绕过这类环节、更不要假装它已完成**。"
     "但遇到**真正影响方向的设计岔路 / 下一阶段目标确实模糊 / 你判断必须用户拍板**时，**那一轮最后一行输出 "
     "`[[NEED_USER: 你要问的具体问题]]`**——外层会**停下来真的问用户**、把回复带给下一轮的你。别滥用（routine 决策别问），"
     "只在真岔路用；用了就停在那轮、等回复；\n"
@@ -197,7 +202,14 @@ class Conversation:
         # 本对话发往前端的事件统一带上 cid（FR-8.2 事件路由）。
         # 直接闭包捕获 Resources.emit（即 Api._emit），避免引用 self.emit 造成自递归。
         _base_emit = res.emit
-        self.emit = lambda event, data: _base_emit(event, data, self.cid)
+        # 轨迹录制（ADR 0023 决策 4~8）：**人手动开关**，不录时 observe 直接返回、零开销。
+        # 挂在 emit 这个咽喉上而不是各处埋点：工具事件（含子 Agent 的）本就全从这过，采集面不新增。
+        self._trace = TrajectoryRecorder()
+        def _emit(event, data):
+            if self._trace.recording:
+                self._trace.observe(event, data)
+            _base_emit(event, data, self.cid)
+        self.emit = _emit
         # 后台执行：每对话一条 worker 线程 + 串行任务队列（保回合顺序；惰性启动、空闲退出）
         self.state = "idle"  # idle / queued / running / awaiting（done/error 由轮次事件表达）
         self._queue: "queue.Queue[tuple[str, object]]" = queue.Queue()
@@ -241,6 +253,10 @@ class Conversation:
                                    # 「总是允许这类」落盘（FR-11.4b），重启后仍放行、面板里可撤
                                    on_rule_added=self._persist_permission_rule)
         self._ask = AskUserBinding(lambda req: self.emit("ask_user", req))  # ask_user 工具的阻塞桥
+        # 换手（ADR 0023）：登录/验证码这类不可代办的环节把控制权交还用户。与 ask 刻意分开：
+        # 无人值守下 ask 自动放行、换手**绝不放行**（自动放行只会产出假成功）。
+        self._handoff = HandoffBinding(lambda req: self.emit("handoff_request", req),
+                                       observer=self._observe_scene)
         # 后台进程管理器（FR-10.3）：每对话一个、跨工作区切换保留；shutdown 时杀全部
         self.procs = ProcessManager()
         # 产物入口（ADR 0021）：随工作区在 _build_registry 里建；None = 大输出照旧截断丢弃
@@ -275,6 +291,11 @@ class Conversation:
         """
         if (not text or not text.strip()) and not attachments:
             return {"ok": False, "error": "空消息"}
+        # 录制中：用户这句话就是旁白/纠正（ADR 0023 决策 5）——意图推不出来，只能听见。
+        # 放在 enqueue 而不是 send_message：steering 的中途补充（"不对，应该先 X"）恰恰是
+        # 信息密度最高的一类，走的正是不进 send_message 的那条注入路径。
+        if self._trace.recording and text and text.strip():
+            self._trace.say(text)
         # 兜底：一旦开始新一轮对话/开发，就取消可能仍在跑的评审——评审属于规划阶段，绝不该与开发并发
         # （真机 bug：关面板+退规划后评审与开发同时继续）。前端 set_plan_mode(false) 已取消，这里是双保险。
         if self._review_thread is not None and self._review_thread.is_alive():
@@ -411,6 +432,7 @@ class Conversation:
             pass
         self.gate.reset()  # 若卡在权限确认上，解除阻塞（confirm 返回 deny，回合间再停）
         self._ask.reset()  # 同时解除 ask_user 的等待
+        self._handoff.reset()  # 卡在等人接管上的换手也一并解除（回灌"未完成"，不假装成了）
 
     def shutdown(self, timeout: float = 2.0) -> None:
         """应用退出/运行时被移除：停 worker、解除权限等待、等线程收尾（带超时，绝不卡死），
@@ -1428,6 +1450,8 @@ class Conversation:
         self.crazy_mode = bool(on)
         self.gate._allow_all = self.crazy_mode   # 危险操作免逐个确认
         self._ask.set_auto(self.crazy_mode)      # ask_user 不阻塞、按合理默认放行
+        # 换手相反：不放行，只把"一直等"改成有限等待，超时收成阻塞态（ADR 0023 决策 2）
+        self._handoff.set_unattended(self.crazy_mode)
         return self.crazy_mode
 
     def _last_assistant_text(self) -> str:
@@ -1458,6 +1482,7 @@ class Conversation:
         deadline = (time.monotonic() + cfg.crazy_max_seconds) if cfg.crazy_max_seconds > 0 else None
         self._crazy_tokens = 0
         self._cancel.clear()
+        self._handoff.clear_blocked()   # 上一轮自主任务的阻塞结论不带进本轮
         self.set_crazy_mode(True)
         orig_emit = self.emit
         def _counting_emit(event, data):   # 期间统计 token 用量，用于预算护栏
@@ -1493,6 +1518,10 @@ class Conversation:
                     new_msgs = list(self.history[before:])
                 if self._cancel.is_set():
                     reason = "stopped"; break
+                # 换手无人接管（ADR 0023 决策 2）：登录/验证码原理上不可代办，没人来就**挂起**，
+                # 绝不按默认继续、更不许记完成——同 v3.22「撞上限/被打断一律不算完成」的纪律。
+                if self._handoff.blocked:
+                    reason = "handoff_blocked"; break
                 # 防空转：本轮没动用任何工具（纯文字）→ 累计；连续 stall_rounds 轮无工具就判空转停
                 if _turn_used_tools(new_msgs):
                     stale = 0
@@ -2255,6 +2284,7 @@ class Conversation:
             verifier=verifier,
             extra_dirs=self._extra_dirs,
             ask_user_binding=self._ask,
+            handoff_binding=self._handoff,
             history_search=(self.res.store.search_messages if self.res.store else None),
             skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
             browser_reader=self._make_browser_reader(),
@@ -2471,6 +2501,83 @@ class Conversation:
         """前端回调：用户对 ask_user 的勾选/补充，唤醒等待的工具。"""
         return {"ok": self._ask.resolve(int(req_id), answer)}
 
+    def resolve_handoff(self, req_id: int, outcome: str, note: str = "") -> dict:
+        """前端回调：用户点「我做完了」/「做不了，跳过」，唤醒等待的 request_handoff（ADR 0023）。"""
+        return {"ok": self._handoff.resolve(int(req_id), str(outcome), str(note or ""))}
+
+    # ---- 轨迹录制与固化（ADR 0023 决策 4~8）--------------------------------
+    # 只由人手动开关：不自动检测、不自动固化——判据不可靠（保守则永不触发、激进则批量生成
+    # 垃圾技能），而噪声技能会直接毁掉技能清单的价值密度（渐进披露的前提，ADR 0014 决策 2）。
+
+    def trajectory_start(self, goal: str = "") -> dict:
+        r = self._trace.start(goal)
+        if r.get("ok"):
+            self.emit("trajectory_started", self._trace.state())
+        return r
+
+    def trajectory_mark(self, note: str = "") -> dict:
+        """「记一步」：人在关键处打点，附一句说明，同时抓一份现场（接了浏览器＝无障碍快照）。
+
+        与换手共用 `_observe_scene`——不做定时全量快照：那会录进大量无意义中间页把信噪比压垮，
+        而**打点本身就是人在标注"这一步重要"**。
+        """
+        try:
+            snap = self._observe_scene()
+        except Exception:  # noqa: BLE001 — 现场抓不到不该让打点失败（没接浏览器也能打点）
+            snap = ""
+        r = self._trace.mark(note, snap)
+        self.emit("trajectory_step", self._trace.state())
+        return r
+
+    def trajectory_state(self) -> dict:
+        return self._trace.state()
+
+    def is_recording(self) -> bool:
+        """是否正在录轨迹（Api 据此不回收这个对话——轨迹只在内存里，丢了就是丢了）。"""
+        return self._trace.recording
+
+    def trajectory_discard(self) -> dict:
+        r = self._trace.discard()
+        self.emit("trajectory_stopped", {"discarded": True})
+        return r
+
+    def trajectory_stop(self) -> dict:
+        """结束录制，交出归并后的轨迹 + 参数化候选。**不落盘、不自动生成技能**——
+        下一步是人在固化面板里过一遍（决策 4：人工信号比任何启发式都准）。"""
+        r = self._trace.stop()
+        self.emit("trajectory_stopped", {"discarded": False, "steps": len(r.get("steps") or [])})
+        return r
+
+    def trajectory_compose(self, payload: dict) -> dict:
+        """固化面板确认后：把（人改过的）轨迹拼成喂给 `skill-creator` 流水线的指令。
+
+        只回提示词、不自己发——发送由前端走正常发消息路径（用户能看见、能改、能撤）。
+        """
+        p = payload if isinstance(payload, dict) else {}
+        prompt = build_skill_prompt(
+            goal=str(p.get("goal") or ""),
+            steps=steps_from_dicts(p.get("steps")),
+            params=[x for x in (p.get("params") or []) if isinstance(x, dict)],
+            skill_name=str(p.get("skill_name") or ""),
+            description=str(p.get("description") or ""),
+            scope=str(p.get("scope") or "project"),
+        )
+        return {"ok": True, "prompt": prompt}
+
+    def _observe_scene(self) -> str:
+        """换手交回后**自动重读现场**（ADR 0023 决策 3）：接了浏览器就抓一份无障碍快照。
+
+        不靠"用户说做完了"，而是把**实际状态**回灌给模型——用户点完成但其实没登上，是这类
+        交互最常见的失败模式（v3.43 教训：结构性约束 > prompt）。没接浏览器就返回空串，
+        由 compose_result 里的"必须先验证"指令兜底（模型自己动手读现场）。
+        """
+        tools = {t.name.split("__", 1)[-1]: t for t in (self.res.mcp_tools or [])}
+        snap = tools.get("browser_snapshot")
+        if snap is None:
+            return ""
+        out = snap.run({})
+        return getattr(out, "text", out) or ""
+
     def _subagent_registry(self, role=None):
         """子 Agent 的工具集：同主工具，但**不含** delegate / update_tasks（防嵌套、不碰主清单）；
         再按角色（FR-9.5）做工具限权——只读角色拿不到写/命令工具。role=None 等价 general（全工具）。
@@ -2489,7 +2596,8 @@ class Conversation:
             verifier=self._make_verifier(),
             extra_dirs=self._extra_dirs,
             skill_binding=(SkillBinding(lambda: self._skills) if self._skills else None),
-            ask_user_binding=self._ask,   # 子 Agent 也能 ask_user：遇登录墙时暂停、让用户在浏览器登录后再继续
+            ask_user_binding=self._ask,   # 子 Agent 也能 ask_user：方向性取舍让用户拍板（登录墙走下面的换手）
+            handoff_binding=self._handoff,  # 子 Agent 撞登录墙同样能换手（非破坏，归只读类）
             browser_reader=self._make_browser_reader(),
             artifacts=self.artifacts,     # 与主 Agent 共用产物集（同一工作区）
             search_reranker=self._make_search_reranker(),   # 子 Agent 搜索同样走模型重排

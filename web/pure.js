@@ -49,7 +49,9 @@
   // 输入区按钮该长啥样：运行中只留「停止」（发送隐藏，Enter 仍可走 steering）；
   // 规划模式发送键文案变「规划」。v 可能为 null（无活动会话）。
   function composerState(v) {
-    const running = !!(v && (v.streaming || v.crazyRunning));
+    // 评审跑在后台线程上、不走 streaming，但对用户来说同样是"正在跑"——不把它算进来，
+    // 停止键就不出现，评审一旦发起只能干等（真机踩到）。
+    const running = !!(v && (v.streaming || v.crazyRunning || v.reviewRunning));
     const planMode = !!(v && v.planMode);
     return {
       running,
@@ -736,7 +738,121 @@
       .filter((g) => g.items.length || g.id === "models");
   }
 
+  // ---- 换手面板文案（ADR 0023 决策 1）：请求 → 面板要显示的几段 -------------
+  // 抽成纯函数是为了让两条**安全立场**能被单测钉住，而不是靠渲染函数里随手拼：
+  // ① 必须显示**真实目标**（URL / 应用 / 路径）——换手本身是降风险动作，但同时是个天然钓鱼位
+  //    （恶意技能可以"请求换手"并引导用户去某页登录），用户得据真实来源判断该不该做；
+  // ② 必须显示凭据边界声明（延续 ADR 0014「兼容格式，不兼容其信任假设」到交互层）。
+  const HANDOFF_PRIVACY = "你在这里输入的凭据只留在浏览器 profile，hermes 不读取、不回传。";
+
+  function handoffTargetKind(target) {
+    const t = String(target || "").trim();
+    if (/^https?:\/\//i.test(t)) return "url";
+    if (/^[a-zA-Z]:[\\/]/.test(t) || /^[~/.]/.test(t) || /[\\/]/.test(t)) return "path";
+    return "app";
+  }
+
+  function handoffPanelText(req) {
+    const r = req || {};
+    const target = String(r.target || "").trim();
+    const kind = handoffTargetKind(target);
+    return {
+      reason: String(r.reason || "").trim() || "（未说明原因）",
+      target: target || "（未给出目标）",
+      targetKind: kind,
+      targetLabel: { url: "网址", path: "路径", app: "应用" }[kind],
+      verify: String(r.verify || "").trim(),
+      privacy: HANDOFF_PRIVACY,
+      // 无人值守：没人接管会超时，任务收成「阻塞」而**不是**按默认继续——面板上就把话说清楚
+      hint: r.unattended
+        ? "自主模式运行中：没人接管会超时，任务将收在「阻塞：待人工换手」，不会被记成完成。"
+        : "",
+    };
+  }
+
+  // 划选发起评审的门槛：够长才浮出「🔬 评审选中」。**必须 ≥ startReviewOn 的下限（60）**，
+  // 否则浮出来点了也被拒；但也别定得离谱地高——原来卡 200，比真下限严三倍，划一整段方案都不浮，
+  // 用户只会以为功能坏了（真机踩到）。抽到这里是为了让这个关系被单测钉住。
+  const REVIEW_MIN_CHARS = 60;        // startReviewOn 认的最短方案长度
+  const SEL_REVIEW_MIN_CHARS = 80;    // 划选浮出门槛（留一点余量，避免"浮出来却被拒"）
+
+  function canReviewSelection(text) {
+    return String(text || "").trim().length >= SEL_REVIEW_MIN_CHARS;
+  }
+
+  // 换手 + 浏览器：**人得有地方动手**。hermes 的浏览器是独立 profile 的受控实例，
+  // 无头时人在自己日常 Chrome 里登录**它一点都看不到**（真机指出的设计漏洞）。
+  // 面板据此给一句话 + 一键切换；即使已经是有头，也要点明"在弹出的那个窗口里登录"。
+  function handoffBrowserHint(targetKind, status) {
+    if (targetKind !== "url") return null;            // 非网页目标（本地路径/应用）与浏览器无关
+    const st = status || {};
+    if (!st.enabled) {
+      return { level: "warn", action: "",
+               text: "hermes 没开浏览器穿透：你在自己的浏览器里登录，它看不到。请在设置 →「🌐 浏览器穿透」里打开，或把拿到的内容直接给我。" };
+    }
+    if (!st.headed) {
+      return { level: "warn", action: "switch",
+               text: "hermes 的浏览器现在是**无头**的（没有窗口），你在自己的 Chrome 里登录不算数——点右边切到有头并打开这一页，在弹出的窗口里登录。" };
+    }
+    return { level: "info", action: "open",
+             text: "请在 hermes 弹出的那个浏览器窗口里登录（不是你平时用的 Chrome），登录态会留在它自己的 profile 里。" };
+  }
+
+  // ---- 轨迹录制（ADR 0023 决策 4/7/8）：状态条文案 + 固化草案校验 ------------
+
+  function traceBarText(st) {
+    const s = st || {};
+    const secs = Math.max(0, Math.round(s.seconds || 0));
+    const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+    const ss = String(secs % 60).padStart(2, "0");
+    const n = s.steps || 0;
+    // 状态条常驻是为了**防止忘关**（决策 4），所以要一眼看得出录了多久、录到多少
+    // 前面那个闪动的圆点由 .trace-dot 画，文案里别再来一个（截图上是两个点，丑）
+    return `正在录制轨迹 · 已录 ${n} 步 · ${mm}:${ss}` + (s.full ? " · 已录满，后续不再记" : "");
+  }
+
+  // 技能名：规范要求小写连字符（写进我们自己的技能包时是 strict 的，见 ADR 0015 §4）。
+  // 这里**只提醒不阻拦**——名字最终由 skill-creator 流水线落盘时校验。
+  function traceNameHint(name) {
+    const n = String(name || "").trim();
+    if (!n) return "";
+    return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(n) ? "" : "建议用小写字母与连字符（如 annual-report）";
+  }
+
+  function traceDraftIssues(draft) {
+    const d = draft || {};
+    const steps = (d.steps || []).filter((s) => s && s.keep !== false);
+    const out = [];
+    if (!steps.length) out.push("至少留一步：一步不留就没有可固化的东西");
+    // 决策 7：参数化是把「这次的事」变成「这类事」的关键动作。有候选却一个不用要拦一下。
+    if ((d.params || []).length && !(d.params || []).some((p) => p && p.keep !== false)) {
+      out.push("一个变量都不留？那固化出来的只是这一次的流水账");
+    }
+    const hint = traceNameHint(d.skill_name);
+    if (hint) out.push(hint);
+    return out;
+  }
+
+  // 面板 → 后端 trajectory_compose 的入参（勾掉的步骤/变量在这里被剔掉，后端只管拼提示词）
+  function traceComposePayload(draft) {
+    const d = draft || {};
+    return {
+      goal: String(d.goal || "").trim(),
+      skill_name: String(d.skill_name || "").trim(),
+      description: String(d.description || "").trim(),
+      scope: d.scope === "global" ? "global" : "project",
+      steps: (d.steps || []).filter((s) => s && s.keep !== false)
+        .map((s) => ({ kind: s.kind, label: s.label, tool: s.tool || "",
+                       detail: s.detail || "", count: s.count || 1, at: s.at || 0 })),
+      params: (d.params || []).filter((p) => p && p.keep !== false)
+        .map((p) => ({ name: String(p.name || "").trim(), value: p.value })),
+    };
+  }
+
   return {
+    HANDOFF_PRIVACY, handoffTargetKind, handoffPanelText, handoffBrowserHint,
+    traceBarText, traceNameHint, traceDraftIssues, traceComposePayload,
+    REVIEW_MIN_CHARS, SEL_REVIEW_MIN_CHARS, canReviewSelection,
     SETTINGS_PANES, SETTINGS_GROUPS, buildSettingsNav, wrapFocusIndex,
     mergeSlashCommands, findCustomCommand, skillCreatorPrompt, skillScopeAction,
     annotateDiffLines, formatLineFeedback,
