@@ -99,7 +99,7 @@ agent:
   shell: auto            # auto=按系统自动（Windows→powershell，macOS/Linux→bash）；也可显式指定 powershell/pwsh/cmd/bash/zsh
   shell_timeout: 180     # 前台命令超时（秒）：放宽容纳装依赖/编译；长服务用 background:true
   screenshot: true       # 给 Agent 截屏工具 take_screenshot（每次执行仍需用户授权）；
-                         # 需视觉模型（如 ark-kimi）才能理解截图。设 false 可彻底关闭
+                         # 需**原生带视觉**的模型档才能理解截图。设 false 可彻底关闭
   conventions_file: hermes.md  # 工作区根目录若有此文件，其内容作为「项目规范」注入 system_prompt
                                # （类似 Claude Code 的 CLAUDE.md）。设空字符串 "" 可关闭
   # 细粒度权限（FR-11.4）：按「工具+参数模式」放行/拦截危险操作，治长任务确认疲劳。
