@@ -111,6 +111,14 @@
     </div>
 
     <footer class="composer">
+      <!-- 录制中常驻状态条（ADR 0023 决策 4）：轨迹是人手动开关的，忘关的代价由这条来兜 -->
+      <div id="trace-bar" class="trace-bar" hidden>
+        <span class="trace-dot"></span>
+        <span id="trace-status" class="trace-status">正在录制轨迹</span>
+        <button id="trace-mark" class="trace-act" title="在关键处打个点，附一句说明（会同时抓一份当前页面现场）">记一步</button>
+        <button id="trace-stop" class="trace-act trace-primary" title="结束录制并固化成技能">停止并固化</button>
+        <button id="trace-drop" class="trace-act" title="丢弃这段轨迹（不留档）">丢弃</button>
+      </div>
       <div id="slash-menu" class="slash-menu" hidden></div>
       <div id="mention-menu" class="slash-menu mention-menu" hidden></div>
       <div id="attachments" class="attachments"></div>
@@ -121,8 +129,8 @@
         <button id="plan-btn" class="icon-btn plan-btn" title="规划模式：只勘察并产出计划，不改文件 / 不执行命令（FR-11.5）" aria-label="规划模式">
           <span class="ico" data-icon="clipboard-list" data-sz="15"></span>
         </button>
-        <button id="review-btn" class="icon-btn review-btn" title="评审：把规划方案拆成关键决策（技术/规划合理性/范围/待确认项），务实⟷严谨两员多维度评审收敛成四态共识，未决清零并签字后才放行编码（ADR 0019）" aria-label="评审">
-          <span class="ico" data-icon="check-square" data-sz="15"></span>
+        <button id="trace-btn" class="icon-btn trace-btn" title="轨迹：录下这段怎么干成的，结束时固化成一个可复用技能（ADR 0023）。评审入口在每条回复下方的「🔬 评审这段」" aria-label="轨迹录制">
+          <span class="ico" data-icon="circle-dot" data-sz="15"></span>
         </button>
         <input id="file-input" type="file" multiple hidden
           accept="image/*,.pdf,.txt,.md,.py,.js,.ts,.json,.yaml,.yml,.html,.css,.csv,.log" />
@@ -193,6 +201,53 @@
         </button>
       </header>
       <div class="settings-body shortcuts-body" id="shortcuts-body"></div>
+    </div>
+  </div>
+
+  <!-- 应用内询问弹窗：替掉原生 prompt/confirm——WebView2 把它们贴在窗口最上沿、样式也与应用不搭。
+       复用 .settings-overlay 的居中（flex 居中 + [hidden] 复位都在那条规则里）。 -->
+  <div id="ask-overlay" class="settings-overlay" hidden>
+    <div class="ask-modal">
+      <div class="ask-msg" id="ask-msg"></div>
+      <input id="ask-input" type="text" />
+      <div class="ask-btns">
+        <button id="ask-cancel" class="ask-btn">取消</button>
+        <button id="ask-ok" class="ask-btn primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 轨迹固化面板（ADR 0023 决策 4/7/8）：人必须过一遍才落盘——固化质量的最后一道闸 -->
+  <div id="trace-overlay" class="settings-overlay" hidden>
+    <div class="settings-modal trace-modal">
+      <header class="settings-head">
+        <span class="settings-title">把这段过程固化成技能</span>
+        <button id="trace-close" class="settings-x" title="关闭" aria-label="关闭">
+          <span class="ico" data-icon="x" data-sz="15"></span>
+        </button>
+      </header>
+      <div class="trace-body">
+        <div class="trace-meta">
+          <label><span class="tm-k">技能名</span>
+            <input id="trace-name" type="text" placeholder="如 annual-report（小写连字符）" /></label>
+          <label><span class="tm-k">这类事是什么</span>
+            <input id="trace-desc" type="text" placeholder="一句话：什么时候该用它" /></label>
+          <label><span class="tm-k">落盘到</span>
+            <select id="trace-scope">
+              <option value="project">本项目</option>
+              <option value="global">全局（所有项目）</option>
+            </select></label>
+        </div>
+        <div class="trace-sec-t">步骤（取消勾选＝不写进技能）</div>
+        <div id="trace-steps" class="trace-steps"></div>
+        <div class="trace-sec-t">参数化候选（这次的具体值 → 变量；不做参数化的固化不如不做）</div>
+        <div id="trace-params" class="trace-params"></div>
+        <div id="trace-warn" class="trace-warn"></div>
+      </div>
+      <footer class="trace-foot">
+        <button id="trace-cancel" class="trace-act">丢弃</button>
+        <button id="trace-make" class="trace-act trace-primary">生成技能</button>
+      </footer>
     </div>
   </div>
 

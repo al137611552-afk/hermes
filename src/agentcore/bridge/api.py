@@ -135,8 +135,10 @@ class Api:
         """离开某对话：按需抽取记忆；若是没内容、空闲的草稿则从注册表丢弃（防堆积）。"""
         if capture:
             old.capture_async()
+        # 正在录轨迹的对话**不能丢**：轨迹只活在内存里，连同 Conversation 一起被回收就是直接丢数据
+        # （空白草稿里点开录制、转头新建会话，就正好命中这条）。
         if (old is not self.active and old.session_id is None
-                and not old.history and not old.is_busy()):
+                and not old.history and not old.is_busy() and not old.is_recording()):
             self.conversations.pop(old.cid, None)
 
     def _emit_workspace_changed(self) -> None:
@@ -1332,6 +1334,66 @@ class Api:
         if conv is None:
             return {"ok": False, "error": "对话不存在或已结束"}
         return conv.resolve_ask_user(int(req_id), answer)
+
+    def browser_handoff_status(self) -> dict:
+        """换手面板问：浏览器现在能不能让人真的动手（ADR 0023 决策 1 的前提）。
+
+        无头模式下人**没有地方操作**——他在自己日常 Chrome 里登录，hermes 这个独立 profile
+        根本看不见（真机指出）。面板据此提示，并给一键切换。
+        """
+        from ..config import browser_mcp_enabled, browser_mcp_headed
+        return {"enabled": browser_mcp_enabled(), "headed": browser_mcp_headed()}
+
+    def handoff_open_target(self, url: str = "") -> dict:
+        """换手前的准备：把浏览器切到**有头**并打开目标页，让人在**那个窗口**里登录。
+
+        只在用户点面板上的按钮时才执行——不偷偷弹浏览器窗口。
+        """
+        from ..config import browser_mcp_enabled, browser_mcp_headed
+        if not browser_mcp_enabled():
+            return {"ok": False, "error": "未启用浏览器穿透：设置 →「🌐 浏览器穿透」先打开"}
+        switched = False
+        if not browser_mcp_headed():
+            self.set_browser_headed(True)     # 重启 MCP server（有头）+ 重建各对话工具表
+            switched = True
+        url = str(url or "").strip()
+        if url.startswith("http"):
+            tools = {t.name.split("__", 1)[-1]: t for t in (self.res.mcp_tools or [])}
+            nav = tools.get("browser_navigate")
+            if nav is None:
+                return {"ok": False, "switched": switched, "error": "浏览器工具未连上"}
+            try:
+                nav.run({"url": url})
+            except Exception as e:  # noqa: BLE001 — 打不开也别让换手卡住，人可以自己导航
+                return {"ok": False, "switched": switched, "error": f"打开失败：{e}"}
+        return {"ok": True, "switched": switched}
+
+    def resolve_handoff(self, req_id: int, outcome: str, note: str = "",
+                        cid: int | None = None) -> dict:
+        """前端回调：换手面板上用户点「我做完了」/「做不了，跳过」，按 cid 路由到对应对话。"""
+        conv = self.conversations.get(int(cid)) if cid is not None else self.active
+        if conv is None:
+            return {"ok": False, "error": "对话不存在或已结束"}
+        return conv.resolve_handoff(int(req_id), str(outcome), str(note or ""))
+
+    # ---- 轨迹录制与固化（ADR 0023 决策 4~8）：全部只作用于活动对话 ----------
+    def trajectory_start(self, goal: str = "") -> dict:
+        return self.active.trajectory_start(str(goal or ""))
+
+    def trajectory_mark(self, note: str = "") -> dict:
+        return self.active.trajectory_mark(str(note or ""))
+
+    def trajectory_state(self) -> dict:
+        return self.active.trajectory_state()
+
+    def trajectory_stop(self) -> dict:
+        return self.active.trajectory_stop()
+
+    def trajectory_discard(self) -> dict:
+        return self.active.trajectory_discard()
+
+    def trajectory_compose(self, payload: dict) -> dict:
+        return self.active.trajectory_compose(payload if isinstance(payload, dict) else {})
 
     def stop_conversation(self, cid: int) -> dict:
         """中止某对话当前运行/排队的任务（回合间生效，FR-8.3）。"""

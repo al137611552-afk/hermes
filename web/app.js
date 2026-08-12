@@ -9,6 +9,10 @@ const EV = {
   TOOL_RESULT: "tool_result",
   PERMISSION: "permission_request",
   ASK_USER: "ask_user",
+  HANDOFF: "handoff_request",
+  TRACE_STARTED: "trajectory_started",
+  TRACE_STEP: "trajectory_step",
+  TRACE_STOPPED: "trajectory_stopped",
   CRAZY_START: "crazy_start",
   CRAZY_ROUND: "crazy_round",
   CRAZY_REPLAN: "crazy_replan",
@@ -125,6 +129,9 @@ function mountView(cid) {
   updateComposerButtons();  // 同步规划模式/发送按钮到该会话状态（FR-11.5）
   updateUsageChip();        // 刷新顶部累计用量芯片到该会话（P2）
   if (typeof refreshReview === "function") refreshReview();  // 评审面板按会话独立（无则自动隐藏）
+  // 轨迹状态条按会话独立：录制活在后端那个 Conversation 上，切走只是"这个会话没在录"，
+  // 切回来必须重新问一次——否则状态条不回来、轮询也早停了，看着像"录制被结束了"（真机踩到）。
+  if (typeof refreshTraceState === "function") refreshTraceState();
 }
 
 // ---- 任务清单面板（FR-9.1，对话区顶部可折叠条）-------------------------
@@ -574,7 +581,8 @@ async function doRegenerate(msgEl) {
     showToast("⚠ 运行中，先停止再重新生成"); return;
   }
   const turn = Number(msgEl.dataset.turn);
-  if (hasLaterTurns(v, turn) && !confirm("重新生成会丢弃这条回答之后的所有对话，确定？")) return;
+  if (hasLaterTurns(v, turn)
+      && !await askConfirm("重新生成会丢弃这条回答之后的所有对话，确定？", { danger: true })) return;
   // 找到该轮次的用户气泡作锚点，保留它、删掉其后全部
   const userEl = Array.from(v.el.children).find(
     (c) => c.classList && c.classList.contains("msg") && c.classList.contains("user")
@@ -622,7 +630,8 @@ async function saveEdit(v, wrap, turn, text, exit) {
   if (isActive(v) && v.status !== "idle" && v.status !== "error") {
     showToast("⚠ 运行中，先停止再编辑"); return;
   }
-  if (hasLaterTurns(v, turn) && !confirm("编辑会丢弃这条消息之后的所有对话，确定？")) return;
+  if (hasLaterTurns(v, turn)
+      && !await askConfirm("编辑会丢弃这条消息之后的所有对话，确定？", { danger: true })) return;
   exit();
   removeAfter(wrap, true);           // 删掉旧的用户气泡及其后全部
   v.userTurns = turn;                // 让新加的用户气泡拿回同一个轮次号
@@ -1206,6 +1215,75 @@ function renderAskUser(v, req) {
   appendRow(v, bar);
 }
 
+// 换手（ADR 0023）：agent 撞上只有人能做的环节（登录/验证码/支付），把控制权交还你。
+// 与 ask_user 的区别是**让你动手**而不是让你拍板：面板必须显示真实目标 + 凭据边界声明。
+function renderHandoff(v, req) {
+  const t = handoffPanelText(req);
+  const bar = document.createElement("div");
+  bar.className = "handoff-bar bubble";
+  bar.innerHTML =
+    `<div class="handoff-q">🤝 需要你接手一步：${escapeHtml(t.reason)}</div>` +
+    `<div class="handoff-target"><span class="handoff-kind">${t.targetLabel}</span>` +
+    `<code>${escapeHtml(t.target)}</code></div>` +
+    (t.verify ? `<div class="handoff-verify">完成后我会这样确认：${escapeHtml(t.verify)}</div>` : "") +
+    `<div class="handoff-privacy">🔒 ${escapeHtml(t.privacy)}</div>` +
+    (t.hint ? `<div class="handoff-hint">${escapeHtml(t.hint)}</div>` : "");
+  const note = document.createElement("input");
+  note.type = "text";
+  note.className = "handoff-note";
+  note.placeholder = "可选：补充一句（比如「登录了但没权限」）";
+  const done = (outcome, label) => {
+    bar.querySelectorAll("button,input").forEach((x) => (x.disabled = true));
+    bar.querySelector(".handoff-q").insertAdjacentText("beforeend", `  → ${label}`);
+    window.pywebview.api.resolve_handoff(req.id, outcome, note.value.trim(), v.cid);
+  };
+  const actions = document.createElement("div");
+  actions.className = "handoff-actions";
+  const mk = (label, outcome, cls) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.className = cls;
+    b.addEventListener("click", () => done(outcome, label));
+    return b;
+  };
+  actions.appendChild(mk("我做完了", "done", "handoff-done"));
+  actions.appendChild(mk("做不了，跳过", "skipped", "handoff-skip"));
+  bar.appendChild(note);
+  bar.appendChild(actions);
+  appendRow(v, bar);
+  if (t.targetKind === "url") attachHandoffBrowserHint(bar, t.target);
+}
+
+// 网页目标的换手：先问清楚**人有没有地方动手**。hermes 的浏览器是独立 profile 的受控实例，
+// 无头时人在自己日常 Chrome 里登录它完全看不到——不说清楚，用户会以为登了却始终验不过。
+async function attachHandoffBrowserHint(bar, target) {
+  let st = {};
+  try { st = await window.pywebview.api.browser_handoff_status(); } catch (e) { return; }
+  const hint = handoffBrowserHint("url", st);
+  if (!hint) return;
+  const row = document.createElement("div");
+  row.className = "handoff-browser " + hint.level;
+  row.textContent = hint.text.replace(/\*\*/g, "");
+  if (hint.action === "switch") {
+    const b = document.createElement("button");
+    b.className = "handoff-switch";
+    b.textContent = "切到有头并打开这页";
+    b.addEventListener("click", async () => {
+      b.disabled = true; b.textContent = "正在切换…";
+      const r = await window.pywebview.api.handoff_open_target(target);
+      if (r && r.ok) {
+        row.className = "handoff-browser info";
+        row.textContent = "已切到有头并打开目标页——请在弹出的那个浏览器窗口里登录，完成后点「我做完了」。";
+      } else {
+        b.disabled = false; b.textContent = "切到有头并打开这页";
+        showToast((r && r.error) || "切换失败");
+      }
+    });
+    row.appendChild(b);
+  }
+  bar.insertBefore(row, bar.querySelector(".handoff-note"));
+}
+
 // ---- 接收来自 Python 的流式事件（按 cid 路由到对应对话视图） ------------
 window.__onAgentEvent = function (msg) {
   const { event, data, cid } = msg;
@@ -1252,6 +1330,14 @@ window.__onAgentEvent = function (msg) {
     hideWorking(v);
     renderAskUser(v, data);
     markActivity(v);
+  } else if (event === EV.HANDOFF) {
+    hideWorking(v);
+    renderHandoff(v, data);
+    markActivity(v);
+  } else if (event === EV.TRACE_STARTED || event === EV.TRACE_STEP) {
+    if (isActive(v)) paintTraceBar(data);        // 状态条只反映当前对话的录制
+  } else if (event === EV.TRACE_STOPPED) {
+    if (isActive(v)) paintTraceBar({ recording: false });
   } else if (event === EV.CRAZY_START) {
     v.crazyRunning = true;
     if (isActive(v)) updateComposerButtons();   // 自主模式运行中：显示「停止」
@@ -1269,6 +1355,9 @@ window.__onAgentEvent = function (msg) {
       goal_reached: "✅ 目标达成", stopped: "⏹ 已停止",
       stalled: "⚠ 疑似空转已中止", time_budget: "⏳ 用尽时间预算",
       token_budget: "⏳ 用尽 token 预算", budget_exhausted: "⏳ 用尽轮数预算（可再 /crazy 续）",
+      // ADR 0023 决策 2：登录/验证码这类不可代办的环节没人接管 → 阻塞收尾，**不是**完成
+      handoff_blocked: "🤝 阻塞：待人工换手（无人接管，未完成）",
+      user_stopped: "⏹ 你让它停下",
     };
     addSysLine(v, `🤖 自主模式结束（共 ${data.round} 轮）：${reasons[data.reason] || data.reason}`);
     markActivity(v);
@@ -1342,6 +1431,8 @@ window.__onAgentEvent = function (msg) {
   } else if (event === EV.COMMAND_DONE) {
     onCommandDone(v, data); markActivity(v);
   } else if (event === EV.REVIEW_STARTED) {
+    v.reviewRunning = true;
+    if (isActive(v)) updateComposerButtons();   // 评审也是"正在跑"：停止键得露出来（真机踩到：没法停）
     startDebate(v, data); markActivity(v);
   } else if (event === EV.REVIEW_SEED) {
     debateSeeded(v, data); markActivity(v);
@@ -1363,6 +1454,8 @@ window.__onAgentEvent = function (msg) {
   } else if (event === EV.REVIEW_CONVERGED) {
     debateConverged(v, data); markActivity(v);
   } else if (event === EV.REVIEW_DONE) {
+    v.reviewRunning = false;
+    if (isActive(v)) updateComposerButtons();
     debateDone(v, data); markActivity(v);
   } else if (event === EV.MEMORY_CAPTURED) {
     renderMemoryCaptured(data);
@@ -1521,9 +1614,240 @@ planBtn.addEventListener("click", async () => {
   updateComposerButtons();
 });
 
+// ---- 应用内询问弹窗（替原生 prompt / confirm）---------------------------
+// 原生弹窗在 WebView2 里贴着窗口**最上沿**弹出，位置怪、样式与应用完全不搭（真机反馈）。
+// 这里统一成一个居中的应用内弹窗：Enter=确定、Esc=取消、点遮罩=取消，焦点自动落到该落的地方。
+// 两种模式共用一套 DOM：askInput() 回字符串或 null；askConfirm() 回 true/false。
+const askOverlay = document.getElementById("ask-overlay");
+const askMsgEl = document.getElementById("ask-msg");
+const askInputEl = document.getElementById("ask-input");
+const askOkBtn = document.getElementById("ask-ok");
+const askCancelBtn = document.getElementById("ask-cancel");
+let askResolve = null;      // 当前挂起的 Promise resolve（同一时刻只允许一个）
+
+function askClose(result) {
+  if (!askResolve) return;
+  const fn = askResolve;
+  askResolve = null;
+  if (askOverlay) { askOverlay.hidden = true; popLayer(askOverlay); }
+  fn(result);
+}
+
+function askOpen({ message, value, wantInput, okText, danger }) {
+  if (!askOverlay) {   // 兜底：DOM 缺了也别让调用方卡住（回退到原生）
+    return Promise.resolve(wantInput ? window.prompt(message, value || "") : window.confirm(message));
+  }
+  askClose(wantInput ? null : false);      // 上一个还开着就当取消，避免叠弹窗
+  askMsgEl.textContent = message || "";
+  askInputEl.hidden = !wantInput;
+  askInputEl.value = wantInput ? (value || "") : "";
+  askOkBtn.textContent = okText || "确定";
+  askOkBtn.classList.toggle("danger", !!danger);
+  askOkBtn.classList.toggle("primary", !danger);
+  askOverlay.hidden = false;
+  // **必须入浮层栈**：栈在捕获阶段统一处理 Esc（只关最上层）并 stopPropagation。
+  // 不入栈就成了"下层的 Esc 把设置面板关了、这个弹窗还杵在那儿"（真机踩到）。
+  pushLayer(askOverlay, () => askClose(wantInput ? null : false));
+  const focusEl = wantInput ? askInputEl : askOkBtn;
+  setTimeout(() => { focusEl.focus(); if (wantInput) askInputEl.select(); }, 0);
+  return new Promise((resolve) => { askResolve = resolve; });
+}
+
+function askInput(message, value) {
+  return askOpen({ message, value, wantInput: true });
+}
+
+function askConfirm(message, opts) {
+  return askOpen({ message, wantInput: false,
+                   okText: (opts && opts.okText) || "确定", danger: !!(opts && opts.danger) });
+}
+
+if (askOverlay) {
+  const wantInput = () => !askInputEl.hidden;
+  askOkBtn.addEventListener("click", () => askClose(wantInput() ? askInputEl.value : true));
+  askCancelBtn.addEventListener("click", () => askClose(wantInput() ? null : false));
+  askOverlay.addEventListener("mousedown", (e) => {
+    if (e.target === askOverlay) askClose(wantInput() ? null : false);   // 点遮罩=取消
+  });
+  // 只管 Enter：Esc 与 Tab 由浮层栈的捕获处理器统一负责（别两处各写一份）
+  askOverlay.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); askClose(wantInput() ? askInputEl.value : true); }
+  });
+}
+
+// ---- 轨迹录制与固化（ADR 0023 决策 4~8）--------------------------------
+// 纯逻辑（状态条文案 / 草案校验 / 面板→后端入参）在 pure.js，这里只做 DOM 与 api 调用。
+// **只由人手动开关**：没有自动检测、没有自动固化——噪声技能会毁掉技能清单的价值密度。
+const traceBtn = document.getElementById("trace-btn");
+const traceBar = document.getElementById("trace-bar");
+const traceStatusEl = document.getElementById("trace-status");
+const traceOverlay = document.getElementById("trace-overlay");
+let traceTimer = null;     // 录制中轮询状态（步数/时长由后端给，不在前端另算一套）
+let traceDraft = null;     // 停止录制后待固化的草案（人改完才落盘）
+
+function paintTraceBar(st) {
+  const on = !!(st && st.recording);
+  if (traceBar) traceBar.hidden = !on;
+  if (traceBtn) traceBtn.classList.toggle("active", on);
+  if (on && traceStatusEl) traceStatusEl.textContent = traceBarText(st);
+  if (on && !traceTimer) traceTimer = setInterval(refreshTraceState, 1500);
+  if (!on && traceTimer) { clearInterval(traceTimer); traceTimer = null; }
+}
+
+async function refreshTraceState() {
+  if (!window.pywebview) return;
+  try { paintTraceBar(await window.pywebview.api.trajectory_state()); } catch (e) { /* 切会话中 */ }
+}
+
+async function toggleTrace() {
+  if (!window.pywebview) return;
+  const st = await window.pywebview.api.trajectory_state();
+  if (st && st.recording) { await stopTrace(); return; }
+  // 拿输入框里已敲的字当"这段要达成什么"的提示（没敲就空着，固化时人再补）
+  await window.pywebview.api.trajectory_start((input && input.value.trim()) || "");
+  await refreshTraceState();
+  showToast("开始录制轨迹：正常干活即可，关键处点「记一步」补一句意图");
+}
+
+async function markTrace() {
+  const note = await askInput("这一步是什么？（一句话，比如「这个站的年报比二手媒体准」）", "");
+  if (note === null) return;                    // 取消
+  const r = await window.pywebview.api.trajectory_mark(note || "");
+  paintTraceBar(r);
+}
+
+async function stopTrace() {
+  const r = await window.pywebview.api.trajectory_stop();
+  await refreshTraceState();
+  if (!r || !r.ok) { showToast((r && r.error) || "当前没有在录"); return; }
+  if (!(r.steps || []).length) { showToast("这段没录到任何步骤，已丢弃"); return; }
+  openTraceDraft(r);
+}
+
+async function discardTrace() {
+  await window.pywebview.api.trajectory_discard();
+  await refreshTraceState();
+  showToast("已丢弃这段轨迹（不留档）");
+}
+
+// 固化面板：人过一遍才落盘（决策 4）。步骤可勾掉、变量名可改、范围可选。
+function openTraceDraft(data) {
+  traceDraft = {
+    goal: data.goal || "",
+    skill_name: "", description: "", scope: "project",
+    steps: (data.steps || []).map((s) => ({ ...s, keep: true })),
+    params: (data.params || []).map((p) => ({ ...p, keep: true })),
+  };
+  const nameEl = document.getElementById("trace-name");
+  const descEl = document.getElementById("trace-desc");
+  const scopeEl = document.getElementById("trace-scope");
+  if (nameEl) nameEl.value = "";
+  if (descEl) descEl.value = "";
+  if (scopeEl) scopeEl.value = "project";
+  renderTraceDraft();
+  if (traceOverlay) { traceOverlay.hidden = false; pushLayer(traceOverlay, closeTraceDraft); }
+  if (data.truncated) showToast("轨迹已录满，只固化了前面的部分");
+}
+
+function renderTraceDraft() {
+  if (!traceDraft) return;
+  const stepsEl = document.getElementById("trace-steps");
+  const paramsEl = document.getElementById("trace-params");
+  if (stepsEl) {
+    stepsEl.innerHTML = traceDraft.steps.map((s, i) => {
+      const mark = s.kind === "say" ? "我说" : (s.kind === "note" ? "📌" : "·");
+      const bad = s.ok === false ? " tr-bad" : "";
+      return `<label class="tr-step${bad}"><input type="checkbox" data-tr-step="${i}"${s.keep ? " checked" : ""} />` +
+        `<span class="tr-kind">${escapeHtml(mark)}</span>` +
+        `<span class="tr-label">${escapeHtml(s.label)}</span>` +
+        (s.detail ? `<span class="tr-detail">${escapeHtml(s.detail)}</span>` : "") + `</label>`;
+    }).join("") || '<div class="tr-empty">（没有步骤）</div>';
+  }
+  if (paramsEl) {
+    paramsEl.innerHTML = traceDraft.params.map((p, i) =>
+      `<label class="tr-param"><input type="checkbox" data-tr-param="${i}"${p.keep ? " checked" : ""} />` +
+      `<input class="tr-var" type="text" data-tr-name="${i}" value="${escapeHtml(p.name)}" />` +
+      `<span class="tr-val">← ${escapeHtml(p.value)}</span></label>`).join("") ||
+      '<div class="tr-empty">（没抽到具体值；写 SKILL.md 时自己挑该参数化的东西）</div>';
+  }
+  renderTraceWarn();
+}
+
+// 只重画提示行：勾选/改名时**不重建列表**——重建会把用户正在操作的那个控件从 DOM 上换掉
+// （焦点丢失、连点失效），而提示行才是唯一会变的东西。
+function renderTraceWarn() {
+  const warnEl = document.getElementById("trace-warn");
+  if (!warnEl || !traceDraft) return;
+  const issues = traceDraftIssues(traceDraft);
+  warnEl.textContent = issues.join("；");
+  warnEl.hidden = !issues.length;
+}
+
+function bindTraceDraftEvents() {
+  const body = document.querySelector("#trace-overlay .trace-body");
+  if (!body) return;
+  body.addEventListener("change", (e) => {
+    const t = e.target;
+    if (!traceDraft || !t) return;
+    if (t.dataset.trStep !== undefined) traceDraft.steps[+t.dataset.trStep].keep = t.checked;
+    else if (t.dataset.trParam !== undefined) traceDraft.params[+t.dataset.trParam].keep = t.checked;
+    else if (t.dataset.trName !== undefined) traceDraft.params[+t.dataset.trName].name = t.value;
+    else return;
+    renderTraceWarn();
+  });
+  body.addEventListener("input", (e) => {
+    const t = e.target;
+    if (!traceDraft || !t) return;
+    if (t.id === "trace-name") traceDraft.skill_name = t.value;
+    else if (t.id === "trace-desc") traceDraft.description = t.value;
+    else if (t.dataset.trName !== undefined) { traceDraft.params[+t.dataset.trName].name = t.value; return; }
+    else if (t.id === "trace-scope") traceDraft.scope = t.value;
+    else return;
+    renderTraceWarn();                               // 名字不合规范的提醒随打字更新
+  });
+}
+
+function closeTraceDraft() {
+  if (traceOverlay) { traceOverlay.hidden = true; popLayer(traceOverlay); }
+  traceDraft = null;
+}
+
+// 「生成技能」：把（人改过的）轨迹交给后端拼成提示词，再走**正常发消息**路径——
+// 用户看得见这条指令、能改能撤，不搞看不见的暗箱调用。
+async function makeSkillFromTrace() {
+  if (!traceDraft) return;
+  const scopeEl = document.getElementById("trace-scope");
+  if (scopeEl) traceDraft.scope = scopeEl.value;
+  const issues = traceDraftIssues(traceDraft);
+  if (issues.some((x) => x.startsWith("至少留一步"))) { renderTraceDraft(); return; }
+  const r = await window.pywebview.api.trajectory_compose(traceComposePayload(traceDraft));
+  if (!r || !r.ok) { showToast("拼装失败"); return; }
+  closeTraceDraft();
+  const v = activeView();
+  if (v) submitMessage(v, r.prompt, []);
+}
+
+if (traceBtn) traceBtn.addEventListener("click", toggleTrace);
+["trace-mark", "trace-stop", "trace-drop", "trace-close", "trace-cancel", "trace-make"]
+  .forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("click", () => {
+      if (id === "trace-mark") markTrace();
+      else if (id === "trace-stop") stopTrace();
+      else if (id === "trace-drop") discardTrace();
+      else if (id === "trace-make") makeSkillFromTrace();
+      else closeTraceDraft();
+    });
+  });
+bindTraceDraftEvents();
+
 // ---- 评审面板（ADR 0019 方案评审）-------------------
 // 纯逻辑（reviewGateLabel / decisionsByStatus / decisionNeedsUser / REVIEW_*）在 pure.js，
 // 这里只做 DOM 渲染与 api 调用。gate 永不显示百分比（守 ADR 0014/0019）。
+// composer 上的「🔬 评审」按钮已撤（ADR 0023 决策 4：原位让给轨迹按钮）——评审的入口
+// 收敛到每条回复下的「🔬 评审这段」与划选「🔬 评审选中」：方案在哪一轮就点哪一轮，本就比猜准。
+// 这里保留查询是为了让 busy 态代码保持单一形态（元素不存在＝全部退化成 no-op）。
 const reviewBtn = document.getElementById("review-btn");
 function reviewPanelEl() { return document.getElementById("ws-review"); }
 
@@ -1550,7 +1874,9 @@ function showReviewSkeleton(msg) {
   const el = reviewPanelEl();
   if (!el) return;
   el.hidden = false;
-  el.innerHTML = `<div class="rv-head"><span class="rv-title">评审</span></div>` +
+  el.innerHTML = `<div class="rv-head"><span class="rv-title">评审</span>` +
+    `<span class="rv-actions"><button class="rv-btn" data-rv="close" title="停止本轮评审">⏹ 停止</button>` +
+    `</span></div>` +
     `<div class="rv-running">⏳ ${escapeHtml(msg || "正在拆解方案…")}</div>`;
 }
 
@@ -1570,7 +1896,8 @@ function renderReviewPanel(state, opts) {
     `<span class="rv-actions">` +
     `<button class="rv-btn" data-rv="rerun" title="对已拆解的决策重新跑一轮评审">↻</button>` +
     `<button class="rv-btn" data-rv="close" title="收起面板">✕</button></span></div>`);
-  if (running) parts.push(`<div class="rv-running">⏳ 多角色评审进行中…（拆出 ${(state.decisions || []).length} 项决策，正在收敛）</div>`);
+  if (running) parts.push(`<div class="rv-running">⏳ 多角色评审进行中…（拆出 ${(state.decisions || []).length} 项决策，正在收敛）` +
+    `<button class="rv-btn" data-rv="close" title="停止本轮评审">⏹ 停止</button></div>`);
   parts.push(`<div class="rv-gate ${lbl.enabled ? "ok" : "blocked"}">` +
     `<button class="rv-start" data-rv="start-coding"${lbl.enabled ? "" : " disabled"}>${escapeHtml(lbl.text)}</button>` +
     (gate.reason ? `<span class="rv-reason">${escapeHtml(gate.reason)}</span>` : "") + `</div>`);
@@ -1655,7 +1982,7 @@ async function startReviewOn(text, whatLabel) {
     // 第一阶段：瞬时校验（零模型调用），面板已亮
     const st = await window.pywebview.api.start_design_review(body || null);
     if (!st || !st.ok) {
-      renderReviewPanel(null); reviewBtn.classList.remove("busy");
+      renderReviewPanel(null); if (reviewBtn) reviewBtn.classList.remove("busy");
       showToast(st && st.error ? st.error : "评审未能开始");
       return;
     }
@@ -1663,14 +1990,14 @@ async function startReviewOn(text, whatLabel) {
     // 与结果（review_done）全走事件推前端（见 startDebate/debate*）。busy 与最终面板由 review_done 收尾，这里不 await 结果。
     const kick = await window.pywebview.api.run_design_review();
     if (!kick || !kick.ok) {            // 启动即失败（如已有评审在跑）→ 立即复位
-      reviewBtn.classList.remove("busy");
+      if (reviewBtn) reviewBtn.classList.remove("busy");
       showToast(kick && kick.error ? kick.error : "评审未能开始");
     }
-  } catch (e) { renderReviewPanel(null); reviewBtn.classList.remove("busy"); showToast("评审失败：" + (e && e.message ? e.message : e)); }
+  } catch (e) { renderReviewPanel(null); if (reviewBtn) reviewBtn.classList.remove("busy"); showToast("评审失败：" + (e && e.message ? e.message : e)); }
 }
 
-// 顶部「🔬 评审」按钮：不指定内容，走后端兜底（notes → 最后一条回复）
-if (reviewBtn) reviewBtn.addEventListener("click", () => startReviewOn("", ""));
+// 快捷键入口（Ctrl/⌘+Shift+R）：不指定内容，走后端兜底（notes → 最后一条回复）
+function startReviewFallback() { startReviewOn("", ""); }
 
 // 划选一段文字 → 浮出「🔬 评审选中」。方案常只占回复的一部分（前面是寒暄、后面是确认），
 // 划选让用户把评审对准真正的方案正文。
@@ -1680,8 +2007,9 @@ if (reviewBtn) reviewBtn.addEventListener("click", () => startReviewOn("", ""));
   document.addEventListener("selectionchange", () => {
     const sel = window.getSelection();
     const text = sel && !sel.isCollapsed ? String(sel).trim() : "";
-    // 只对对话区里的选区生效，且要够长（一两句话不值得开一场评审）
-    if (!text || text.length < 200 || !sel.anchorNode || !chat.contains(sel.anchorNode)) { hide(); return; }
+    // 只对对话区里的选区生效，且要够长（一两句话不值得开一场评审）。门槛见 pure.js 的
+    // canReviewSelection——它与 startReviewOn 的下限绑在一起，有单测钉住两者的关系。
+    if (!canReviewSelection(text) || !sel.anchorNode || !chat.contains(sel.anchorNode)) { hide(); return; }
     const rect = sel.getRangeAt(0).getBoundingClientRect();
     if (!rect || (!rect.width && !rect.height)) { hide(); return; }
     if (!chip) {
@@ -2274,7 +2602,7 @@ document.addEventListener("keydown", (e) => {
   const k = (e.key || "").toLowerCase();
   if (k === "n") { e.preventDefault(); newSessionBtn.click(); }
   else if (k === "p" && e.shiftKey) { e.preventDefault(); planBtn.click(); }
-  else if (k === "r" && e.shiftKey) { e.preventDefault(); if (reviewBtn) reviewBtn.click(); }
+  else if (k === "r" && e.shiftKey) { e.preventDefault(); startReviewFallback(); }
   else if (k === "k") { e.preventDefault(); sessionSearch.focus(); }
 });
 
@@ -2843,12 +3171,14 @@ document.getElementById("task-toggle").addEventListener("click", () => {
 sendBtn.addEventListener("click", send);
 stopBtn.addEventListener("click", async () => {
   const v = activeView();
-  if (!v || (!v.streaming && !v.crazyRunning)) return;
+  if (!v || (!v.streaming && !v.crazyRunning && !v.reviewRunning)) return;
   stopBtn.disabled = true;
   try {
-    await window.pywebview.api.stop_conversation(v.cid);
+    // 评审跑在自己的后台线程上，stop_conversation 停不了它——「停止」就该把这个会话正在跑的都停掉
+    if (v.reviewRunning) await window.pywebview.api.cancel_design_review();
+    if (v.streaming || v.crazyRunning) await window.pywebview.api.stop_conversation(v.cid);
   } finally {
-    stopBtn.disabled = false; // 实际收尾由 stopped/done 事件驱动
+    stopBtn.disabled = false; // 实际收尾由 stopped/done/review_done 事件驱动
   }
 });
 
@@ -3435,7 +3765,7 @@ async function renderPermissionsPane() {
   provDetailEl.querySelectorAll(".perm-del").forEach((b) =>
     b.addEventListener("click", async () => {
       const rule = b.closest(".mcp-row").dataset.rule;
-      if (!window.confirm(`撤销免确认规则 ${rule}？之后这类操作会重新逐次确认。`)) return;
+      if (!await askConfirm(`撤销免确认规则 ${rule}？之后这类操作会重新逐次确认。`)) return;
       const res = await window.pywebview.api.remove_permission(rule);
       showToast(res && res.ok ? "已撤销" : "⚠ " + ((res && res.error) || "撤销失败"));
       renderPermissionsPane();
@@ -3546,14 +3876,14 @@ async function renderCommandsPane() {
       // 规则由后端按"命令首词通配"推导（同确认条的「总是允许这类」），不放行整个 shell
       const sg = await window.pywebview.api.suggest_permission_for_command(name);
       if (!sg || !sg.ok) { showToast("⚠ " + ((sg && sg.error) || "推导规则失败")); return; }
-      if (!window.confirm(`把 ${sg.rule} 加进免确认？\n\n之后 ${c.slash} 及同前缀的命令不再逐次确认。` +
-                          `\n可随时在「🔐 权限」里撤销。`)) return;
+      if (!await askConfirm(`把 ${sg.rule} 加进免确认？\n\n之后 ${c.slash} 及同前缀的命令不再逐次确认。` +
+                            `\n可随时在「🔐 权限」里撤销。`)) return;
       const res = await window.pywebview.api.add_permission(sg.rule);
       showToast(res && res.ok ? `✅ 已放行 ${sg.rule}` : "⚠ " + ((res && res.error) || "添加失败"));
       refreshNavBadges();
     });
     row.querySelector(".cmd-del").addEventListener("click", async () => {
-      if (!window.confirm(`删除命令 ${c.slash}？（删的是磁盘上的命令文件）`)) return;
+      if (!await askConfirm(`删除命令 ${c.slash}？（删的是磁盘上的命令文件）`, { danger: true })) return;
       const res = await window.pywebview.api.delete_command(name);
       showToast(res && res.ok ? "🗑 已删除 " + c.slash : "⚠ " + ((res && res.error) || "删除失败"));
       renderCommandsPane();
@@ -3671,10 +4001,10 @@ async function renderSkillsPane() {
     b.addEventListener("click", () => confirmUpdate(skillUpdates[b.dataset.name])));
   // 「+ 从程序生成技能」：填个入口 → 关设置面板 → 在对话里发起（与 /技能化 同一段提示词）
   const fromProg = provDetailEl.querySelector(".skill-fromprog");
-  if (fromProg) fromProg.addEventListener("click", () => {
+  if (fromProg) fromProg.addEventListener("click", async () => {
     const v = activeView();
     if (!v) { showToast("先开一个会话再来"); return; }
-    const target = window.prompt(
+    const target = await askInput(
       "要把哪个程序做成技能？填它的调用入口或路径，例如：\n" +
       "  futures\n  python -m mytool\n  D:\\work\\scripts\\report.py\n\n" +
       "留空也行——留空我会先问你几个问题。", "");
@@ -3690,7 +4020,7 @@ async function renderSkillsPane() {
       const where = scope === "global" ? "全局技能目录" : "本项目（.hermes/skills）";
       let r = await window.pywebview.api.promote_skill(name, scope, false);
       if (r && !r.ok && r.exists) {
-        if (!window.confirm(`${where}里已经有「${name}」了，覆盖它？`)) return;
+        if (!await askConfirm(`${where}里已经有「${name}」了，覆盖它？`)) return;
         r = await window.pywebview.api.promote_skill(name, scope, true);
       }
       showToast(r && r.ok ? `✅ 已复制到${where}` : "⚠ " + ((r && r.error) || "复制失败"));
@@ -3701,7 +4031,8 @@ async function renderSkillsPane() {
     b.addEventListener("click", () => showSkillDetail(b.dataset.name)));
   provDetailEl.querySelectorAll(".skill-del").forEach((b) =>
     b.addEventListener("click", async () => {
-      if (!window.confirm(`删除技能「${b.dataset.name}」？（删的是磁盘上的技能目录）`)) return;
+      if (!await askConfirm(`删除技能「${b.dataset.name}」？（删的是磁盘上的技能目录）`,
+                            { danger: true })) return;
       const r = await window.pywebview.api.uninstall_skill(b.dataset.name);
       showToast(r && r.ok ? "🗑 已删除" : (r && r.error) || "删除失败");
       renderSkillsPane();
@@ -3825,7 +4156,7 @@ async function previewEntry(repo, entryName, btn) {
                 "扫描发现了通常没有正当理由出现在技能包里的模式（详见上面的清单）。\n" +
                 "确定仍要安装吗？"
               : `技能「${b.dataset.name}」有几处值得过目的信号（详见上面的清单）。\n确认安装吗？`;
-            if (!window.confirm(msg)) return;
+            if (!await askConfirm(msg, { danger: grade === "warn" })) return;
           }
           b.disabled = true; b.textContent = "安装中…";
           // 带上 repo/entry 记进安装台账——不记就永远查不了更新
@@ -3861,7 +4192,7 @@ function confirmUpdate(u) {
               "这个技能你之前装过，但新版本引入了通常没有正当理由出现的模式（详见上面的清单）。\n" +
               "确定仍要更新吗？"
             : `「${u.name}」的新版本有几处值得过目的信号（详见上面的清单）。\n确认更新吗？`;
-          if (!window.confirm(msg)) return;
+          if (!await askConfirm(msg, { danger: u.grade === "warn" })) return;
         }
         const btn = modal.querySelector("#do-update");
         btn.disabled = true; btn.textContent = "更新中…";
@@ -3894,7 +4225,7 @@ async function showSkillDetail(name) {
       : ""));
 }
 
-// 通用轻量模态（技能预览/详情用；已有的确认走 window.confirm）
+// 通用轻量模态（技能预览/详情用；确认类走 askConfirm 那个居中弹窗）
 function showModal(title, html, onMount) {
   const old = document.getElementById("skill-modal");
   if (old) { popLayer(old); old.remove(); }   // 顶掉旧模态时也要出栈，别留悬空层
@@ -4156,8 +4487,8 @@ function bindProviderDetail(p) {
       });
     });
   });
-  q(".prov-add-model").addEventListener("click", () => {
-    const mid = (prompt("输入模型 ID（如 gpt-4o-mini）：") || "").trim();
+  q(".prov-add-model").addEventListener("click", async () => {
+    const mid = ((await askInput("输入模型 ID（如 gpt-4o-mini）：")) || "").trim();
     if (!mid) return;
     saveProvider(p.key, {
       custom_models: Array.from(new Set([...(p.custom_models || []), mid])),
@@ -4183,7 +4514,7 @@ function bindProviderDetail(p) {
   });
   const delSvc = q(".prov-del-svc");
   if (delSvc) delSvc.addEventListener("click", async () => {
-    if (!confirm(`删除自定义服务「${p.label}」？`)) return;
+    if (!await askConfirm(`删除自定义服务「${p.label}」？`, { danger: true })) return;
     const res = await window.pywebview.api.delete_provider(p.key);
     if (res && res.ok) { provSelected = null; showToast("🗑 已删除服务"); await loadProviders(); await refreshModelDropdowns(); }
     else showToast("⚠ " + ((res && res.error) || "删除失败"));
@@ -4197,7 +4528,7 @@ async function saveProvider(key, patch) {
 }
 
 async function addCustomProvider() {
-  const key = (prompt("添加自定义模型服务，输入标识（英文，如 my-llm）：") || "").trim();
+  const key = ((await askInput("添加自定义模型服务，输入标识（英文，如 my-llm）：")) || "").trim();
   if (!key) return;
   provSelected = key;
   await saveProvider(key, {
@@ -4461,8 +4792,8 @@ async function refreshCheckpoints() {
     back.title = "回到此处：把文件、任务清单、工作笔记一并恢复到这个检查点";
     back.setAttribute("aria-label", "回到此处");
     back.addEventListener("click", async () => {
-      if (!confirm(`回到检查点「${c.label}」？\n会把改动文件、任务清单、工作笔记恢复到当时状态` +
-                   `（此后的相应改动将丢失）。`)) return;
+      if (!await askConfirm(`回到检查点「${c.label}」？\n会把改动文件、任务清单、工作笔记恢复到当时状态` +
+                            `（此后的相应改动将丢失）。`, { danger: true })) return;
       const r = await window.pywebview.api.restore_checkpoint(c.id);
       if (r && r.ok) {
         wsCurrentPath = null;
@@ -4515,7 +4846,7 @@ async function refreshChanges() {
     const msg = gitMode
       ? `丢弃全部 ${changes.length} 处未提交改动？文件将恢复到最近一次提交（含非本对话的改动，新增/未跟踪文件会被删除）。`
       : `回退全部 ${changes.length} 处改动？文件将恢复到本对话修改前的状态。`;
-    if (!confirm(msg)) return;
+    if (!await askConfirm(msg, { danger: true })) return;
     await window.pywebview.api.revert_all_changes();
     wsCurrentPath = null;
     wsPreview.innerHTML = '<div class="ws-empty">点击文件预览</div>';
@@ -4553,7 +4884,7 @@ async function refreshChanges() {
       const msg = gitMode
         ? `丢弃 ${c.path} 的未提交改动？将恢复到最近一次提交（新增文件则删除）。`
         : `回退 ${c.path} 的改动？`;
-      if (!confirm(msg)) return;
+      if (!await askConfirm(msg, { danger: true })) return;
       await window.pywebview.api.revert_file(c.path);
       if (wsCurrentPath === c.path) {
         wsCurrentPath = null;

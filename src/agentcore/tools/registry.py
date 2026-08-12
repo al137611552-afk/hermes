@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..store.memory import MemoryStore
 from .ask import AskUserBinding, AskUserTool
+from .handoff import HandoffBinding, RequestHandoffTool
 from .recall import RecallHistoryTool
 from .base import Tool, ToolError
 from .codesearch import CodeOutlineTool, FindSymbolTool
@@ -67,6 +68,7 @@ def build_registry(
     verifier=None,
     extra_dirs=None,
     ask_user_binding=None,
+    handoff_binding=None,
     history_search=None,
     skill_binding: SkillBinding | None = None,
     browser_reader=None,
@@ -153,6 +155,8 @@ def build_registry(
         tools.append(DelegateTool(delegate_binding))
     if ask_user_binding is not None:
         tools.append(AskUserTool(ask_user_binding))
+    if handoff_binding is not None:
+        tools.append(RequestHandoffTool(handoff_binding))
     if history_search is not None:
         tools.append(RecallHistoryTool(history_search))
     if skill_binding is not None:
