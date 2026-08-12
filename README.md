@@ -50,7 +50,7 @@ pip install -e .
 
 # 3. 配置密钥
 cp .env.example .env
-open -e .env        # 或 nano .env，填入你的 key（如 ARK_API_KEY）
+open -e .env        # 或 nano .env；填哪个 key 取决于你在「设置 → Provider」选的那家
 
 # 4. 启动
 python -m agentcore.app

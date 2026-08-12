@@ -30,9 +30,15 @@ SKIP_DIRS = {
 SKIP_SUFFIX = {".pyc", ".pyo", ".db", ".zip", ".log"}
 SKIP_NAMES = {".DS_Store", "providers.yaml", "user_models.yaml"}   # 后两个是运行时配置，各机器自己的
 
+# 模板刻意**不预设任何 provider**（与 `DEFAULT_PROVIDERS={}`、`active_model:""` 一致）：
+# 预设一个自己没订阅的 provider，只会制造"这模型我没配过怎么会在这"的误会（2026-08-12 踩过）。
 ENV_TEMPLATE = """# 填入你的 API key 后保存（此文件不要外发）。
-# 火山方舟（ark-* 档案共用）
-ARK_API_KEY=
+# 模型在「设置面板 → Provider」里选，这里写它对应的环境变量名。常见几个：
+#   DEEPSEEK_API_KEY=
+#   ANTHROPIC_API_KEY=
+#   OPENAI_API_KEY=
+#   MOONSHOT_API_KEY=
+#   ARK_API_KEY=          # 火山方舟
 """
 
 
