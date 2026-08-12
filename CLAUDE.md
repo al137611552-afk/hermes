@@ -60,7 +60,9 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 
 ## 配置与密钥
 - 模型档案在 `config.yaml`；密钥只在 `.env`，**绝不写进代码或文档**。
-- 默认模型 `ark-kimi`（kimi-k2.6，原生视觉，`ARK_API_KEY`）。
+- **开箱不预设 provider / 模型**（`DEFAULT_PROVIDERS={}`、`active_model:""`，v3.56.0 起）：
+  在「设置面板 → Provider」选一家填 key 即用。**别在 config/`.env`/打包模板里预填某一家**——
+  预设一个用户没订阅的 provider 只会制造"这模型我没配过怎么会在这"的误会（2026-08-12 清掉过一次）。
 - `max_tokens` 按各模型实际上限设，别设超（会 API 报错）：方舟系/minimax/gpt-4o≈16384、
   Claude 4 可 32000、**deepseek 标准接口上限 8192**。
 

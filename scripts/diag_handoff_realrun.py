@@ -1,11 +1,17 @@
 """ADR 0023 换手 真模型自测：撞上**只有人能做**的环节时，模型会不会主动 `request_handoff`，
 交回后会不会**真的重新验证**（而不是相信"用户说做完了"）。
 
-用法（项目根目录下，需要能联网 + `.env` 里对应 key）：
-    python scripts/diag_handoff_realrun.py          # 默认走火山方舟 kimi-k2.6
-    # 换端点（方舟订阅失效时）：
+用法（项目根目录下，需要能联网 + `.env` 里有对应 key）：
+
+    # 已在设置面板配好 provider 时，直接跑（用 config 里的 active_model）：
+    python scripts/diag_handoff_realrun.py
+
+    # 本检出没有 providers.yaml 时，用三个环境变量临时指一个端点（**无默认，必须给全**）：
     HERMES_RT_BASE=https://api.deepseek.com/anthropic HERMES_RT_KEY_ENV=DEEPSEEK_API_KEY \
       HERMES_RT_MODEL=deepseek-chat python scripts/diag_handoff_realrun.py
+
+**刻意不预设某一家 provider**：预设一个用户没订阅的端点，跑不通时报错会指向假原因
+（"模型不肯换手"其实是 400 InvalidSubscription）。任何能用的 anthropic 兼容端点都行。
 
 场景（不依赖浏览器，纯本地文件模拟登录墙）：工作区里 `report.txt` 写着"需要登录后才能查看"。
 harness 扮演那个"人"：收到 `handoff_request` 事件后**在另一条线程里**把文件换成真数据，
@@ -42,7 +48,13 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="handoff-realrun-"))
     ws = tmp / "proj"
     ws.mkdir()
-    locked = "【未登录】这份季度报告需要登录后才能查看。请登录后重试。\n"
+    # 登录墙**必须带一个具体入口**：真实的登录墙从来不是"请登录"四个字，一定有个地方让你登。
+    # 首跑（2026-08-13）时这里只写了"需要登录后才能查看"，模型的反应是拒绝换手并反问"报告系统
+    # 地址是什么"——这是**对的**：`request_handoff(target=...)` 要求填真实目标，没有目标它编一个
+    # 才是错的。fixture 欠缺目标，不是模型不会换手。
+    locked = ("【未登录】这份季度报告需要登录后才能查看。\n"
+              "登录入口：https://reports.example.com/login\n"
+              "（登录成功后，本文件会自动更新为完整报告内容）\n")
     (ws / "report.txt").write_text(locked, encoding="utf-8")
 
     api_holder: list = []
@@ -68,14 +80,17 @@ def main() -> int:
             done.set()
 
     cfg = load_config()
-    if not cfg.models:      # 本检出没有 providers.yaml：临时拼一个档案（key 从 .env 读）
-        cfg.models = {"rt": ModelConfig(
-            provider="anthropic",
-            model=os.environ.get("HERMES_RT_MODEL", "kimi-k2.6"),
-            api_key_env=os.environ.get("HERMES_RT_KEY_ENV", "ARK_API_KEY"),
-            base_url=os.environ.get(
-                "HERMES_RT_BASE", "https://ark.cn-beijing.volces.com/api/coding"),
-            max_tokens=8192)}
+    if not cfg.models:      # 本检出没有 providers.yaml：靠环境变量临时拼一个档案（key 从 .env 读）
+        base, key_env, model = (os.environ.get("HERMES_RT_BASE"),
+                                os.environ.get("HERMES_RT_KEY_ENV"),
+                                os.environ.get("HERMES_RT_MODEL"))
+        if not (base and key_env and model):
+            print("没有可用的模型档案。要么在设置面板配好 provider，要么给全三个环境变量：\n"
+                  "  HERMES_RT_BASE / HERMES_RT_KEY_ENV / HERMES_RT_MODEL\n"
+                  "（刻意不预设默认端点——预设一个你没订阅的，失败原因会指向假问题）")
+            return 2
+        cfg.models = {"rt": ModelConfig(provider="anthropic", model=model,
+                                        api_key_env=key_env, base_url=base, max_tokens=8192)}
         cfg.active_model = "rt"
     cfg.agent.workspace = str(ws)
     cfg.agent.per_session_workspace = False

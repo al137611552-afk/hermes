@@ -313,5 +313,7 @@ artifacts:
 
 # 模型档案改由「设置面板 → Provider」管理（内置预设：火山方舟 / Anthropic / OpenAI / DeepSeek /
 # Kimi-Moonshot，只填 key 即用）；用户加的 provider / 模型存 providers.yaml + user_models.yaml、不写这里。
-# 默认启用火山方舟（填 ARK_API_KEY 即可用其下 kimi-k2.6 等模型）。
+# **开箱不预设任何 provider**（`DEFAULT_PROVIDERS={}`、`active_model:""`）：首次启动会提示
+# 「未配置模型 · 去设置 → Provider」，选一个填 key 即用。刻意不预填某一家——预设一个用户
+# 没订阅的 provider 只会制造"这模型我没配过怎么会在这"的误会。
 models: {}

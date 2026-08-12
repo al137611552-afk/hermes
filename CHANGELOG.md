@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### Changed
+- **不再预设火山方舟**（用户不再续用该订阅）：`.env`、`pack.py` 的 `ENV_TEMPLATE`、`config.yaml`
+  注释、`CLAUDE.md`、`README.md`、`scripts/diag_handoff_realrun.py` 里的方舟残留全部清掉。
+  开箱行为不变（`DEFAULT_PROVIDERS={}` / `active_model:""` 自 v3.56.0 起就是"不预设"），
+  方舟仍留作可选 provider 预设之一。**纪律**：别在 config / `.env` / 打包模板里预填任何一家——
+  预设用户没订阅的 provider 只会制造"这模型我没配过怎么会在这"的误会，失败时报错还指向假原因。
+- `scripts/diag_handoff_realrun.py` 改为**无默认端点**：`HERMES_RT_BASE` / `HERMES_RT_KEY_ENV` /
+  `HERMES_RT_MODEL` 三个给全才跑，缺则明确报错并说明为何不给默认。任何 anthropic 兼容端点均可。
+
+### Fixed
+- **换手真跑脚本的 fixture 欠缺登录目标**：登录墙原文只有"需要登录后才能查看"，没有任何入口，
+  而 `request_handoff(target=...)` 要求填真实目标——首跑时模型因此拒绝换手并反问地址，
+  **这是正确行为，错的是测试设定**。补上真实入口后首次跑通 4/4（详见 DEVLOG 2026-08-13）。
+
 ## [3.64.0] - 2026-08-12
 
 **FR-17 并发可观测性 · T1+T2+T3**（**Windows 真机验证通过，2026-08-12**）：多会话并行时把
