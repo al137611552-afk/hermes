@@ -231,8 +231,8 @@ ADR 0022：**不做全局 auto-yes**（确认框是防误删的最后一道闸�
 ## [3.60.0] - 2026-08-11
 
 **技能可跨项目/全局搬家 + diff 行内定向反馈 + Learning 接线（通路先接好、行为零变化）**。
-⚠ **本版未经 Windows 真机验证**（用户要求先定版推送）：GUI 部分只有 Playwright 打桩自检，
-后端与纯逻辑有单测覆盖（Python 67 文件 + 前端 94 项全绿）。真机验证清单见 DEVLOG。
+**Windows 真机验证通过**（定版时先推送、验证后补记于 2026-08-12）。
+开发机侧：Python 67 文件 + 前端 94 项全绿，GUI 部分另有 Playwright 打桩自检。
 
 ### Fixed
 - **失败记忆从来没记「做法」标签**（块 G Learning 的地基漏了一块）：`FailureMemory.record()` 的 `decision`

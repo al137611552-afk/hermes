@@ -239,7 +239,6 @@ A 是地基，必须先过。B/C 可并行起步但 C 依赖 B 的 signals。D �
 | 项 | 状态 |
 |---|---|
 | v3.62.1 diff 渲染修复 | ⚠ 未验：每行各占一行 / `+-` 行整行底色 / 反馈框下方无空行 |
-| v3.60.0 / 3.60.1 | ⚠ 整版未验（技能搬家 + diff 行内反馈 + Learning 接线），清单在 DEVLOG |
 | `scripts/diag_handoff_realrun.py` | 未跑——方舟 CodingPlan 订阅失效，等可用 key |
 | v3.15.2 ~ v3.26.x | 老积压，一直未验 |
 | macOS GUI | 代码就绪（v3.42.0 跨平台），缺真机 |
