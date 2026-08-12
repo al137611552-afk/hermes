@@ -33,6 +33,30 @@ from ..store import MemoryStore, Store
 from .conversation import Conversation, Resources
 
 
+def _own_top_window(user32):
+    """本进程的第一个可见顶层窗口句柄（Windows）。找不到返回 None。
+
+    按 **进程 id** 找而不是按标题：标题带「(N 等你)」角标会变（FR-17 T3），按名字找必然漏。
+    纯函数式的小工具，放模块级便于单测（非 Windows 上根本不会被调到）。
+    """
+    import ctypes
+
+    pid = os.getpid()
+    found = []
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+    def _cb(hwnd, _lparam):
+        out = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(out))
+        if out.value == pid and user32.IsWindowVisible(hwnd):
+            found.append(hwnd)
+            return False        # 拿到就停
+        return True
+
+    user32.EnumWindows(WNDENUMPROC(_cb), None)
+    return found[0] if found else None
+
+
 class Api:
     def __init__(self, config: AppConfig, emit=None) -> None:
         self.config = config
@@ -1072,6 +1096,69 @@ class Api:
         except OSError as e:
             return {"ok": False, "error": f"写入失败：{e}"}
         return {"ok": True, "path": str(p)}
+
+    def set_window_title(self, title: str) -> dict:
+        """把系统标题栏改成带角标的标题（FR-17 T3），如「(2 等你) Hermes」。
+
+        为什么走系统标题而不是应用内提示：并发的价值只有在**你没盯着这个窗口**时才兑现，
+        而应用内的任何东西那时候都看不见。标题会显示在任务栏按钮上，最小化了也在。
+
+        角标文案由前端 `windowBadgeTitle` 算好（纯逻辑、可单测），这里只负责落到窗口上。
+        **刻意不碰 `window.native`**：app.py 里记着扎进 pywebview 的原生对象图曾引发
+        RecursionError + WebView2 COM 跨线程错误。从 js_api 调 `Window` 的公开方法是本项目
+        已验证过的路子（`create_file_dialog` 一直这么用）。失败一律静默——提醒不该搞崩主流程。
+        """
+        t = (title or "Hermes").strip() or "Hermes"
+        if not self._window:
+            return {"ok": False, "error": "无窗口"}
+        try:
+            setter = getattr(self._window, "set_title", None)
+            if callable(setter):
+                setter(t)
+            else:                       # 老版本 pywebview：退回属性赋值
+                self._window.title = t
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        return {"ok": True, "title": t}
+
+    def flash_window(self) -> dict:
+        """任务栏闪烁：后台会话跑完/出错时提醒（FR-17 T3）。Windows 专属，其它平台静默跳过。
+
+        **为什么不用应用内 toast**：T3 的立意就是"你没盯着 Hermes 窗口的时候"，
+        而窗口内的浮层那时候等于不存在——真机反馈是"根本没注意到"。任务栏闪烁是 Windows 上
+        "有事找你"的标准信号，且**用户一看窗口就自动停**（`FLASHW_TIMERNOFG`），
+        不需要我们再写一套"已读"逻辑。
+
+        **不碰 pywebview 的 `window.native`**：app.py 里记着扎进它的原生对象图曾引发
+        RecursionError + WebView2 COM 跨线程错误。这里按**本进程 id** 枚举顶层窗口拿 HWND，
+        与 pywebview 无关。**也不按标题找**——标题带角标会变（`set_window_title`），按名字找必然漏。
+
+        失败一律静默（返回 ok=False，不抛）：提醒不该搞崩主流程。
+        """
+        if not sys.platform.startswith("win"):
+            return {"ok": False, "skipped": "非 Windows"}
+        try:
+            import ctypes
+
+            user32 = ctypes.windll.user32
+            hwnd = _own_top_window(user32)
+            if not hwnd:
+                return {"ok": False, "error": "没找到本进程的窗口"}
+            if user32.GetForegroundWindow() == hwnd:
+                return {"ok": True, "skipped": "窗口已在前台"}  # 你正看着，不用闪
+
+            class FLASHWINFO(ctypes.Structure):
+                _fields_ = [("cbSize", ctypes.c_uint), ("hwnd", ctypes.c_void_p),
+                            ("dwFlags", ctypes.c_uint), ("uCount", ctypes.c_uint),
+                            ("dwTimeout", ctypes.c_uint)]
+
+            FLASHW_ALL, FLASHW_TIMERNOFG = 0x3, 0xC   # 标题栏+任务栏；一直闪到窗口被切到前台
+            info = FLASHWINFO(ctypes.sizeof(FLASHWINFO), ctypes.c_void_p(hwnd),
+                              FLASHW_ALL | FLASHW_TIMERNOFG, 0, 0)
+            user32.FlashWindowEx(ctypes.byref(info))
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        return {"ok": True}
 
     def save_image(self, data_url: str, filename: str = "") -> dict:
         """弹系统「保存为」对话框把对话里的图片（data:image base64）存到本地，返回实际路径。

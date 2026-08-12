@@ -6,6 +6,64 @@
 
 ## [Unreleased]
 
+## [3.64.0] - 2026-08-12
+
+**FR-17 并发可观测性 · T1+T2+T3**（**Windows 真机验证通过，2026-08-12**）：多会话并行时把
+"谁在等你 / 谁在干什么 / 谁跑完了"抬到全局。起点是一篇 Grok Bot 报道——它的三个卖点里
+"把电脑递给你"＝FR-15、"看着你操作一遍记下来"＝FR-16 都已交付，剩下的"多 Bot 各司其职"
+照出自家一个洞。**刻意不抄它的"多 Bot 互相通信"**：Hermes 跨会话知识走共享存储
+（`recall_history` 跨会话检索 / `FailureMemory` 跨会话死路 / FR-14 产物按 id 读不限），
+实时协调走委派；对方上通信是"每 bot 一台独立 VM、没有共享存储"的架构约束所迫，不是优点。
+
+### Fixed
+- **换手（FR-15）挂起在会话外没有任何信号**：`ask_user` 与 `request_handoff` 原先只 emit 事件、
+  **不改会话状态**（只有权限确认会置 `awaiting`），而顶部计数 `runningSessions()` 又只收
+  `running|queued`——**连已有的 `awaiting` 也被排除在外**。于是后台会话停在那儿等人接管时，
+  用户不切进那个会话就完全看不见。换手在无人值守下是挂起等人的（超时才收成 blocked 不记完成），
+  这让 FR-15 在并发场景下形同失效。
+- **状态变化不刷新顶部计数**：`updateRunningChip()` 原先只在 `renderSessions()` 里调用，
+  运行中/等你的切换要等到会话列表整体重渲染才可见。改为 `updateSessionRow()` 里同步刷新，
+  且**刻意放在"侧栏行是否存在"的判断之外**——行还没渲染出来时计数照样要对，那正是后台会话的常态。
+
+### Added
+- **三种等待统一成一等状态**：`_enter_awaiting(reason)` / `_leave_awaiting()`，`reason` 取
+  `permission` / `ask` / `handoff`，随 `state` 事件下发；`stop()` 与新一轮开始都会清掉。
+- **顶部 chip 拆两段**：`✋ N 等你 · M 运行中`，**等待段在前**并转警告色——"在跑"是常态，
+  "等你"才需要动作；任一为 0 就不显示那段，都为 0 则整体隐藏。
+- **指挥中心带上下文**：等待的会话排最前、行底色警告色，每行第二行报"等什么"（等确认/等回答/等接管），
+  点击直达现场。纯逻辑 `summarizeConcurrency` / `concurrencyChipText` / `activityLine` / `waitLabel`
+  进 `web/pure.js`。
+- **T2「在干什么」**：`toolActivityLabel(name, input)` 把一次工具调用压成一行（`run_bash pytest -q`），
+  挂在已有的 `tool_use` 事件上——事件本就按 cid 全都到了前端，**不新开通路**。
+  **保留原始工具名**：工具块、权限确认、hooks matcher 全用原名，这里另造中文动词只会让人对不上号。
+  等待态压过活动（那一行是催人的，不是报进度的）。
+- **T3 终态提醒**：`Api.set_window_title` 把"要你管的事"写进系统标题——`(2 等你) Hermes` /
+  `(1 完成) Hermes`，任务栏按钮上可见、最小化也在；没什么可管就回落成干净的 `Hermes`。
+  **"完成"排掉还在忙的会话**（`unread` 的语义是"来了新内容"，运行中的照样未读，
+  不排掉就是对着还在跑的任务喊已完成）。只在标题真变化时才过桥。
+- **后台会话跑完/出错 → 闪任务栏**（`Api.flash_window`）：窗口有焦点时仍走应用内 toast，
+  **没焦点才闪**——T3 覆盖的正是你没盯着窗口的时候，那时窗口内的浮层等于不存在。
+  `FLASHW_TIMERNOFG` 让 Windows 在窗口被切到前台时自动停，不必自己写"已读"。
+  HWND **按进程 id 枚举**而非按标题找（标题带角标会变），且**不碰 `window.native`**
+  （app.py 记着那条会引发 RecursionError + WebView2 COM 跨线程错误）。非 Windows 静默跳过。
+
+### Fixed（自测期真机反馈）
+- **停在等待中的会话时，点指挥中心里另一个跑着的会话切不过去**——**越忙的会话越点不动**。
+  根因是本次自己引入的：`renderCommandCenter()` 整块重写 `innerHTML`，而它被接到了每个
+  state/tool_use 事件上；跑着的会话事件不断，于是**用户正按着的那一行在 mousedown 与
+  mouseup 之间被换成了新节点**，`click` 永远不触发。改为**结构（行集合/顺序/状态）没变就
+  绝不重建 DOM**，只就地改副标题文字；`.cc-sub` 恒定渲染（空的由 CSS `:empty` 收起）留稳定落点。
+
+### 自检
+`test_handoff.py` 16→22（三种等待各自的 reason、处理完回到 running、stop 清等待态、
+非 Windows 上 flash/set_title 静默不抛）、前端 111→124（新增 `tests/web/concurrency.test.js` 13 例）、
+全回归 Python 69 文件全绿。
+新增 `scripts/diag_concurrency_ui.py` 30 项真渲染自检（真 index.html + app.js，用真 `__onAgentEvent`
+驱动三个并发会话），含**几何量测**（两行不重叠、相邻行不重叠）与**真鼠标序列回归**
+（按下 → 灌 5 个 tool_use → 抬起，断言节点没被换掉且切换成功）。
+**验过活性**：把 T1/T2 的接线退回即 12 项变红。
+加固了一处自检自身的毛病——取不到元素时报红而不是抛异常崩掉（同 v3.63 那条"自检自己也要坏了会红"）。
+
 ## [3.63.0] - 2026-08-12
 
 人机换手（FR-15）+ 轨迹固化（FR-16），ADR 0023 两半全部落地；顺带一批真机验证抓到的 UI 修复。

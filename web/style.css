@@ -221,6 +221,19 @@ body.col-resizing iframe { pointer-events: none; }  /* 拖到预览 iframe 上�
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cc-cur { font-size: 10.5px; color: var(--accent); border: 1px solid var(--accent);
   border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+/* FR-17：chip 在有人等你时转警告色——"在跑"是常态，"等你"才需要动作。
+   用 .running-chip.waiting 提特异性压住上面的 accent 配色（后写的同特异性会赢，这里不靠顺序）。 */
+.running-chip.waiting { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+.running-chip.waiting::before { background: var(--warn); }
+/* 指挥中心行：标题 + 副标题（等什么 / 在干什么）两行。`.cc-row .cc-name` 提特异性，
+   否则被上面 .cc-name 的单行省略号规则盖掉（CLAUDE.md：别蹭老类，要么自带样式要么提特异性）。 */
+.cc-row .cc-name { display: flex; flex-direction: column; gap: 1px; white-space: normal; }
+.cc-title, .cc-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-sub { font-size: 11px; color: var(--muted); }
+/* 副标题恒定渲染（给就地更新留稳定落点），没内容时收起来不占行高 */
+.cc-sub:empty { display: none; }
+.cc-row.cc-wait { background: var(--warn-bg); }
+.cc-row.cc-wait .cc-sub { color: var(--warn); font-weight: 600; }
 .cc-btn { flex: 0 0 auto; border: none; background: transparent; color: var(--muted);
   cursor: pointer; font-size: 13px; padding: 2px 5px; border-radius: 5px; }
 .cc-stop:hover { color: var(--danger); }

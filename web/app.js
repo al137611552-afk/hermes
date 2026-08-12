@@ -101,6 +101,7 @@ function makeView(cid) {
     workingEl: null, workTimer: null, workStart: 0,  // 工作指示器
     usage: null,             // 本会话累计用量（P2）{input,output,cacheRead,turns}；本次打开以来累计
     draft: "",               // 未发送的输入草稿（P3）：切会话保留、切回还原（本次打开以来，内存态）
+    activity: "",            // 「在干什么」一行摘要（FR-17 T2）：指挥中心用，随 tool_use 更新
   };
 }
 
@@ -1316,6 +1317,10 @@ window.__onAgentEvent = function (msg) {
     finalizeThinking(v);
     renderToolUse(v, data);
     markActivity(v);
+    // FR-17 T2：顺路记下"在干什么"给指挥中心用。事件本来就按 cid 全都到了前端（后台会话也不例外），
+    // 所以这里不需要任何新通路——同 FR-16 挂 emit 咽喉的思路，不另开一条。
+    v.activity = toolActivityLabel(data.name, data.input);
+    if (ccPopover && !ccPopover.hidden) renderCommandCenter();
   } else if (event === EV.TOOL_STREAM) {
     renderToolStream(v, data);
     markActivity(v);
@@ -1372,9 +1377,11 @@ window.__onAgentEvent = function (msg) {
     if (v.streaming) showWorking(v, "思考中…");
   } else if (event === EV.STATE) {
     v.status = data.state;
+    v.waitReason = data.state === "awaiting" ? (data.reason || "") : "";  // FR-17：等什么
     if (isBusyState(data.state)) v.streaming = true;
     if (data.state === "awaiting" && !isActive(v)) {
-      showToast("⚠ 后台对话需要权限确认，点开该会话处理");
+      // 三种等待文案分开：换手挂着不处理会一直卡着，说清是哪一种才知道要不要马上去。
+      showToast(`⚠ 后台会话${waitLabel(v.waitReason)}，点开该会话处理`);
     }
     updateSessionRow(v);
     if (isActive(v)) restoreInputState();
@@ -1471,7 +1478,12 @@ window.__onAgentEvent = function (msg) {
     finalizeThinking(v);
     finishStreaming(v);
     v.status = "idle";
-    if (!isActive(v)) v.unread = true;
+    v.activity = "";           // FR-17 T2：本轮结束，别把上一轮的活动留给下一轮
+    if (!isActive(v)) {
+      v.unread = true;
+      notifyBackgroundEnd(`✅ 「${sessionTitle(v.sessionId)}」跑完了`);   // FR-17 T3
+    }
+    updateSessionRow(v);       // 顺带刷顶部计数与标题角标（refreshSessions 是异步的，赶不上）
     refreshSessions();
     if (isActive(v)) refreshWorkspace(); // Agent 可能写了文件，刷新工作区树
   } else if (event === EV.STOPPED) {
@@ -1481,7 +1493,9 @@ window.__onAgentEvent = function (msg) {
     addMessage(v, "assistant", "⏹ 已停止").classList.add("notice");
     finishStreaming(v);
     v.status = "idle";
+    v.activity = "";           // FR-17 T2：本轮结束，别把上一轮的活动留给下一轮
     if (!isActive(v)) v.unread = true;
+    updateSessionRow(v);       // 停止也要立刻从计数里退出（refreshSessions 是异步的）
     refreshSessions();
     if (isActive(v)) refreshWorkspace();
   } else if (event === EV.ERROR) {
@@ -1496,7 +1510,12 @@ window.__onAgentEvent = function (msg) {
     }
     finishStreaming(v);
     v.status = "error";
-    if (!isActive(v)) v.unread = true;
+    v.activity = "";
+    if (!isActive(v)) {
+      v.unread = true;
+      notifyBackgroundEnd(`⚠ 「${sessionTitle(v.sessionId)}」出错了`);
+    }
+    updateSessionRow(v);
     refreshSessions();
   }
 };
@@ -2438,37 +2457,95 @@ let lastSessions = [];
 const ccPopover = document.getElementById("cc-popover");
 
 // 「N 个会话运行中」概览（轻量指挥中心）：统计跑着的会话，点击跳到下一个非当前的运行会话。
-function runningSessions() {
+// FR-17：连 awaiting 一起收（原先只收 running|queued——等权限/等回答/等换手的会话
+// 在顶部计数与指挥中心里完全不存在，换手挂起时全局无信号）。
+function concurrencyRows() {
   const out = [];
   views.forEach((v) => {
-    if ((v.status === "running" || v.status === "queued") && v.sessionId != null)
-      out.push({ sid: v.sessionId, cid: v.cid });
+    if (v.sessionId == null) return;
+    if (v.status === "running" || v.status === "queued" || v.status === "awaiting")
+      out.push({ sid: v.sessionId, cid: v.cid, status: v.status,
+                 waitReason: v.waitReason || "", activity: v.activity || "" });
   });
   return out;
 }
+function runningSessions() { return summarizeConcurrency(concurrencyRows()).ordered; }
 function updateRunningChip() {
+  const { counts } = summarizeConcurrency(concurrencyRows());
+  updateWindowBadge(counts.waiting);   // 先落标题角标：它不依赖 chip 元素在不在
   const chip = document.getElementById("running-chip");
   if (!chip) return;
-  const n = runningSessions().length;
-  chip.hidden = n === 0;
-  chip.textContent = `${n} 运行中`;   // 脉冲点由 CSS .running-chip::before 提供（对齐 Figma）
-  if (n === 0) closeCommandCenter();
+  const text = concurrencyChipText(counts);
+  chip.hidden = !text;
+  chip.textContent = text;   // 脉冲点由 CSS .running-chip::before 提供（对齐 Figma）
+  // 有人在等 → chip 转警告色（"在跑"是常态、"等你"才需要动作）
+  chip.classList.toggle("waiting", counts.waiting > 0);
+  if (!text) closeCommandCenter();
+}
+
+// FR-17 T3：后台会话跑完/出错的提醒。**分两种情况**——
+// 你正看着 Hermes 窗口时，应用内 toast 就够了；**没看着的时候 toast 等于不存在**
+// （真机反馈：根本没注意到），那才是这个功能真正要覆盖的场景，改闪任务栏。
+// 闪烁由 Windows 在窗口被切到前台时自动停（FLASHW_TIMERNOFG），不用我们再写"已读"。
+function notifyBackgroundEnd(text) {
+  if (document.hasFocus()) { showToast(text); return; }
+  if (window.pywebview) window.pywebview.api.flash_window();
+}
+
+// FR-17 T3：把"要你管的事"写进系统标题（任务栏可见，最小化也在）。
+// 只在文案真变化时才过桥——标题不变还调用等于每个事件都打一次 js_api。
+let lastBadgeTitle = "";
+function updateWindowBadge(waiting) {
+  const rows = [];
+  views.forEach((v) => rows.push({ unread: v.unread, status: v.status }));
+  const title = windowBadgeTitle({ waiting: waiting || 0, unread: unreadDoneCount(rows) });
+  if (title === lastBadgeTitle) return;
+  lastBadgeTitle = title;
+  if (window.pywebview) window.pywebview.api.set_window_title(title);
 }
 function sessionTitle(sid) {
   const s = lastSessions.find((x) => x.id === sid);
   return (s && s.title) || "新会话";
 }
 // 指挥中心弹层：从顶部一处管理所有运行中会话——切换 / 停止 / 改名，不必到 sidebar 找分散的按钮。
+//
+// **结构没变就绝不重建 DOM**（真机 bug，2026-08-12）：弹层开着时事件一直在来（跑着的会话每次
+// tool_use / state 都会触发刷新），整块 `innerHTML` 重写会把用户**正按着的那一行**从文档里换掉，
+// mousedown 与 mouseup 落在不同节点上 → `click` 永远不触发。症状是"停在等待中的会话里，
+// 点弹层里另一个跑着的会话切不过去"——越忙的会话越点不动，正好和直觉相反。
+// 所以：只有行的集合/顺序/状态变了才重建；否则就地改副标题文字。
+let ccSig = "";
+function ccSignature(rows) {
+  return rows.map((r) => `${r.sid}|${r.status}|${r.waitReason}`).join(",") + "#" + activeSessionId;
+}
 function renderCommandCenter() {
   if (!ccPopover) return;
-  const running = runningSessions();
+  const running = runningSessions();   // 已按「等你在前」排好序（summarizeConcurrency）
   if (!running.length) { closeCommandCenter(); return; }
-  ccPopover.innerHTML = '<div class="cc-head">▶ 运行中的会话（点名称切换）</div>' +
-    running.map((r) => `<div class="cc-row" data-sid="${r.sid}" data-cid="${r.cid}">` +
-      `<span class="cc-name" title="切换到此会话">${escapeHtml(sessionTitle(r.sid))}` +
+  const sig = ccSignature(running);
+  if (sig === ccSig && ccPopover.querySelector(".cc-row")) {
+    running.forEach((r) => {           // 就地改文案，不动节点
+      const el = ccPopover.querySelector(`.cc-row[data-sid="${r.sid}"] .cc-sub`);
+      if (el) el.textContent = activityLine(r);
+    });
+    positionCommandCenter();
+    return;
+  }
+  ccSig = sig;
+  ccPopover.innerHTML = '<div class="cc-head">▶ 进行中的会话（点名称切换）</div>' +
+    running.map((r) => {
+      const sub = activityLine(r);     // 等待态报"等什么"，运行态报"在干什么"
+      // `.cc-sub` **恒定渲染**（哪怕是空的）：留个稳定的落点给上面的就地更新，
+      // 免得"从没有副标题变成有"又要动结构。空的由 CSS `:empty` 收起来。
+      return `<div class="cc-row${r.status === "awaiting" ? " cc-wait" : ""}" ` +
+      `data-sid="${r.sid}" data-cid="${r.cid}">` +
+      `<span class="cc-name" title="切换到此会话">` +
+      `<span class="cc-title">${escapeHtml(sessionTitle(r.sid))}` +
       `${r.sid === activeSessionId ? ' <span class="cc-cur">当前</span>' : ''}</span>` +
+      `<span class="cc-sub">${escapeHtml(sub)}</span></span>` +
       '<button class="cc-btn cc-stop" type="button" title="停止该会话">⏹</button>' +
-      '<button class="cc-btn cc-ren" type="button" title="重命名">✎</button></div>').join("");
+      '<button class="cc-btn cc-ren" type="button" title="重命名">✎</button></div>';
+    }).join("");
   ccPopover.querySelectorAll(".cc-row").forEach((row) => {
     const sid = parseInt(row.dataset.sid, 10), cid = parseInt(row.dataset.cid, 10);
     row.querySelector(".cc-name").addEventListener("click", () => { closeCommandCenter(); selectSession(sid); });
@@ -2477,13 +2554,15 @@ function renderCommandCenter() {
     });
     row.querySelector(".cc-ren").addEventListener("click", (e) => { e.stopPropagation(); ccRename(row, sid); });
   });
-  // 定位到运行计数 chip 下方
+  positionCommandCenter();
+}
+// 定位到运行计数 chip 下方（不动节点，重建与就地更新都要调）
+function positionCommandCenter() {
   const chip = document.getElementById("running-chip");
-  if (chip) {
-    const rect = chip.getBoundingClientRect();
-    ccPopover.style.top = (rect.bottom + 6) + "px";
-    ccPopover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 290)) + "px";
-  }
+  if (!chip || !ccPopover) return;
+  const rect = chip.getBoundingClientRect();
+  ccPopover.style.top = (rect.bottom + 6) + "px";
+  ccPopover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 290)) + "px";
 }
 function ccRename(row, sid) {
   const nameEl = row.querySelector(".cc-name");
@@ -2505,7 +2584,7 @@ function ccRename(row, sid) {
   });
   ipt.addEventListener("blur", () => commit(true));
 }
-function closeCommandCenter() { if (ccPopover) ccPopover.hidden = true; }
+function closeCommandCenter() { if (ccPopover) ccPopover.hidden = true; ccSig = ""; }  // 下次打开必重建
 function toggleCommandCenter() {
   if (!ccPopover) return;
   if (!ccPopover.hidden) { closeCommandCenter(); return; }
@@ -2756,11 +2835,18 @@ function makeSessionItem(s) {
 function updateSessionRow(v) {
   if (v.sessionId == null) return;
   const li = sessionList.querySelector(`li[data-sid="${v.sessionId}"]`);
-  if (!li) return;
-  const cls = sessionRowClasses(v.status, v.unread, isActive(v));
-  li.classList.toggle("running", cls.running);
-  li.classList.toggle("awaiting", cls.awaiting);
-  li.classList.toggle("unread", cls.unread);
+  if (li) {
+    const cls = sessionRowClasses(v.status, v.unread, isActive(v));
+    li.classList.toggle("running", cls.running);
+    li.classList.toggle("awaiting", cls.awaiting);
+    li.classList.toggle("unread", cls.unread);
+  }
+  // FR-17：状态一变就刷顶部计数（原先只在 renderSessions 里刷，等你/运行中的切换要等到
+  // 下次会话列表整体重渲染才可见——对"等你"来说等于没通知）。
+  // **刻意放在 li 存在性之外**：侧栏行还没渲染出来时，顶部计数照样要对——那正是
+  // 后台会话最容易出现的状态（用户压根没在看那一栏）。
+  updateRunningChip();
+  if (ccPopover && !ccPopover.hidden) renderCommandCenter();
 }
 
 // 会话标题内联重命名：把标题换成输入框，Enter/失焦提交，Esc 取消
