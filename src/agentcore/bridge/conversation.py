@@ -212,6 +212,9 @@ class Conversation:
         self.emit = _emit
         # 后台执行：每对话一条 worker 线程 + 串行任务队列（保回合顺序；惰性启动、空闲退出）
         self.state = "idle"  # idle / queued / running / awaiting（done/error 由轮次事件表达）
+        # awaiting 的**原因**（FR-17 T1）：permission / ask / handoff。多会话并行时，顶部计数与指挥中心
+        # 靠它区分"在跑"和"在等你"——没有这一层，换手挂起在会话外没有任何信号。
+        self.wait_reason: str | None = None
         self._queue: "queue.Queue[tuple[str, object]]" = queue.Queue()
         self._worker: threading.Thread | None = None
         self._worker_lock = threading.Lock()
@@ -252,10 +255,10 @@ class Conversation:
                                    auto_safe=lambda: self.res.config.agent.auto_approve_safe,
                                    # 「总是允许这类」落盘（FR-11.4b），重启后仍放行、面板里可撤
                                    on_rule_added=self._persist_permission_rule)
-        self._ask = AskUserBinding(lambda req: self.emit("ask_user", req))  # ask_user 工具的阻塞桥
+        self._ask = AskUserBinding(self._on_ask_request)  # ask_user 工具的阻塞桥
         # 换手（ADR 0023）：登录/验证码这类不可代办的环节把控制权交还用户。与 ask 刻意分开：
         # 无人值守下 ask 自动放行、换手**绝不放行**（自动放行只会产出假成功）。
-        self._handoff = HandoffBinding(lambda req: self.emit("handoff_request", req),
+        self._handoff = HandoffBinding(self._on_handoff_request,
                                        observer=self._observe_scene)
         # 后台进程管理器（FR-10.3）：每对话一个、跨工作区切换保留；shutdown 时杀全部
         self.procs = ProcessManager()
@@ -348,11 +351,34 @@ class Conversation:
 
     # ---- 权限确认 / 停止 / 收尾（FR-8.3） -------------------------------
 
+    def _enter_awaiting(self, reason: str) -> None:
+        """三种"等你"的统一入口（FR-17 T1）：权限确认 / ask_user / 换手，都置 awaiting 并带上原因。
+        原先只有权限确认改状态，ask_user 与 request_handoff 仅 emit 事件——多会话下等于没有信号。"""
+        self.state = "awaiting"
+        self.wait_reason = reason
+        self.emit("state", {"state": "awaiting", "reason": reason})
+
+    def _leave_awaiting(self) -> None:
+        """用户处理完（确认/回答/交回控制权）→ 回到 running。"""
+        self.wait_reason = None
+        self.state = "running"
+        self.emit("state", {"state": "running"})
+
     def _on_permission_request(self, req: dict) -> None:
         """gate 触发确认：进入 awaiting 态并把请求推给前端（带本对话 cid）。"""
-        self.state = "awaiting"
-        self.emit("state", {"state": "awaiting"})
+        self._enter_awaiting("permission")
         self.emit("permission_request", req)
+
+    def _on_ask_request(self, req: dict) -> None:
+        """ask_user 工具阻塞等待用户勾选：同样是"等你"，进 awaiting（FR-17 T1）。"""
+        self._enter_awaiting("ask")
+        self.emit("ask_user", req)
+
+    def _on_handoff_request(self, req: dict) -> None:
+        """换手（FR-15）阻塞等待人接管：进 awaiting。这是本 FR 最要紧的一条——
+        换手请求只是会话内的一条消息，不冒泡到全局的话，用户不切进来就不知道它在等。"""
+        self._enter_awaiting("handoff")
+        self.emit("handoff_request", req)
 
     def _persist_permission_rule(self, rule: str) -> None:
         """把「总是允许这类」推导出的规则写进用户覆盖层，并同步到内存 config（本进程立即一致）。"""
@@ -414,8 +440,7 @@ class Conversation:
         """前端确认条回调：唤醒等待的 confirm()，回到 running 态。"""
         ok = self.gate.resolve(int(req_id), decision)
         if ok:
-            self.state = "running"
-            self.emit("state", {"state": "running"})
+            self._leave_awaiting()
         return {"ok": ok}
 
     def stop(self) -> None:
@@ -433,6 +458,7 @@ class Conversation:
         self.gate.reset()  # 若卡在权限确认上，解除阻塞（confirm 返回 deny，回合间再停）
         self._ask.reset()  # 同时解除 ask_user 的等待
         self._handoff.reset()  # 卡在等人接管上的换手也一并解除（回灌"未完成"，不假装成了）
+        self.wait_reason = None  # 三种等待都解除了，别把"等你"留在计数里（FR-17）
 
     def shutdown(self, timeout: float = 2.0) -> None:
         """应用退出/运行时被移除：停 worker、解除权限等待、等线程收尾（带超时，绝不卡死），
@@ -483,6 +509,7 @@ class Conversation:
                 return
             self._cancel.clear()  # 取出新任务：解除上一条遗留的停止标志（排队的下一条该正常跑）
             self._running_turn.set()  # 先标记本轮在跑（在 state=running 之前），让并发 enqueue 判断准确
+            self.wait_reason = None   # 新一轮开始：上一轮遗留的"等你"原因清掉（FR-17）
             self.state = "running"
             self.emit("state", {"state": "running"})
             try:
@@ -2499,11 +2526,17 @@ class Conversation:
 
     def resolve_ask_user(self, req_id: int, answer: str) -> dict:
         """前端回调：用户对 ask_user 的勾选/补充，唤醒等待的工具。"""
-        return {"ok": self._ask.resolve(int(req_id), answer)}
+        ok = self._ask.resolve(int(req_id), answer)
+        if ok:
+            self._leave_awaiting()
+        return {"ok": ok}
 
     def resolve_handoff(self, req_id: int, outcome: str, note: str = "") -> dict:
         """前端回调：用户点「我做完了」/「做不了，跳过」，唤醒等待的 request_handoff（ADR 0023）。"""
-        return {"ok": self._handoff.resolve(int(req_id), str(outcome), str(note or ""))}
+        ok = self._handoff.resolve(int(req_id), str(outcome), str(note or ""))
+        if ok:
+            self._leave_awaiting()
+        return {"ok": ok}
 
     # ---- 轨迹录制与固化（ADR 0023 决策 4~8）--------------------------------
     # 只由人手动开关：不自动检测、不自动固化——判据不可靠（保守则永不触发、激进则批量生成

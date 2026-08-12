@@ -203,6 +203,76 @@ def test_crazy_mode_toggles_unattended_but_never_auto_releases(tmp: Path):
     assert conv._ask._auto is False and conv._handoff._unattended is False
 
 
+# ---- FR-17 T1：三种"等你"都要冒泡成 awaiting -------------------------------
+# 回归价值：换手请求只是会话内的一条消息。它不置 awaiting 的话，多会话并行时顶部计数与
+# 指挥中心都看不到"有个会话停在那儿等人"——FR-15 在并发下等于失效。
+
+
+def _events(conv) -> list:
+    """劫持 emit 收事件（保留原 emit 的其它副作用不必要，这里只看状态广播）。"""
+    got: list = []
+    orig = conv.emit
+    conv.emit = lambda ev, data=None: (got.append((ev, data)), orig(ev, data))[0]
+    return got
+
+
+def test_handoff_request_enters_awaiting_with_reason(tmp: Path):
+    conv = _api(tmp).active
+    got = _events(conv)
+    t, box = _bg(lambda: conv._handoff.request("要登录", "https://x.example", "看到用户名"))
+    assert _wait_until(lambda: conv.state == "awaiting")
+    assert conv.wait_reason == "handoff"
+    assert ("state", {"state": "awaiting", "reason": "handoff"}) in got
+    assert conv.resolve_handoff(conv._handoff._seq, "done")["ok"] is True
+    t.join(timeout=2)
+    assert conv.state == "running" and conv.wait_reason is None   # 处理完回到 running
+
+
+def test_ask_user_enters_awaiting_with_reason(tmp: Path):
+    conv = _api(tmp).active
+    t, box = _bg(lambda: conv._ask.ask("选哪个？", ["A", "B"]))
+    assert _wait_until(lambda: conv.state == "awaiting")
+    assert conv.wait_reason == "ask"          # 与 handoff 区分：面板要报"等什么"
+    assert conv.resolve_ask_user(conv._ask._seq, "A")["ok"] is True
+    t.join(timeout=2)
+    assert conv.state == "running" and conv.wait_reason is None
+
+
+def test_permission_request_still_reports_its_own_reason(tmp: Path):
+    """权限确认本来就置 awaiting；改造后必须仍然是它自己的 reason，不被新逻辑串味。"""
+    conv = _api(tmp).active
+    got = _events(conv)
+    conv._on_permission_request({"id": 1, "tool": "run_bash", "command": "ls"})
+    assert conv.state == "awaiting" and conv.wait_reason == "permission"
+    assert ("state", {"state": "awaiting", "reason": "permission"}) in got
+
+
+def test_flash_window_is_a_silent_noop_off_windows(tmp: Path):
+    """T3 任务栏闪烁：非 Windows 上必须**静默跳过**，绝不抛——提醒不该搞崩主流程。
+
+    本机（Linux）跑不到真的 FlashWindowEx，这条守的是"调用方永远拿得到一个 dict"。
+    真机行为只能在 Windows 上验。
+    """
+    api = _api(tmp)
+    r = api.flash_window()
+    assert isinstance(r, dict) and r.get("ok") is False and "skipped" in r
+
+
+def test_set_window_title_without_window_does_not_raise(tmp: Path):
+    """没有窗口时（headless / 测试）改标题要如实返回失败，不抛。"""
+    api = _api(tmp)
+    r = api.set_window_title("(1 等你) Hermes")
+    assert isinstance(r, dict) and r.get("ok") is False
+
+
+def test_stop_clears_wait_reason(tmp: Path):
+    """停止会解除三种等待——"等你"就不该再留在计数里（否则 chip 永远挂着 ✋）。"""
+    conv = _api(tmp).active
+    conv._enter_awaiting("handoff")
+    conv.stop()
+    assert conv.wait_reason is None
+
+
 def test_crazy_stops_as_blocked_even_when_model_claims_done(tmp: Path):
     """本轮发生过"没人接管"→ 当轮挂起，收尾原因 handoff_blocked，**不是** goal_reached。"""
     from agentcore.providers import Message

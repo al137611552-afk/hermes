@@ -46,6 +46,96 @@
     return state === "running" || state === "queued" || state === "awaiting";
   }
 
+  // ---- FR-17 并发可观测性：多会话下"谁在等你 / 谁在干什么" -------------------
+  // 背景：并发机制早就有（每会话独立 worker），缺的是可见性——换手（FR-15）挂起时，
+  // 请求只是会话内的一条消息，用户不切进那个会话就完全看不见它在等。
+
+  const WAIT_LABELS = {
+    permission: "等确认",
+    ask: "等回答",
+    handoff: "等接管",
+  };
+  function waitLabel(reason) {
+    return WAIT_LABELS[reason] || "等你";
+  }
+
+  // 会话行 → 顶部计数 + 指挥中心行序。
+  // rows: [{sid, cid, status, waitReason, activity, title}]
+  // 纪律：**等待排在运行之前**——有人在等，比"还在跑"更该被看见。
+  function summarizeConcurrency(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    const waiting = [], running = [];
+    for (const r of list) {
+      if (!r || r.sid == null) continue;
+      if (r.status === "awaiting") waiting.push(r);
+      else if (r.status === "running" || r.status === "queued") running.push(r);
+    }
+    return { waiting, running, ordered: waiting.concat(running),
+             counts: { waiting: waiting.length, running: running.length } };
+  }
+
+  // 顶部 chip 文案：两段独立，任一为 0 就不显示那段；都为 0 → 空串（chip 整体隐藏）。
+  function concurrencyChipText(counts) {
+    const c = counts || {};
+    const parts = [];
+    if (c.waiting > 0) parts.push(`✋ ${c.waiting} 等你`);   // 等待段在前
+    if (c.running > 0) parts.push(`${c.running} 运行中`);
+    return parts.join(" · ");
+  }
+
+  // 指挥中心每行的副标题：等待态报"等什么"，运行态报"在干什么"（T2）；都没有就留空不占位。
+  function activityLine(row) {
+    const r = row || {};
+    if (r.status === "awaiting") return waitLabel(r.waitReason);
+    return (r.activity || "").trim();
+  }
+
+  // ---- T3：系统标题角标 ----------------------------------------------------
+  // 并发的价值只在**你没盯着窗口**时才兑现，而那时候应用内的任何提示都看不见；
+  // 标题会显示在任务栏按钮上，最小化了也在。
+
+  // 「跑完了但你没看」的会话数。**必须排掉还在忙的**：`unread` 在本应用里的语义是
+  // "后台会话来了新内容"（`markActivity` 打的），**运行中的会话照样会未读**——把它算进"完成"
+  // 就成了对着还在跑的任务喊已完成。角标宁可少报，不能报错。
+  function unreadDoneCount(rows) {
+    return (Array.isArray(rows) ? rows : [])
+      .filter((v) => v && v.unread && !isBusyState(v.status)).length;
+  }
+
+  // 优先级：等你 > 跑完没看——等你的那个会一直卡着不动，跑完的只是等你去看。
+  const WINDOW_TITLE_BASE = "Hermes";
+  function windowBadgeTitle(counts, base) {
+    const b = base || WINDOW_TITLE_BASE;
+    const c = counts || {};
+    const waiting = c.waiting > 0 ? c.waiting : 0;
+    const unread = c.unread > 0 ? c.unread : 0;
+    if (waiting) return `(${waiting} 等你) ${b}`;
+    if (unread) return `(${unread} 完成) ${b}`;
+    return b;   // 没什么要你管 → 干净的标题，不留残角标
+  }
+
+  // T2：把一次工具调用压成一行「在干什么」。**保留原始工具名**（不翻译成中文动词）——
+  // 工具块、权限确认、hooks matcher 全都用原名，这里另造一套叫法只会让人对不上号。
+  // 后面缀一个最能说明"对什么干"的入参，按这个优先级取第一个非空的。
+  const ACTIVITY_KEYS = ["path", "file_path", "command", "query", "url", "pattern", "task"];
+  function toolActivityLabel(name, input, maxLen) {
+    const n = String(name || "").trim();
+    if (!n) return "";
+    const limit = maxLen || 42;
+    let target = "";
+    if (input && typeof input === "object") {
+      for (const k of ACTIVITY_KEYS) {
+        const val = input[k];
+        if (typeof val === "string" && val.trim()) { target = val.trim(); break; }
+      }
+    }
+    target = target.replace(/\s+/g, " ");
+    if (!target) return n;
+    const room = limit - n.length - 1;
+    if (room <= 1) return n;
+    return n + " " + (target.length > room ? target.slice(0, room - 1) + "…" : target);
+  }
+
   // 输入区按钮该长啥样：运行中只留「停止」（发送隐藏，Enter 仍可走 steering）；
   // 规划模式发送键文案变「规划」。v 可能为 null（无活动会话）。
   function composerState(v) {
@@ -863,6 +953,8 @@
     UPDATE_STATUS, updateStatusLabel, summarizeUpdateCheck,
     shouldShowUpdate, updateBannerHtml,
     summarize, escapeHtml, sessionRowClasses, isBusyState, composerState,
+    WAIT_LABELS, waitLabel, summarizeConcurrency, concurrencyChipText, activityLine,
+    ACTIVITY_KEYS, toolActivityLabel, WINDOW_TITLE_BASE, windowBadgeTitle, unreadDoneCount,
     computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
     needsKeySetup, validateModelProfile,
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
