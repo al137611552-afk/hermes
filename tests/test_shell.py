@@ -427,6 +427,67 @@ def test_plain_timeout_message_separates_three_causes():
     assert "background:true" in raised and "--yes" in raised
 
 
+def test_cwd_runs_in_subdirectory():
+    """cwd 让命令在工作区子目录执行，模型不必写 `cd xxx && …`。"""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        ws = Path(td).resolve()
+        (ws / "sub" / "deep").mkdir(parents=True)
+        (ws / "sub" / "marker.txt").write_text("x", encoding="utf-8")
+        tool = RunShellTool(ws, shell="bash", timeout=5)
+        # 不传 cwd：在工作区根，看不到 marker.txt
+        out = tool.run({"command": "ls"})
+        assert "sub" in out and "marker.txt" not in out
+        # 传 cwd：在子目录里执行
+        out = tool.run({"command": "ls", "cwd": "sub"})
+        assert "marker.txt" in out
+        out = tool.run({"command": "pwd", "cwd": "sub/deep"})
+        assert str(ws / "sub" / "deep") in out
+
+
+def test_cwd_rejects_escape_and_nondirectory():
+    """cwd 受工作区约束（同 read_file/list_dir），越界与非目录都要报错。"""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        ws = Path(td).resolve()
+        (ws / "a.txt").write_text("x", encoding="utf-8")
+        tool = RunShellTool(ws, shell="bash", timeout=5)
+        for bad, why in (("../..", "越界相对路径"), ("/etc", "工作区外绝对路径")):
+            raised = None
+            try:
+                tool.run({"command": "ls", "cwd": bad})
+            except ToolError as e:
+                raised = str(e)
+            assert raised is not None, why
+            assert "工作区外" in raised, (why, raised)
+        raised = None
+        try:
+            tool.run({"command": "ls", "cwd": "a.txt"})     # 是文件不是目录
+        except ToolError as e:
+            raised = str(e)
+        assert raised is not None and "不是目录" in raised
+
+
+def test_cwd_absent_or_blank_defaults_to_workspace():
+    """缺省/空串/非字符串一律回落工作区根——存量调用零行为变化。"""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        ws = Path(td).resolve()
+        tool = RunShellTool(ws, shell="bash", timeout=5)
+        for params in ({"command": "pwd"}, {"command": "pwd", "cwd": ""},
+                       {"command": "pwd", "cwd": "   "}, {"command": "pwd", "cwd": None}):
+            out = tool.run(params)
+            assert str(ws) in out, params
+
+
+def test_cwd_declared_in_schema():
+    """schema 里要有 cwd，否则模型根本不知道能传（description 也得提，别留旧路标）。"""
+    tool = _tool()
+    assert "cwd" in tool.input_schema["properties"]
+    assert "cwd" not in tool.input_schema["required"]
+    assert "cwd" in tool.description
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0

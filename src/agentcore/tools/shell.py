@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 from ..artifacts import format_with_handle, head_tail_of_file
 from ..diagnose import with_location
@@ -450,6 +451,11 @@ class RunShellTool(Tool):
                                "run dev、vite、next dev、python -m http.server、任何带 --watch/--reload 的。"
                                "前台（false）跑这些只会一直等它退出、白白卡到超时再被杀。",
             },
+            "cwd": {
+                "type": "string",
+                "description": "在工作区内的哪个子目录执行（相对工作区，默认工作区根）。"
+                               "在子项目里跑构建/测试时用它，别在 command 里写 `cd xxx && …`。",
+            },
         },
         "required": ["command"],
     }
@@ -466,6 +472,7 @@ class RunShellTool(Tool):
         self.name = f"run_{shell}"
         self.description = (
             f"在工作区目录下执行一条 {shell} 命令并返回输出。"
+            "**要在子目录里跑就传 cwd（相对工作区），别写 `cd xxx && …`。**"
             "**启动常驻/不自退的进程（dev server、watch、REPL：如 streamlit run、uvicorn、flask run、"
             "npm run dev、vite、next dev、http.server、带 --watch/--reload 的命令）必须一开始就传 "
             "background:true——别前台跑，前台会一直等它退出、白白卡到超时才被杀。**"
@@ -476,15 +483,31 @@ class RunShellTool(Tool):
             "shell 留给真正需要执行的命令。**"
         )
 
+    def _resolve_cwd(self, params: dict) -> str:
+        """解析可选的 cwd 入参（受 Tool.resolve 的工作区/add-dir 约束），缺省=工作区根。
+
+        给了这个参数，模型就不必在 command 里拼 `cd sub && …`——那种写法既多一段要过安全判定的
+        命令（`&&` 串接里每段都得在只读白名单内才免确认），跨平台写法也不一致（PowerShell/bash）。
+        注意这**不是** shell 状态持久化：每次调用仍是独立子进程，cwd 只作用于本次。
+        """
+        raw = params.get("cwd")
+        if not isinstance(raw, str) or not raw.strip():
+            return str(self.workspace)
+        p = self.resolve(raw.strip())          # 越界路径在这里抛 ToolError
+        if not p.is_dir():
+            raise ToolError(f"cwd 不是目录：{raw}")
+        return str(p)
+
     def run(self, params: dict, stream=None) -> str:
         command = (params.get("command") or "").strip()
         if not command:
             raise ToolError("命令不能为空")
         argv = build_argv(self.shell, command)
+        workdir = self._resolve_cwd(params)
         if params.get("background"):
             if self._procs is None:
                 raise ToolError("当前环境未启用后台进程支持，请直接前台执行。")
-            entry = self._procs.start(argv, str(self.workspace), command)
+            entry = self._procs.start(argv, workdir, command)
             return (f"已在后台启动进程 #{entry.id}（pid {entry.proc.pid}）：{command}\n"
                     "用 read_process_output 看输出（增量）、list_processes 查看、stop_process 停止。")
         # 前台执行用 Popen + **等直接子进程退出**（proc.wait），而不是 communicate()。
@@ -503,7 +526,7 @@ class RunShellTool(Tool):
         try:
             proc = subprocess.Popen(
                 argv,
-                cwd=str(self.workspace),
+                cwd=workdir,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 # **二进制管道 + 自己解码**（_StreamDecoder）：text=True 的 read() 会阻塞到读满/EOF，
                 # 既让"实时流输出"名不副实，也让停在提示上的命令看不见提示。解码仍是 utf-8/replace——
@@ -599,5 +622,7 @@ class RunShellTool(Tool):
             parts.append(f"[stdout]\n{_render_stream(stdout, out_sink, self.workspace)}")
         if stderr:
             parts.append(f"[stderr]\n{_render_stream(stderr, err_sink, self.workspace)}")
-        # 报错定位（FR-13.B）：输出含指向工作区文件的 traceback 时附加 file:line + 源码上下文
-        return with_location("\n".join(parts), self.workspace)
+        # 报错定位（FR-13.B）：输出含指向工作区文件的 traceback 时附加 file:line + 源码上下文。
+        # 按**实际 cwd** 解析：traceback 里的相对路径是相对命令的工作目录的，传 workspace 会在
+        # cwd 是子目录时找不到文件（定位块静默消失）。cwd 缺省即 workspace，常见情形行为不变。
+        return with_location("\n".join(parts), Path(workdir))

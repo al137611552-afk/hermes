@@ -431,6 +431,7 @@ class AgentLoop:
         research_refine_max: int = 1,
         research_max_rounds: int = 3,
         research_judge=None,
+        tool_budget=None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -451,6 +452,9 @@ class AgentLoop:
         self.research_refine_max = research_refine_max  # 同一 query 最多催重搜几次（防无限）
         self.research_max_rounds = research_max_rounds   # **整轮**催重搜总预算；达上限→停搜、综合作答（防换词无限重搜）
         self.research_judge = research_judge     # 块H3a：模型裁判 judge_fn(prompt,images)->str；None=只用H1/H2正则
+        # 会话级工具预算（ToolBudget 实例）：**主 Agent 与所有子 Agent 共用同一个**，否则上限形同虚设。
+        # None=不限次（存量调用方与测试零行为变化）。
+        self.tool_budget = tool_budget
         import time as _t
         self._sleep = _t.sleep                  # 退避用；测试可替换为 no-op
 
@@ -895,6 +899,13 @@ class AgentLoop:
             tool = self.registry.get(name)
         except ToolError as e:
             return str(e), False, []
+
+        # 会话级预算闸：在 hooks / gate / 执行之前——预算用尽就不该惊动用户去确认一次注定不跑的调用。
+        # 回灌的是「预算用尽 + 该怎么办」的事实，标记为失败，模型据此收敛（不是 gate 那种安全 deny）。
+        if self.tool_budget is not None:
+            over = self.tool_budget.consume(name)
+            if over:
+                return over, False, []
 
         # PreToolUse hooks（程序化守卫）：可拦截（退出码 2）或放行+警告（退出码 1）。
         pre_warn = None

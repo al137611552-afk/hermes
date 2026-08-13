@@ -6,6 +6,53 @@
 
 ## [Unreleased]
 
+## [3.65.0] - 2026-08-13
+
+对标主流 agent 近期迭代的 A 档三项（ADR 0024）+ 修「在浏览器打开」真机 bug。
+**Windows 真机验证通过**（13 条用例，见 `docs/test/windows-verify-A-and-openfile.md`）。
+
+### Security
+- **修 4 类自动放行绕过**（智能确认分级 `command_is_safe`，见 ADR 0024）。照主流 agent 公开修过的
+  权限检查绕过逐条做对抗性回归跑出来的，不是猜的：
+  - **换行当分隔符**：`ls\nrm -rf /` 整条被当成一段、首词 `ls` 命中只读白名单 → **自动放行**。
+  - **单个 `&`**：`ls & rm -rf /`（bash 后台执行 / PowerShell 调用操作符）同上。
+  - **`env` 当执行器**：`env rm -rf /`、`env FOO=1 rm -rf /` → 自动放行。`env` 是白名单里唯一
+    既能只读打印、又能拿任意命令当参数执行的命令；现在只在无参或参数全是 `KEY=VALUE` 时放行。
+  - **无长度上限**：超长命令现在一律确认（>10K 字符，对齐 Claude Code）。
+  - 次要：`git grep -O` / `git diff --output=` 拉黑（只读子命令 + 一个开关就能执行命令/写任意文件），
+    并认「等号粘连」`--output=x` 与「值紧跟」`-Orm` 两种写法。
+  - 一并记录了**不用改**的一条：填充空白绕过（NBSP / 全角空格 / TAB）在 Python 侧天然不成立，
+    `str.split()` 是 Unicode-aware。留了测试当证据，防将来把切词改成 `split(' ')` 把这性质弄丢。
+
+### Added
+- **会话级工具预算**（`budget.py`，ADR 0024）：`agent.max_web_searches_per_session` /
+  `agent.max_delegates_per_session`（默认各 200，0=不限，设置面板「预算」组可调）。
+  已有的预算都是局部的（一次研究催几轮、一个子任务回炉几次），这两条管**整个会话某个工具总共能调多少次**，
+  防跑偏的任务换着关键词无限搜、无限派子 Agent。**主 Agent 与所有子 Agent 共用一份计数**——
+  各拿一份等于没有上限。撞上限**不执行**该工具，把「预算用尽 + 该怎么办」当作结果回灌模型
+  （同块 D/E/H 的「喂事实、不硬拦截」），模型可用已有信息收尾作答。
+- **`run_<shell>` 新增 `cwd` 参数**：在工作区子目录里执行命令，不必再写 `cd sub && …`
+  （那种写法多一段要过安全判定的命令，跨平台写法也不一致）。受工作区/add-dir 约束，
+  越界与非目录都报错。**不是 shell 状态持久化**——每次调用仍是独立子进程。
+
+### Fixed
+- **预览面板「在浏览器打开」对已有项目无效**（用户真机报）：打开已有项目后，生成的 HTML 在预览里
+  点「在浏览器打开」**没反应、也没有任何报错**。三处叠加：
+  1. **根因**：后端用 `webbrowser.open(p.as_uri())`，而 `as_uri()` 会把非 ASCII 与空格百分号编码
+     （`C:\Users\张三\我的项目\index.html` → `file:///C:/Users/%E5%BC%A0%E4%B8%89/…`），
+     Windows 的 ShellExecute 对这种编码过的 file URI 解码不可靠 → 静默失败。
+     **这解释了为什么只有"打开已有项目"才复现**：hermes 自带的默认工作区在安装目录下（纯 ASCII
+     无空格），URI 不带编码所以一直好用；用户自己选的项目路径才常含中文/空格。
+     现在走新的 `workspace.open_in_default_app()`：Windows 优先 `os.startfile(原生路径)`，
+     macOS `open`、Linux `xdg-open`，`webbrowser` 只作兜底。
+  2. **后端谎报成功**：`webbrowser.open()` 打不开时返回 `False` 而不是抛异常，老代码不看返回值、
+     一律回 `{"ok": True}`。现在每一步都看返回值/异常，全失败才回 `ok:false` + 原因 + 绝对路径。
+  3. **前端吞掉结果**：点击处理器根本不读返回值。现在失败弹 toast 提示原因与文件绝对路径
+     （`formatOpenFileError`，纯逻辑在 `pure.js`），用户至少能自己去打开。
+  另修 `as_uri()` 对相对路径抛 `ValueError` 会把整条打开路径炸掉——兜底手段现在表达不出 URI 就跳过。
+- 报错定位（FR-13.B）改按**实际 cwd** 解析 traceback 里的相对路径：传 workspace 会在 cwd 是
+  子目录时找不到文件、定位块静默消失。cwd 缺省即 workspace，常见情形行为不变。
+
 ### Changed
 - **不再预设火山方舟**（用户不再续用该订阅）：`.env`、`pack.py` 的 `ENV_TEMPLATE`、`config.yaml`
   注释、`CLAUDE.md`、`README.md`、`scripts/diag_handoff_realrun.py` 里的方舟残留全部清掉。

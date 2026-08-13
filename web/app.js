@@ -5136,7 +5136,18 @@ function renderHtmlPreview(res, path, head) {
   btns.className = "ws-pv-tabs";
   const open = document.createElement("button");
   open.className = "ws-btn"; open.textContent = "在浏览器打开";
-  open.addEventListener("click", () => window.pywebview.api.open_workspace_file(path));
+  // 必须**看返回值**：打不开时后端回 ok:false + 原因，老版本忽略结果 → 用户点了没反应也没报错。
+  // 失败时把绝对路径一并提示出来，用户至少能自己去打开。
+  open.addEventListener("click", async () => {
+    try {
+      const r = await window.pywebview.api.open_workspace_file(path);
+      if (r && r.ok === false) {
+        showToast(formatOpenFileError(r));
+      }
+    } catch (e) {
+      showToast(`打开失败：${e && e.message ? e.message : e}`);
+    }
+  });
   const toggle = document.createElement("button");
   toggle.className = "ws-btn"; toggle.textContent = "源码";
   btns.appendChild(toggle); btns.appendChild(open);

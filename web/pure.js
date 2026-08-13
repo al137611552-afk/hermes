@@ -523,6 +523,14 @@
     if (key === "review") return !!avail.hasReview;
     return true; // 文件 / 预览 常驻
   }
+  // 「在浏览器打开」失败时的提示文案：带上原因与绝对路径，用户至少能自己去打开。
+  // 老版本前端**完全忽略**后端返回值，失败时点了没反应也没报错——这条就是治那个的。
+  function formatOpenFileError(res) {
+    const r = res || {};
+    const why = (r.error || "").trim() || "未知原因";
+    const path = (r.path || "").trim();
+    return path ? `${why}。文件在：${path}` : why;
+  }
   // 给定可见性 + 期望激活标签，算出：可见标签序列、实际激活标签（消失则回"文件"）、是否显示标签条。
   function resolveWorkspaceTabs(avail, wantActive) {
     const tabs = WS_TAB_KEYS.filter((k) => wsTabVisible(k, avail));
@@ -965,6 +973,6 @@
     DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_MAIN, DEBATE_MAIN_LABEL, debateMainRoundLabel,
     DEBATE_STATUS_ZH, splitVerdictProse, verdictTally, debateConvergedText,
     planSessionList,
-    WS_TAB_KEYS, wsTabVisible, resolveWorkspaceTabs,
+    WS_TAB_KEYS, wsTabVisible, resolveWorkspaceTabs, formatOpenFileError,
   };
 });
