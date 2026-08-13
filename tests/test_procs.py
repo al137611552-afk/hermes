@@ -328,7 +328,9 @@ def _run_all():
            if n.startswith("test_") and inspect.isfunction(f)]
     passed = 0
     for name, fn in fns:
-        with tempfile.TemporaryDirectory() as d:
+        # ignore_cleanup_errors：Windows 上**还在跑的进程锁着自己的 cwd**，整个临时目录
+        # rmdir 不掉（WinError 32）。清理失败发生在断言全过之后，不该判红。
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
             if "tmp" in inspect.signature(fn).parameters:
                 fn(Path(d))
             else:

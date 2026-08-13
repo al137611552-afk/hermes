@@ -108,10 +108,14 @@ def build_argv(shell: str, command: str) -> list:
 # 不再干等满整个 timeout，而是用一个短探针窗口（_PROBE_SECONDS）快速兜底——真是服务就早杀早提示
 # "改 background:true"，把"白等几分钟"压成"等十几秒"；若其实会自退（误判），探针内正常结束、零影响。
 # 只做"缩短等待+更精准的提示"，不改写命令、不硬拦，故对误判安全。
+# `(?:['\"]?[^\s;&|]*[\\/])?` = 可选的**路径前缀**（含可能的开引号）。原来只认裸 `python3`，
+# 而真机上路径限定的写法是常态：`.venv\Scripts\python.exe -m http.server`、
+# PowerShell 的 `& 'C:\...\python.exe' -m ...`、`/usr/bin/python3 -m ...` 全都匹配不上，
+# 于是探针静默失效、用户白等满整个 timeout（2026-08-13 移植测试时发现）。
 _LONG_RUNNING_RE = re.compile(
-    r"(?:^|[\s;&|])(?:"
+    r"(?:^|[\s;&|])(?:['\"]?[^\s;&|]*[\\/])?(?:"
     r"streamlit\s+run|uvicorn|gunicorn|hypercorn|daphne|"          # Python web/ASGI/WSGI
-    r"flask\s+run|python3?\s+-m\s+(?:http\.server|flask|streamlit)|"  # flask / 内置静态服 / streamlit
+    r"flask\s+run|python3?(?:\.exe)?['\"]?\s+-m\s+(?:http\.server|flask|streamlit)|"  # flask / 内置静态服 / streamlit
     r"(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|start|serve|watch)|"  # 前端脚本约定
     r"vite|next\s+dev|nuxt\s+dev|ng\s+serve|"                      # 前端 dev server
     r"webpack(?:\s+serve|-dev-server)|rollup\s+.*-w\b|"            # 打包器 watch

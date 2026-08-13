@@ -44,6 +44,10 @@
 - `test_updater` 改用 `cwd=` 传目录、argv 传列表，并把 stderr 带进断言。原来的 `cd X && ...` +
   `shell=True` 在 Windows 上是**静默错的**：cmd 的 `cd` 不跨盘符切换却照样返回 0，而 runner 的检出在
   `D:\a\...`、临时目录在 `C:\Users\...`——整串 git init/commit 实际落在**检出自己的工作树**上。
+- **常驻服务探针认路径限定的写法**（移植测试时发现的真 bug）。`_LONG_RUNNING_RE` 原来只匹配裸
+  `python3 -m http.server`，而真机上 `.venv\Scripts\python.exe -m http.server`、PowerShell 的
+  `& 'C:\...\python.exe' -m ...`、`/usr/bin/python3 -m ...` 都匹配不上——**探针静默失效，
+  用户白等满整个 timeout**。正则加可选路径前缀（含开引号与 `.exe`），17 条用例验过无误报。
 - CI actions 升版避开 Node 20 弃用：`checkout@v4→v5`、`setup-python@v5→v6`、`setup-node@v4→v6`。
 - **产物落盘无损**：`ArtifactStore.put` 与 Tee 的写入补 `newline=""`。文本模式在 Windows 上把 `\n`
   翻成 `\r\n`，导致落盘字节数 ≠ `chars`（台账 `bytes` 取 `st_size`、`max_total_bytes` 配额按它算），

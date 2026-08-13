@@ -36,9 +36,15 @@ RUN_TOOL = f"run_{SHELL}"
 # 出来就是那个代码页的字节，而 hooks.py 按 utf-8 解码（errors="replace"）——中文断言必然落空。
 # 这不是测试将就，是 hook 作者在 Windows 上真会踩的坑。
 
+# **cmd 命令里一个双引号都不能写**（2026-08-13 CI 第五轮踩过）：hooks.py 走
+# `subprocess.run(["cmd", "/c", cmd])`，Windows 上 `list2cmdline` 会把内层 `"` 转义成 `\"`，
+# 而 **cmd.exe 不认 `\"`**（它要 `""` 或 `^"`）——命令于是被切坏、静默不按预期跑。
+# 同理别用 `^`（cmd 的转义字符，不加引号保护就被吃掉）。下面几个构造器都刻意避开这两样。
+
 def hook_exit(code: int) -> str:
-    """以指定码退出。cmd 里 `exit N` 会关掉整个 cmd 进程，要用 `exit /b N` 才是返回码。"""
-    return f"exit /b {code}" if IS_WIN else f"exit {code}"
+    """以指定码退出。**`cmd /c` 场景要用 `exit` 而不是 `exit /b`**：这里没有外层批处理，
+    我们要的就是让 cmd 进程本身带这个码退出；`exit /b` 写在括号块里还可能不往外传。"""
+    return f"exit {code}"
 
 
 def hook_echo(text: str) -> str:
@@ -48,21 +54,29 @@ def hook_echo(text: str) -> str:
 
 def hook_echo_exit(text: str, code: int) -> str:
     """打印一行再以指定码退出。"""
-    return f"{hook_echo(text)}& {hook_exit(code)}" if IS_WIN else f"{hook_echo(text)}; {hook_exit(code)}"
+    sep = "& " if IS_WIN else "; "
+    return f"{hook_echo(text)}{sep}{hook_exit(code)}"
 
 
 def hook_deny_if_stdin_has(needle: str, marker: str) -> str:
-    """stdin（hook 收到的 JSON）里含 needle 就打印 marker 并 exit 2，否则 exit 0。"""
+    """stdin（hook 收到的 JSON）里含 needle 就打印 marker 并 exit 2，否则 exit 0。
+    Windows 侧用**不带引号**的 `findstr {needle}`——needle 只用无正则元字符的字面量。"""
     if IS_WIN:
-        return f'findstr /C:"{needle}" >nul && (echo {marker}& exit /b 2) || exit /b 0'
+        return f"findstr {needle} >nul && (echo {marker}& exit 2) || exit 0"
     return f"grep -q {needle} <<<\"$(cat)\" && {{ echo '{marker}'; exit 2; }} || exit 0"
 
 
 def hook_stdin_to_file(path) -> str:
-    """把 hook 收到的 stdin 原样落盘。cmd 没有 `cat`，`findstr "^"` 是最接近的替代
-    （匹配所有行、原样转发）。**注意它按行处理**：末行没有换行也会被补上 CRLF，
-    所以只适合落 JSON 这类对尾部空白不敏感的内容。"""
-    return f'findstr "^" > "{path}"' if IS_WIN else f"cat > {path}"
+    """把 hook 收到的 stdin 原样落盘。cmd 没有 `cat`；`findstr "^"` 要引号+脱字符、两样都踩雷，
+    改用 `findstr /v <不可能出现的串>`（打印所有不含它的行 = 所有行），全程无引号无 `^`。
+    **注意它按行处理**：末行没换行也会被补上 CRLF，只适合 JSON 这类对尾部空白不敏感的内容。"""
+    return f"findstr /v ZZZNOMATCHZZZ > {path}" if IS_WIN else f"cat > {path}"
+
+
+def pwd() -> str:
+    """只打印当前目录路径。PowerShell 的 `pwd` 是 Get-Location 的别名、输出是**带表头的表格**，
+    取 `.Path` 才是一行纯路径，断言才好写。"""
+    return "(Get-Location).Path" if IS_WIN else "pwd"
 
 
 def echo(text: str) -> str:
@@ -110,6 +124,26 @@ def python_c(code: str) -> str:
     if IS_WIN:
         return f"& '{sys.executable}' -c \"{code}\""
     return f"{shlex.quote(sys.executable)} -c \"{code}\""
+
+
+def env_ref(name: str) -> str:
+    """**引用环境变量**。PowerShell 里 `$FOO` 是普通变量、跟环境变量不是一回事，
+    要写 `$env:FOO`。这个区别很坑：`echo v=$SOME_KEY` 在 PowerShell 下恒为空，
+    于是"密钥没泄漏"这类断言会**永远成立**——绿得毫无意义，比红更危险。"""
+    return f"$env:{name}" if IS_WIN else f"${name}"
+
+
+def print_env(name: str) -> str:
+    """打印某个环境变量的值。"""
+    return f"echo $env:{name}" if IS_WIN else f"printenv {name}"
+
+
+def python_module(module: str, *args: str) -> str:
+    """跑 `python -m <module>`（同 `python_c` 的理由：不赌 PATH 上有 python3）。"""
+    tail = (" " + " ".join(args)) if args else ""
+    if IS_WIN:
+        return f"& '{sys.executable}' -m {module}{tail}"
+    return f"{shlex.quote(sys.executable)} -m {module}{tail}"
 
 
 def echo_no_newline(text: str) -> str:

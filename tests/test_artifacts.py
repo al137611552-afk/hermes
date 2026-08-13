@@ -18,7 +18,7 @@ from agentcore.artifacts import (  # noqa: E402
     ArtifactSink, ArtifactStore, format_with_handle, prune_plan, should_artifact,
     summarize_for_context,
 )
-from _shellenv import SHELL, python_c  # noqa: E402
+from _shellenv import RUN_TOOL, SHELL, python_c  # noqa: E402
 from agentcore.tools.search import GlobSearchTool, GrepSearchTool  # noqa: E402
 from agentcore.tools.shell import RunShellTool  # noqa: E402
 from agentcore.tools.web import WebFetchTool  # noqa: E402
@@ -382,11 +382,11 @@ def test_registry_injects_sink_into_shell_and_fetch(tmp: Path):
     from agentcore.tools.registry import build_registry
     sink = _sink(tmp)
     reg = build_registry(tmp, shell=SHELL, web=WebConfig(), artifacts=sink)
-    assert reg.get("run_bash")._artifacts is sink
+    assert reg.get(RUN_TOOL)._artifacts is sink
     assert reg.get("web_fetch")._artifacts is sink
     # 不传就是 None＝老行为
     reg2 = build_registry(tmp, shell=SHELL, web=WebConfig())
-    assert reg2.get("run_bash")._artifacts is None and reg2.get("web_fetch")._artifacts is None
+    assert reg2.get(RUN_TOOL)._artifacts is None and reg2.get("web_fetch")._artifacts is None
 
 
 # ---- 块3：后台进程读线程 tee -------------------------------------------------
