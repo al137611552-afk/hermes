@@ -22,8 +22,26 @@
   单字节代码页（cp1252 等）对绝大多数字节序列都能"成功"解码、只是解成乱码，**排在前面等于吞掉一切，
   GBK 分支永远到不了**。改为 `utf-8 → gbk → 本地代码页`——GBK 是会校验的多字节编码，非法尾字节直接抛。
 
+### Security
+- **`skillhub._safe_extract` 在 Windows 上不拒绝绝对路径 → 恶意技能包可写出 dest 之外**（CI 第二轮抓到）。
+  原判据 `Path(name).is_absolute()` 跟随本机 flavour：Windows 语义下 `is_absolute()` 要求盘符**和**根
+  同时存在，`PureWindowsPath("/etc/evil.txt")` 缺盘符即判 False，于是 `dest / 它` 跳到盘符根
+  （`C:\etc\evil.txt`）。从 GitHub 技能市场装一个构造过的 zip 就能写到 C 盘任意位置。
+  **Linux 上 `is_absolute()` 返回 True、正确拦截，所以本地回归永远发现不了它。**
+  改为：① 恒用 `PureWindowsPath` 解析（同时看懂 `/` 与 `\`、认盘符与 UNC，是更严的一把尺），
+  判据拆成 `drive or root`；② 落点加围栏 `target.resolve().is_relative_to(dest.resolve())`——
+  不穷举攻击形态，直接断言真正在乎的不变量。测试补 `C:/evil.txt` 与 `..\..\evil.txt` 两条，
+  它们在旧代码的 Linux 上均放行，**把 Windows 专属教训钉进本地闸门**。
+
 ### Changed
 - CI actions 升版避开 Node 20 弃用：`checkout@v4→v5`、`setup-python@v5→v6`、`setup-node@v4→v6`。
+- **产物落盘无损**：`ArtifactStore.put` 与 Tee 的写入补 `newline=""`。文本模式在 Windows 上把 `\n`
+  翻成 `\r\n`，导致落盘字节数 ≠ `chars`（台账 `bytes` 取 `st_size`、`max_total_bytes` 配额按它算），
+  且工具原样输出的换行被悄悄改写——产物是现场证据，不该被翻译。
+- `test_handoff` 的 `flash_window` 用例补平台守卫并改名。原名 `..._off_windows`、文档写着
+  "非 Windows 上必须静默跳过"，**但没有任何平台守卫**——测试名不会让它只在非 Windows 上跑，
+  Windows CI 上 headless runner 无窗口走 `error` 分支即红。
+- `test_commands` 补 `ignore_cleanup_errors=True`（上轮被编码错误挡在前面的同类问题）。
 
 ## [3.67.0] - 2026-08-13
 

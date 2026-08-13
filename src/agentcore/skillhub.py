@@ -24,7 +24,7 @@ import re
 import shutil
 import zipfile
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -303,20 +303,31 @@ def _safe_extract(data: bytes, dest: Path) -> Path:
             raise HubError(f"归档条目数超过上限（{len(infos)} > {MAX_ENTRIES}），已中止")
         total = 0
         top: str | None = None
+        dest_root = dest.resolve()
         for info in infos:
             name = info.filename
             if name.endswith("/"):
                 continue
             if (info.external_attr >> 16) & 0o170000 == 0o120000:   # 符号链接，跳过
                 continue
-            parts = Path(name).parts
-            if not parts or Path(name).is_absolute() or ".." in parts:
+            # **恒用 PureWindowsPath 解析，不跟随本机平台**：它同时看懂 "/" 与 "\"、认盘符与 UNC，
+            # 是两套规则里更严的一把尺。原来用 Path()（跟随本机 flavour）在 Windows 上漏掉一整类：
+            # PureWindowsPath("/etc/evil.txt").is_absolute() 是 **False**（缺盘符），
+            # 于是 dest / 它 直接跳到盘符根 → C:\etc\evil.txt，从市场装个恶意技能包就能写出围栏外。
+            # 拆成 drive/root 判而不用 is_absolute()：Windows 语义下后者要求盘符**和**根同时存在。
+            pure = PureWindowsPath(name)
+            parts = pure.parts
+            if not parts or ".." in parts or pure.drive or pure.root:
                 raise HubError(f"归档内含非法路径（已中止）：{name}")
             total += info.file_size
             if total > MAX_UNPACKED_BYTES:
                 raise HubError(f"解压体积超过 {MAX_UNPACKED_BYTES // 1024 // 1024}MB 上限，已中止")
             top = top or parts[0]
             target = dest / Path(*parts)
+            # 最后一道闸：不穷举攻击形态，直接断言真正在乎的不变量——落点必须在 dest 内。
+            # 上面的模式规则将来漏了什么（新分隔符/编码技巧），这里兜住。
+            if not target.resolve().is_relative_to(dest_root):
+                raise HubError(f"归档内含非法路径（已中止）：{name}")
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
