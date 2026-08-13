@@ -44,3 +44,35 @@ dist\hermes-dev\
 
 ## 分发
 把整个 `dist\hermes-dev\` 文件夹压缩成 zip 发给别人即可（对方解压、放自己的 .env、双击运行）。
+
+## CI 出包（2026-08-13）
+
+**推 tag 即出包**：`.github/workflows/release.yml` 在 `windows-latest` 上跑全回归 → PyInstaller 打 exe
+→ 把两个包挂到该 tag 的 Release。
+
+| 产物 | 内容 | 给谁 |
+|---|---|---|
+| `hermes-dev-<版本>-win64.zip` | `build.ps1` 同款 onedir exe，解压单层 `hermes-dev\` | 非开发者，解压即用 |
+| `hermes-dev-<版本>-src.zip` | `pack.py --dist` 源码包，`.env` 是**空模板** | 走 `pip install -e .` 的 |
+
+**为什么要有它**：应用内更新的 T1（ADR 0020）只服务"源码装"；exe 用户点更新只会得到
+"请用下载页更新"，而下载页原来只有源码——**拿到源码还得自己跑一遍 `build.ps1` 重新打包**。
+根因在发布流程没有 CI。补上这一环，「下载页更新」才真的成立。
+
+### 关键约束（改 workflow 前先读）
+
+- **`pack.py` 默认输出到仓库上一级**（`--out` 默认 `ROOT.parent`）。CI 里**必须显式 `--out .`**，
+  否则产物落在 workspace 外，`upload-artifact` / `gh release upload` 都找不到——
+  而且是**静默少一个包**（另一个 pattern 匹配上了就不报错）。所以上传前还有一步显式核对。
+- **密钥不进产物**：`hermes-dev.spec` 的 datas 刻意不含 `.env`，CI 另加一步断言产物里没有
+  `.env` / `*.db`。这是打包脚本被改动时的最后一道闸。
+- **PowerShell here-string 不能用**：它的结束符必须顶格，而 YAML 块标量要求缩进，两者冲突。
+  要多行文本用单引号字符串数组（单引号串里反引号不当转义符，markdown 的 `code` 才能原样保留）。
+- **先跑全回归再出包**：红着的构建不该被发出去。顺带这也是**唯一自动跑 Windows 侧回归**的地方
+  （以前只能靠人在真机上手点）。
+- **exe 未签名**：CI 解决不了 SmartScreen，Release notes 里已注明"选「仍要运行」"。
+
+### 第一次用
+
+**别拿真发版当流水线的第一次测试**——workflow 留了 `workflow_dispatch`：
+到仓库 Actions 页手动 Run 一次，它只产 artifact、不建 Release。跑通了再推 tag。
