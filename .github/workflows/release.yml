@@ -1,0 +1,162 @@
+# 推 tag 即出包：在 Windows runner 上跑全回归 → 打 exe → 挂到该 tag 的 Release。
+#
+# **为什么要有它**（ADR 0020「后续暴露的缺口」）：应用内更新的 T1 只服务"源码装"的自用场景；
+# exe 用户点更新只会得到"请用下载页更新"，而下载页给的是**源码**——拿到源码还得自己在 Windows 上
+# 跑一遍 build.ps1 重新打包。根因不在更新器而在**发布流程没有 CI**，exe 只能手工构建，
+# 所以下载页未必有对应新版的 exe。补上这一环，「下载页更新」才真的成立。
+#
+# **触发器沿用既有习惯**：每次定版本来就要推 tag（见 CLAUDE.md 定版流程），不引入新动作。
+# 另留 workflow_dispatch 手动触发——**别拿真发版当流水线的第一次测试**。
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:        # 手动跑一次验流水线；不建 Release，只留 artifact
+
+permissions:
+  contents: write           # 建 Release / 传附件需要；其余权限一律不给
+
+jobs:
+  # 先跑全回归再出包——"全绿才算完成"是本项目的硬规矩（CLAUDE.md），
+  # 红着的构建不该被发出去。顺带：这也是**唯一能自动跑 Windows 侧回归**的地方，
+  # 以前只能靠人在真机上手点。
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"      # pyproject 要求 >=3.11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 装依赖
+        run: pip install -e .
+      - name: Python 全回归（每个文件是独立 runner，非 pytest）
+        shell: pwsh
+        run: |
+          $failed = @()
+          Get-ChildItem tests\test_*.py | ForEach-Object {
+            Write-Host "---- $($_.Name)"
+            & python $_.FullName
+            if ($LASTEXITCODE -ne 0) { $failed += $_.Name }
+          }
+          if ($failed.Count -gt 0) {
+            Write-Host "::error::以下测试文件未通过：$($failed -join ', ')"
+            exit 1
+          }
+      - name: 前端纯逻辑测试
+        run: node --test tests/web/*.test.js
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 装依赖 + PyInstaller
+        run: |
+          pip install -e .
+          pip install pyinstaller
+      - name: 取版本号
+        id: ver
+        shell: pwsh
+        run: |
+          # tag 触发用 tag 名（去掉前缀 v），手动触发用 pyproject 里的版本
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            $v = $env:GITHUB_REF -replace "^refs/tags/v?", ""
+          } else {
+            $v = (Select-String -Path pyproject.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "版本：$v"
+
+      - name: 打包 exe（onedir，同 build.ps1）
+        run: pyinstaller --noconfirm hermes-dev.spec
+
+      # 产物里绝不能有密钥：spec 的 datas 刻意不含 .env，但 CI 上再断言一次——
+      # 打包脚本将来被改动时，这一步是最后一道闸（本项目的分发纪律见 CLAUDE.md）。
+      - name: 断言产物不含 .env / 密钥
+        shell: pwsh
+        run: |
+          $bad = Get-ChildItem -Path dist\hermes-dev -Recurse -Force -File |
+                 Where-Object { $_.Name -eq ".env" -or $_.Extension -eq ".db" }
+          if ($bad) {
+            Write-Host "::error::产物里出现了不该带的文件：$($bad.FullName -join ', ')"
+            exit 1
+          }
+          Write-Host "OK：产物干净"
+
+      # 解压后必须是**单层** hermes-dev\（CLAUDE.md 打包约定）。
+      # Compress-Archive 传目录本身即可得到单层结构。
+      - name: 压成单层 zip
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          Compress-Archive -Path dist\hermes-dev -DestinationPath "hermes-dev-$v-win64.zip" -Force
+          Write-Host "产物：hermes-dev-$v-win64.zip"
+
+      # 同时出一份**不含密钥**的源码包（pack.py --dist 用空 .env 模板），
+      # 让下载页对"源码装"和"exe 装"两类用户都完整。
+      - name: 出源码包（--dist，无密钥）
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          # **必须给 --out .**：pack.py 默认输出到**仓库上一级**（ROOT.parent），
+          # 那样产物落在 workspace 外，upload-artifact / gh release upload 都找不到，
+          # 而且是**静默少一个包**（另一个 pattern 匹配上了就不报错）。
+          python pack.py --dist --out . --name "hermes-dev-$v-src.zip"
+
+      # 宁可在这里红，也别悄悄发一个缺了包的 Release（上一条注释说的静默失败就是这么来的）。
+      - name: 核对两个包都产出了
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          foreach ($f in @("hermes-dev-$v-win64.zip", "hermes-dev-$v-src.zip")) {
+            if (-not (Test-Path $f)) {
+              Write-Host "::error::产物缺失：$f"
+              exit 1
+            }
+            $mb = [math]::Round((Get-Item $f).Length / 1MB, 1)
+            Write-Host "OK  $f  ($mb MB)"
+          }
+
+      - name: 上传 artifact（手动触发时只有这个）
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-dev-${{ steps.ver.outputs.version }}
+          path: |
+            hermes-dev-*-win64.zip
+            hermes-dev-*-src.zip
+
+      # 只有 tag 触发才建 Release。用 runner 自带的 gh CLI，不引第三方 action
+      # （自动发布是供应链敏感环节，能少一个外部依赖就少一个）。
+      - name: 挂到 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $tag = "${{ github.ref_name }}"
+          # Release 可能已存在（重跑/补传）：存在就只覆盖附件，不重建
+          $ErrorActionPreference = "Continue"   # gh 查不到 Release 会写 stderr，别当致命错
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            # **不用 here-string**：它的结束符必须顶格，而 YAML 块标量要求缩进，两者冲突。
+            # 用单引号字符串数组——单引号串里反引号不当转义符（markdown 的 `code` 才能原样保留）。
+            $notes = @(
+              '解压即用的 Windows 程序见 `*-win64.zip`（**未签名**，首次运行 SmartScreen 可能拦一下，选「仍要运行」）。',
+              '源码包见 `*-src.zip`（不含密钥，需自行 `pip install -e .`）。',
+              '',
+              '变更详情见仓库 CHANGELOG.md 对应版本一节。'
+            )
+            $notes | Out-File -FilePath notes.md -Encoding utf8
+            gh release create $tag --title $tag --notes-file notes.md
+            if ($LASTEXITCODE -ne 0) { throw "gh release create 失败" }
+          }
+          gh release upload $tag "hermes-dev-$v-win64.zip" "hermes-dev-$v-src.zip" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload 失败" }
