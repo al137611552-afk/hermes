@@ -314,6 +314,56 @@ def focus_count(n_decisions: int, cap: int = 6) -> int:
     return n if n <= cap else cap
 
 
+# ── ② 分批评审：保覆盖，但把成本封顶 ────────────────────────────────────────
+#
+# 要解决的：`focus_count` 让镜头只挑 ≤6 条深说，好处是信号密度高，代价是**超出的决策从未被评审
+# 看过一眼**——而主模型很容易把"镜头没提到"读成"镜头没意见"（focus_count 自己的注释就点了这个风险）。
+#
+# 与 focus_count 的分工（两者不冲突，管的是不同的事）：
+#   **批次决定"看到哪些"（覆盖）**，**focus 决定"展开说哪些"（密度）**。
+# 一批之内决策数 ≤ REVIEW_BATCH_SIZE，focus 基本是 no-op；批次保证每条都进过某一批的视野。
+#
+# **为什么封顶批次数**：成本 = 批次数 × 镜头数 × 轮数，不封顶的话 30 条决策直接 4 批×2 镜头×3 轮
+# ＝24 次调用，费用和时长都不可预测。封顶后超出的决策并进最后一批，靠 focus 挑重点——
+# 退化回今天的行为，不会更差。
+REVIEW_BATCH_SIZE = 8       # 一批最多几条决策（≈focus cap 6 再宽一点，让镜头有取舍余地）
+REVIEW_MAX_BATCHES = 3      # 批次数封顶：成本最多 3 倍且可预测
+
+
+def batch_decisions(decisions, size: int = REVIEW_BATCH_SIZE,
+                    max_batches: int = REVIEW_MAX_BATCHES) -> list:
+    """把决策切成若干批供分批评审（纯函数）。
+
+    ≤size 条 → 单批（日常方案完全不受影响，行为与分批前逐字节一致）。
+    超过 size*max_batches 条 → 多出来的**并进最后一批**（不无限扩批次），那一批内靠 focus 挑重点。
+    """
+    ds = list(decisions or [])
+    n_size = max(1, int(size or 1))
+    n_max = max(1, int(max_batches or 1))
+    if len(ds) <= n_size:
+        return [ds] if ds else []
+    out = [ds[i:i + n_size] for i in range(0, len(ds), n_size)]
+    if len(out) > n_max:                     # 超出封顶：尾巴全并进最后一批
+        head, tail = out[:n_max - 1], out[n_max - 1:]
+        out = head + [[d for b in tail for d in b]]
+    return out
+
+
+def batch_scope_note(batch_idx: int, n_batches: int, batch, all_decisions) -> str:
+    """分批时给镜头的范围说明（纯函数）。单批返回空串——不给不必要的提示词噪声。
+
+    **要说清"其余决策存在但这批不评"**：否则镜头看到一个子集，容易以为方案就这么大，
+    从而对"缺了什么"做出错误判断（这是分批最大的副作用，用提示词补偿）。
+    """
+    if n_batches <= 1:
+        return ""
+    ids = "、".join(d.id for d in batch)
+    return (f"\n**本批范围**：本方案共 {len(list(all_decisions))} 条决策，"
+            f"为避免一次评太多被输出上限截断，现分 {n_batches} 批评审，"
+            f"**这是第 {batch_idx + 1} 批，只评这几条：{ids}**。"
+            "其余决策在别的批次里评，**不要**因为这里没列出就认为方案缺了它们、也不要替它们表态。\n")
+
+
 def review_output_spec(n_decisions: int = 0) -> str:
     """评审员输出契约。决策多于 focus_count 时，显式要求挑重点说，别逐条铺开。"""
     k = focus_count(n_decisions)
@@ -518,6 +568,66 @@ def build_main_reply_prompt(decisions, reviewer_outputs) -> str:
     return MAIN_REPLY_DIRECTIVE + "\n\n" + "\n".join(body) + main_output_spec(len(list(decisions)))
 
 
+# ── 主模型 verdict 救援（③）：抠不到 JSON 时补一次「只要结论」的短调用 ──────────────
+#
+# 为什么值得单独救：主模型回复是**唯一改 Decision 状态处**，它抠不到 JSON ＝ 这一轮的所有决定
+# 一条都不落地（散文再精彩也白跑，还白花了一次长调用）。而评审员那边抠不到只是少几条建议
+# （v5 里评审员 JSON 根本不参与 apply）——两者代价差一个量级，只有前者值得多花一次调用。
+#
+# 覆盖两种成因，不区分：① 散文太长把末尾 JSON 挤出 max_tokens（截断）；② 模型压根没按契约输出
+# （吐了大白话）。救援调用把已产出的散文回喂、只要 JSON，两种都能救回来。
+#
+# **只在真的抠不到时才发**——正常路径零额外成本，这是它比"把 JSON 提到散文之前"更优的地方
+# （提前会逼模型先下结论再论证，伤推理质量）。
+
+def needs_verdict_rescue(reply_text: str) -> bool:
+    """主模型回复是否需要救援：抠不到可用的 JSON 数组就是需要（纯函数）。
+
+    判据与 `apply_main_reply` 的取法保持一致——**它拿不到的，就是需要救的**，
+    避免出现"这里判不用救、那里 apply 不到"的错位。
+    """
+    s = reply_text or ""
+    segment = s
+    fi = s.rfind("```json")
+    if fi >= 0:
+        rest = s[fi + len("```json"):]
+        end = rest.find("```")
+        segment = rest if end < 0 else rest[:end]
+    return not isinstance(_first_json(segment, "[", "]"), list)
+
+
+def build_verdict_rescue_prompt(decisions, reply_text: str) -> str:
+    """救援调用的提示：把已写出的散文回喂，只要结构化结论，不要再写理由（纯函数）。"""
+    ids = "、".join(f"{d.id}（{d.title}）" for d in decisions) or "（无）"
+    prose = prose_only(reply_text)
+    if len(prose) > 6000:            # 只为让模型认得回自己的判断，不必回喂全文
+        prose = prose[:6000] + "\n…（前文已截断）"
+    return (
+        "你上一条回复里的结构化结论 JSON **没有成功输出**（多半是散文太长被输出上限截断）。\n"
+        "下面是你已经写出的评审意见原文：\n\n"
+        f"{prose}\n\n"
+        f"本次评审的决策 id 有：{ids}\n\n"
+        "**现在只输出 JSON，不要再写任何散文/理由/客套**——按你上面已经表达的判断，"
+        "把每条你有决定的决策写成一项；上面没表态的决策不要列。格式：\n"
+        '```json\n[{"id":"<决策id>","current_choice":"<如需改选择>","status":'
+        '"Accepted|Rejected|Deferred|NeedUser","add_blocking":["新阻塞"],'
+        '"resolve_blocking":["已澄清的旧阻塞"]}]\n```'
+    )
+
+
+def merge_rescued_verdict(reply_text: str, rescue_text: str) -> str:
+    """把救援调用取回的 JSON 接到原回复之后，供 `apply_main_reply` 正常解析（纯函数）。
+
+    救援没取到可用 JSON → 原样返回（救不回来就别把噪声掺进给用户看的回复里）。
+    取到了则以 ```json 块追加：`apply_main_reply` 走 `rfind("```json")`，追加在末尾即生效。
+    """
+    arr = _first_json(rescue_text or "", "[", "]")
+    if not isinstance(arr, list):
+        return reply_text or ""
+    block = json.dumps(arr, ensure_ascii=False)
+    return (reply_text or "").rstrip() + f"\n\n```json\n{block}\n```"
+
+
 def apply_main_reply(decisions, reply_text: str) -> list:
     """把主模型一轮回复的 JSON 决策合并进决策集——**唯一改 Decision 状态处**（决策 A，ADR 0019 v5）。
 
@@ -693,25 +803,32 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
         # 1) 两评审员**顺序**进言：都审同一份轮初快照（独立双审），各自超时/故障→空进言跳过。
         #    v4 由并行改顺序——分屏逐个流式打字像"讨论"，且规避同 key 并发被限流（见 _run_reviewers_serial）。
         #    v5：评审员输出**不 apply**（只进言），逐条 emit 供前端分屏。
-        try:
-            review_fn.scope = len(cur)     # 供 make_review_fn 按规模伸缩预算（同 .partial 的属性约定）
-        except AttributeError:             # 传进来的是不可挂属性的可调用对象（如 lambda 之外的 C 函数）
-            pass
         # C6：第 2 轮起把**上一轮主模型的回复**喂给评审员——原来每轮只喂决策快照，评审员既听不见 hub
         # 也听不见对方，"再讨论一轮"实际是"看着被改过的决策再审一遍"，不是回应。只喂 hub 不喂对方镜头：
         # 两个镜头彼此独立是降错误相关性的核心（见 _RESPOND_DIRECTIVE）。
-        prompts = [(name, build_review_prompt(directive, cur, last_main_out))
-                   for name, directive in reviewers]
-        # 超时与预算成对伸缩：只放宽预算不放宽超时＝写到一半被打断，尾部照样丢（见 scale_review_timeout）。
-        # 基线预算从 review_fn 上取（同 .scope/.partial 的属性约定），预算没涨时超时也不动。
+        # ② 分批评审：决策多时切成若干批，**保证每条都进过某一批的视野**（focus 只管批内密度）。
+        #    ≤REVIEW_BATCH_SIZE 条 → 单批，行为与分批前完全一致（日常方案不受影响）。
+        batches = batch_decisions(cur) or [list(cur)]
         base_budget = getattr(review_fn, "base_max_tokens", REVIEW_MAX_TOKENS)
-        outs = _run_reviewers_serial(review_fn, prompts,
-                                     timeout=scale_review_timeout(timeout, len(cur), base_budget),
-                                     cancel=cancel)
         reviewer_outputs = []
-        for (name, _directive), out in zip(reviewers, outs):
-            reviewer_outputs.append((name, out))
-            _emit("reviewer_done", {"round": round_idx, "reviewer": name, "verdict": out})
+        for bi, batch in enumerate(batches):
+            if cancel and cancel():
+                break
+            try:
+                review_fn.scope = len(batch)   # 按**本批**规模伸缩预算，不再按全量（同 .partial 属性约定）
+            except AttributeError:
+                pass
+            scope_note = batch_scope_note(bi, len(batches), batch, cur)
+            prompts = [(name, build_review_prompt(directive + scope_note, batch, last_main_out))
+                       for name, directive in reviewers]
+            # 超时与预算成对伸缩：只放宽预算不放宽超时＝写到一半被打断，尾部照样丢（见 scale_review_timeout）。
+            outs = _run_reviewers_serial(
+                review_fn, prompts,
+                timeout=scale_review_timeout(timeout, len(batch), base_budget), cancel=cancel)
+            for (name, _directive), out in zip(reviewers, outs):
+                reviewer_outputs.append((name, out))
+                _emit("reviewer_done", {"round": round_idx, "reviewer": name, "verdict": out,
+                                        "batch": bi + 1, "batches": len(batches)})
         if cancel and cancel():          # 评审员跑完后再确认一次：取消就别再发起主模型那次（更长的）调用
             stop_reason = "cancelled"
             break
@@ -721,6 +838,15 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
         main_out = _run_reviewers_serial(
             review_fn, [(MAIN, main_prompt)],
             timeout=scale_review_timeout(main_timeout, len(cur), base_budget), cancel=cancel)[0]
+        # 2b) verdict 救援（③）：抠不到 JSON = 这一轮的决定一条都不会落地。补一次「只要结论」的短调用
+        #     把它救回来，而不是像以前那样只在事后提示"本轮决定可能没有生效"。**仅在真抠不到时才发**，
+        #     正常路径零额外成本；救不回来就照旧走原回复（apply 拿不到数组 → 决策原样保留，行为同以前）。
+        if needs_verdict_rescue(main_out) and not (cancel and cancel()):
+            _emit("main_reply_rescue", {"round": round_idx})
+            rescued = _run_reviewers_serial(
+                review_fn, [(MAIN, build_verdict_rescue_prompt(cur, main_out))],
+                timeout=main_timeout, cancel=cancel)[0]
+            main_out = merge_rescued_verdict(main_out, rescued)
         # 3) apply 主模型 JSON —— **唯一改 Decision 状态处**（决策 A：可改 status/blocking/current_choice）。
         cur = apply_main_reply(cur, main_out)
         last_main_out = main_out
