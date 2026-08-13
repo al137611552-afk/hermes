@@ -165,6 +165,11 @@ agent:
   research_refine: true        # 总开关；false=关（只在前端摘要条显示质量、不催重搜）
   research_refine_max: 1       # 同一搜索 query 最多催重搜几次（防无限重搜）
   research_max_rounds: 3        # 整轮催重搜总预算；达上限→停搜、用现有内容综合作答+声明局限（防"换关键词"绕过上面 per-query 上限的无限重搜→交白卷）
+  # 会话级工具预算（跑飞止损护栏，对标 Claude Code 的 per-session 上限）：上面那些预算都是**局部**的
+  # （一次研究催几轮、一个子任务回炉几次），这两条管**整个会话某个工具总共能调多少次**——防跑偏的任务
+  # 换着关键词无限搜、无限派子 Agent。**主 Agent 与所有子 Agent 共用一份计数**。0=不限。
+  max_web_searches_per_session: 200
+  max_delegates_per_session: 200
   # 块H3a 模型裁判：H2 正则拦不住时，再用模型判语义相关性（"夏季"≠厚秋冬款、来源权威/时效等）。
   # 每次联网搜索后多一次模型调用（有成本/延迟）。false=关，只用 H1/H2 正则。
   research_judge: true

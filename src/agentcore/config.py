@@ -107,6 +107,8 @@ class AgentConfig(BaseModel):
     affected_test_runner: str = "auto" # FR-13.C 运行器：auto（.py 有 pytest 用 pytest 否则独立脚本）/pytest/python
     delegate_max_revisions: int = 0    # 委派评分回炉（借 Claude Code Performance Outcomes）：子 Agent 产出后由
                                        # lead 模型按验收标准评分，不达标带反馈打回重做，最多 N 轮。0=关（不评、行为同旧版）
+    max_web_searches_per_session: int = 200  # 会话级工具预算（对标 Claude Code per-session 上限）：跑飞止损护栏，
+    max_delegates_per_session: int = 200      # 正常会话摸不到。主+子 Agent 共用一份计数。0=不限。见 budget.py
     hooks: list[HookConfig] = []       # 可编程生命周期 hooks（PreToolUse/PostToolUse）：用户自定义守卫/动作
     stuck_edit_threshold: int = 3      # 情境自启：同一文件被改 ≥N 次且仍在失败时，自动提示模型用 trace_run
                                        # 看中间值定位（不再盲改）。0=关。零用户配置、由 hermes 判断时机
@@ -707,6 +709,11 @@ LIMITS_SPEC = (
      "hint": "auto_test 失败后自动迭代修复的最多轮数", "type": "int", "min": 1, "max": 10},
     {"key": "agent.deadend_threshold", "group": "重试 / 研究 / 测试", "label": "死路提示阈值",
      "hint": "同一条路累计非瞬时失败 ≥ 此值 → 提示换思路", "type": "int", "min": 1, "max": 10},
+    {"key": "agent.max_web_searches_per_session", "group": "预算", "label": "每会话联网搜索上限",
+     "hint": "跑飞止损：主+子 Agent 共用一份计数，达上限后不再执行 web_search。0=不限",
+     "type": "int", "min": 0, "max": 5000},
+    {"key": "agent.max_delegates_per_session", "group": "预算", "label": "每会话委派上限",
+     "hint": "跑飞止损：全会话 delegate 调用总次数上限。0=不限", "type": "int", "min": 0, "max": 5000},
     # 联网 / MCP 超时
     {"key": "web.timeout", "group": "联网 / MCP", "label": "web 请求超时（秒）",
      "hint": "单次 web_search/web_fetch 请求超时", "type": "int", "min": 5, "max": 300},

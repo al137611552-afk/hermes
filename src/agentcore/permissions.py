@@ -133,9 +133,15 @@ _SAFE_SUBCMD = {
     "dotnet": frozenset({"test"}),
     "poetry": frozenset({"show"}),
 }
-# git 的删除/改名/强制类开关——即便子命令只读名单内（branch/tag），带这些也不放行。
+# git 的删除/改名/强制/写文件/执行类开关——即便子命令只读名单内（branch/tag/grep/diff），带这些也不放行。
+# `--output` 会写任意路径的文件；`-O` / `--open-files-in-pager` 让 git grep 拿匹配文件去喂一个**任意命令**
+# （`git grep -O rm foo` 真能删文件）——只读子命令 + 一个开关就能写/执行，故一并拉黑。
 _GIT_UNSAFE_FLAGS = frozenset({"-d", "-D", "--delete", "-m", "-M", "--move",
-                               "--force", "-f", "--prune"})
+                               "--force", "-f", "--prune", "--output",
+                               "-O", "--open-files-in-pager"})
+# 上面这些开关的「粘连写法」前缀：`--output=/tmp/x`（等号）与 `-Orm`（紧跟值）都得认出来，
+# 光做 token 全等比较会漏（实测 `git diff --output=/tmp/x` 曾被自动放行）。
+_GIT_UNSAFE_PREFIXES = ("-O", "--output")
 # find 的写/执行类开关。
 _FIND_UNSAFE_FLAGS = frozenset({"-delete", "-exec", "-execdir", "-ok", "-okdir",
                                 "-fprint", "-fprintf", "-fls"})
@@ -143,7 +149,16 @@ _FIND_UNSAFE_FLAGS = frozenset({"-delete", "-exec", "-execdir", "-ok", "-okdir",
 #   bash: $(...) `...` <(...) >(...)；PowerShell: $(...) @(...) 子表达式、` 转义。
 _SUBST_RE = _re2.compile(r"\$\(|`|<\(|>\(|@\(")
 # 段分隔符（管道也算——每段都要安全）。
-_SEG_SPLIT_RE = _re2.compile(r"&&|\|\||[;|]")
+# **换行与单个 `&` 也是分隔符**：曾经只切 `&& || ; |`，于是 `ls\nrm -rf /` 和 `ls & rm -rf /`
+# 整条被当成一段、首词 `ls` 命中只读白名单 → **自动放行**（2026-08-13 对抗性回归实测到的真绕过）。
+# 换行在 bash/PowerShell 里都是命令分隔符，`&` 在 bash 是后台执行、在 PowerShell 是调用操作符。
+_SEG_SPLIT_RE = _re2.compile(r"&&|\|\||[;|&\n\r]")
+# 自动放行的命令长度上限（对齐 Claude Code：超长命令一律询问）。判定是白名单式的，
+# 命令越长越可能藏着判定没覆盖的构造；这种长度的命令本就不该免确认。
+_MAX_AUTORUN_CHARS = 10_000
+# `env` 既能只读打印环境，也能**当执行器**跑任意命令（`env rm -rf /`、`env FOO=1 rm -rf /`）。
+# 它是 _SAFE_LEADING 里唯一有这个双重身份的，故单独判：只在「无参数」或「参数全是 KEY=VALUE」时放行。
+_ENV_ASSIGN_RE = _re2.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 # 可执行名后缀（Windows）——匹配命令名时剥掉。
 _EXE_SUFFIXES = (".exe", ".bat", ".cmd", ".com", ".ps1")
 
@@ -166,6 +181,16 @@ def _effective_tokens(toks: list) -> "tuple[str, list]":
     return (_norm_cmd(toks[0]) if toks else ""), toks[1:]
 
 
+def _git_flag_unsafe(tok: str) -> bool:
+    """git 参数是否属危险开关。认三种写法：全等（`-d`）、等号粘连（`--output=x`）、值紧跟（`-Orm`）。"""
+    if tok in _GIT_UNSAFE_FLAGS:
+        return True
+    head = tok.split("=", 1)[0]
+    if head in _GIT_UNSAFE_FLAGS:
+        return True
+    return any(tok.startswith(p) for p in _GIT_UNSAFE_PREFIXES)
+
+
 def _segment_safe(seg: str) -> bool:
     """单段命令是否「明显安全」。"""
     toks = seg.split()
@@ -174,11 +199,14 @@ def _segment_safe(seg: str) -> bool:
     cmd, rest = _effective_tokens(toks)
     if cmd in ("sudo", "doas", "su"):       # 提权一律确认
         return False
+    if cmd == "env":
+        # 裸 env / `env FOO=1 BAR=2`（只打印或只设变量）放行；一旦带上命令名就是执行器，落回确认。
+        return all(_ENV_ASSIGN_RE.match(t) for t in rest)
     if cmd == "git":
         sub = rest[0].lower() if rest else ""
         if sub and sub not in _SAFE_SUBCMD["git"]:
             return False
-        if any(f in _GIT_UNSAFE_FLAGS for f in rest[1:]):
+        if any(_git_flag_unsafe(f) for f in rest[1:]):
             return False
         return True                          # 裸 git（打印帮助）或只读子命令、无危险开关
     if cmd == "find":
@@ -195,6 +223,8 @@ def command_is_safe(command: str) -> bool:
     """整条 shell 命令是否「明显安全」（每个串接/管道段都安全、无写重定向、无命令替换/脚本块）。"""
     cmd = (command or "").strip()
     if not cmd:
+        return False
+    if len(cmd) > _MAX_AUTORUN_CHARS:        # 超长命令一律确认（白名单判定覆盖不了的构造空间太大）
         return False
     if _SUBST_RE.search(cmd):                # 命令替换 / 子表达式
         return False

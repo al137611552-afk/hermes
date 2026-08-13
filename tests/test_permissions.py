@@ -56,6 +56,87 @@ def test_suggest_rule():
         "web_fetch(https://docs.python.org/*)"
 
 
+# ---- 自动放行的对抗性回归 ------------------------------------------------------
+# 智能确认分级是**免确认**入口，判错方向不对称：多弹一次只是麻烦，误放行一条毁灭性命令是事故。
+# 下面这批是照主流 agent 公开修过的绕过手法逐条打的（Claude Code 2.1.214/2.1.218/2.1.222 那批
+# bash 权限检查绕过），2026-08-13 首次跑出 **4 类真绕过**：换行分隔符 / 单个 & / env 当执行器 /
+# 无长度上限。修法见 permissions.py 对应注释。**新增白名单命令前先回来加一条对抗用例。**
+
+def test_autorun_separator_bypass():
+    """藏在分隔符后面的第二条命令必须让整条落回确认。"""
+    # 换行——曾经整条被当成一段，首词 ls 命中白名单就放行了
+    assert not command_is_safe("ls\nrm -rf /tmp/x")
+    assert not command_is_safe("ls\r\nrm -rf /tmp/x")
+    assert not command_is_safe("git status\nsudo rm -rf /")
+    # 单个 &：bash 后台执行 / PowerShell 调用操作符
+    assert not command_is_safe("ls & rm -rf /tmp/x")
+    assert not command_is_safe("ls & rm.exe")
+    # 已有防线不能被改坏
+    assert not command_is_safe("ls; rm -rf /tmp/x")
+    assert not command_is_safe("ls | rm")
+    assert not command_is_safe("ls && rm -rf /tmp/x")
+
+
+def test_autorun_env_is_not_an_executor():
+    """env 能只读打印，也能当执行器——只在无参/全是 KEY=VALUE 时放行。"""
+    assert not command_is_safe("env rm -rf /tmp/x")
+    assert not command_is_safe("env FOO=1 rm -rf /tmp/x")
+    assert command_is_safe("env")                    # 裸 env 只打印环境
+    assert command_is_safe("env FOO=1 BAR=2")        # 只设变量、没有命令名
+    assert command_is_safe("printenv PATH")
+
+
+def test_autorun_length_cap():
+    """超长命令一律确认：白名单判定覆盖不了那么大的构造空间。"""
+    assert command_is_safe("echo " + "a" * 100)      # 正常长度照旧放行
+    assert not command_is_safe("echo " + "a" * 20000)
+
+
+def test_autorun_git_write_and_exec_flags():
+    """只读子命令 + 一个开关就能写文件/执行命令的组合。"""
+    assert not command_is_safe("git grep -O rm foo")        # -O 拿匹配文件喂任意命令
+    assert not command_is_safe("git grep -Orm foo")         # 值紧跟的粘连写法
+    assert not command_is_safe("git diff --output=/tmp/x")  # 等号粘连、写任意路径
+    assert not command_is_safe("git -c core.pager=rm status")
+    assert not command_is_safe("git branch -d feat")
+    # 正常只读用法不能被误伤
+    assert command_is_safe("git status")
+    assert command_is_safe("git log --oneline -5")
+    assert command_is_safe("git grep foo")
+    assert command_is_safe("git diff HEAD~1")
+
+
+def test_autorun_unicode_padding_is_already_safe():
+    """填充空白绕过（JS 侧栽过）在这里天然不成立：Python str.split() 是 Unicode-aware。
+    留作证据，防将来有人把切词改成 split(' ') 之类把这个性质弄丢。"""
+    for pad in (" ", "　", "\t", "\v"):     # NBSP / 全角空格 / TAB / 垂直制表符
+        assert not command_is_safe(f"git{pad}push"), pad
+        assert not command_is_safe(f"sudo{pad}rm -rf /"), pad
+
+
+def test_autorun_existing_defenses_hold():
+    """命令替换 / 脚本块 / 重定向 / 提权 / find 写开关——回归防线。"""
+    assert not command_is_safe("ls $(rm -rf /)")
+    assert not command_is_safe("ls `rm -rf /`")
+    assert not command_is_safe("gci | where {rm $_}")
+    assert not command_is_safe("ls > /tmp/x")
+    assert not command_is_safe("cat a.txt >> b.txt")
+    assert not command_is_safe("sudo ls")
+    assert not command_is_safe("find . -delete")
+    assert not command_is_safe("find . -exec rm {} ;")
+
+
+def test_autorun_readonly_still_auto_approved():
+    """防过度收紧：日常只读命令必须继续免确认，否则又回到确认疲劳。"""
+    for cmd in ("ls -la", "pwd", "cat README.md", "grep -rn foo src/", "rg foo",
+                "find . -name '*.py'", "pytest tests/", "python -m pytest -q",
+                "git status && git diff", "cat a.txt | grep foo | wc -l",
+                "Get-ChildItem", "whoami", "npm test"):
+        assert command_is_safe(cmd), cmd
+    assert is_safe_autorun("run_bash", {"command": "ls -la"})
+    assert not is_safe_autorun("write_file", {"path": "a.txt", "content": "x"})
+
+
 # ---- gate 集成 ---------------------------------------------------------------
 
 def test_gate_config_allow_skips_prompt():

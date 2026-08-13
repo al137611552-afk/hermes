@@ -605,6 +605,7 @@ class Conversation:
             research_refine_max=res.config.agent.research_refine_max,
             research_max_rounds=res.config.agent.research_max_rounds,
             research_judge=self._make_research_judge(provider, res.config.agent.research_judge),
+            tool_budget=self._get_tool_budget(res.config),
         )
         n_in = len(model_messages)  # 压缩后喂入条数；loop 仅在其后追加新消息
         try:
@@ -1822,6 +1823,7 @@ class Conversation:
             research_refine_max=cfg.agent.research_refine_max,
             research_max_rounds=cfg.agent.research_max_rounds,
             research_judge=self._make_research_judge(provider, cfg.agent.research_judge),
+            tool_budget=self._get_tool_budget(cfg),   # 与主 Agent 同一实例：子 Agent 的搜索也计入总数
         )
         # 子循环抛异常时自动重试一次（附上失败原因），仍失败才回灌主 Agent（FR-11.6b）。
         # 取消时不重试（用户主动停止）。
@@ -2173,6 +2175,21 @@ class Conversation:
                 fm = None
             self._failure_memory_cache = fm
         return fm
+
+    def _get_tool_budget(self, cfg):
+        """会话级工具预算：懒建并复用**单个** ToolBudget，主 Agent 与所有子 Agent 传同一个。
+
+        共用是本功能的要害——每个子 Agent 各拿一份新预算等于没有上限（见 budget.py 模块注释）。
+        两个上限都为 0（用户全关）→ None，退化成完全不计数、零行为变化。
+        """
+        tb = getattr(self, "_tool_budget_cache", None)
+        if tb is None:
+            from ..budget import ToolBudget, build_limits
+            limits = build_limits(cfg.agent.max_web_searches_per_session,
+                                  cfg.agent.max_delegates_per_session)
+            tb = ToolBudget(limits) if any(v > 0 for v in limits.values()) else None
+            self._tool_budget_cache = tb
+        return tb
 
     def _make_research_judge(self, provider, enabled: bool):
         """块H3a/H3b：构造模型裁判 judge_fn(prompt, images)->str，用当前 provider 跑一次只读判断。
@@ -2792,14 +2809,22 @@ class Conversation:
             return {"ok": False, "error": str(e)}
 
     def open_workspace_file(self, path: str) -> dict:
-        import webbrowser
-        from ..workspace import resolve_within
+        """用系统默认程序打开预览中的文件（右侧面板「在浏览器打开」）。
+
+        走 `open_in_default_app`：Windows 优先 `os.startfile(原生路径)` 而不是 `webbrowser.open(file URI)`
+        ——后者对含中文/空格的路径会因百分号编码静默失败（详见 workspace.open_plan 注释）。
+        失败时**如实回 ok:False + 原因 + 绝对路径**，前端据此提示用户（老实现一律回 ok:True，
+        于是点了没反应也没报错）。
+        """
+        from ..workspace import open_in_default_app, resolve_within
         try:
             p = resolve_within(self.workspace, path or "")
             if not p.is_file():
                 return {"ok": False, "error": "文件不存在"}
-            webbrowser.open(p.as_uri())
-            return {"ok": True}
+            ok, err = open_in_default_app(p)
+            if ok:
+                return {"ok": True, "path": str(p)}
+            return {"ok": False, "error": f"打不开：{err}", "path": str(p)}
         except ValueError as e:
             return {"ok": False, "error": str(e)}
         except Exception as e:  # noqa: BLE001
