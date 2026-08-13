@@ -133,7 +133,7 @@ Tool ─► Evaluation(事实) ─► Policy ─► Need(差距) ─► Planner 
 - ⏳ **后续·仍未做**：目标满足驱动的换源（触发从"零新域名"补成"目标数据点连续缺席"，价格/数字类先做）；研究墙·墙钟时间上限。Issue 生命周期 / 通用 Search Policy 抽象按需后置。见文末「待办 · 第三档」。
 
 **交付物**：`evaluators/research.py`（H1）+ `loop.py detect_low_quality_research`（H2）+ `tests/test_research_evaluator.py` 8 测 + `tests/test_research_refine.py` 7 测 + config 两项 + ADR 0018 + Golden 2 条 + `scripts/diag_blockH.py`。
-**验收**：H1 ✅ 小红书超预算结果 `within_budget=0`+blocker issue、有在预算内不误报、无标价只给 signal。H2 ✅ 不达标触发重搜提示、达标不触发、无预算不触发、per-query 封顶、换词另起计数均有测试；**待 Windows 真机验**（观察模型据提示真的换词/换源重搜）。H3/H4 待续。
+**验收**：H1 ✅ 小红书超预算结果 `within_budget=0`+blocker issue、有在预算内不误报、无标价只给 signal。H2 ✅ 不达标触发重搜提示、达标不触发、无预算不触发、per-query 封顶、换词另起计数均有测试。H3/H4 ✅（见本块开头：全块 Windows 真机验证通过 diag_blockH 22/22，定版 3.48.0）。
 
 ---
 
@@ -281,9 +281,6 @@ A 是地基，必须先过。B/C 可并行起步但 C 依赖 B 的 signals。D �
 同版另修真机 bug：预览面板「在浏览器打开」对含中文/空格路径的已有项目无效（`as_uri()` 百分号编码）。
 
 **B 档 ⏳ 待拍板**（列进第三档）：
-- **B1 delegate 后台化**——最大的一条结构性差距。现在 `delegate.run()` 同步返回，同轮多个可并行但
-  主线必须干等；Claude Code 2.1.198 已改成子 agent 默认后台、主线继续干活、完成后通知。
-  v3.64.0 的并发可观测性（FR-17）正是它的前置基建，现在接得上。代价：动 loop 控制流，不小。
 - **B2 外部技能的信任边界**——`skillhub` 从 GitHub 市场装的 SKILL.md 直接成为模型上下文里的指令。
   已确认 `install_skill` 只装技能目录、不装命令，碰不到 `commands.py` 的 `mode: exec` 任意执行路径，
   内置命令也不可被同名覆盖（这两道设计对了）；剩下的是纯 prompt injection 面。
@@ -293,6 +290,16 @@ A 是地基，必须先过。B/C 可并行起步但 C 依赖 B 的 signals。D �
   `PreCompact`（压缩前抢救关键状态）。按现有 `match_hooks` 架子扩，成本低。
 
 **C 档 — 明确不做**（记录理由，防将来重复讨论）：
+- **delegate 后台化**（原 B1，2026-08-13 降级）。我最初照 Claude Code 2.1.198 把它列成"最大的结构性
+  差距"，**这是照搬 changelog 没换算到 hermes 的形态上**——同一份对标里我自己写过的判据
+  （"对方上消息总线是**它的架构约束逼出来的方案，不是优点**"）原样适用于这里：
+  **Claude Code 的子 agent 后台化，是单会话 CLI 的架构约束逼出来的**。hermes 没有那个约束——
+  每会话独立 worker + 队列（FR-8.2b），子任务跑着可以切到别的会话干活，**主线根本没被冻住**；
+  同轮多个 delegate 本来就并行（`_PARALLEL_CAP=4`）。后台化真正多出来的只是"主 agent 在等结果
+  期间还能自己动手"，但它派 delegate 恰恰是因为**需要那个结论才能往下走**——要让这事有价值，
+  模型得能规划出"等待期间去干另一件独立的事"，那是**规划能力**要求、不是机制缺失。
+  机制建好了模型不用，就是 `trace_run`/`search_code` 那条老规律。而代价是动 loop 控制流 +
+  子任务完成投递 + 取消/失败/上下文合并。**用户 2026-08-13 判断"意义不大"，同意。**
 - **子 agent 嵌套**（Claude Code 支持 3 层）：保持"子 Agent 不能再委派"。嵌套的成本失控风险大于收益。
 - **PTY / 持久 shell**（Codex `unified_exec`）：`procs.py` 已覆盖交互式场景大半，边际收益只剩
   "程序检测 tty 才输出进度条"。
@@ -309,5 +316,5 @@ A 是地基，必须先过。B/C 可并行起步但 C 依赖 B 的 signals。D �
 5. **4.X 工程深度**：provider 韧性 → 诊断升级（探测外部 linter，**不内嵌 LSP**）。
 6. **类人记忆深化②**：碎片规模大时按主题聚类（等真有规模）。
 7. **自动更新**（分发三件套末件，ROI 低）。
-8. **对标主流 B 档**：B1 delegate 后台化（结构性差距，前置基建已就位）→ B2 外部技能 sanitize →
-   B3 hooks 事件扩容（`UserPromptSubmit`/`Stop`/`PreCompact`）。详见上方「对标主流 agent」。
+8. **对标主流 B 档**（B1 已降 C 档不做，见上方「对标主流 agent」）：
+   B2 外部技能 sanitize → B3 hooks 事件扩容（`UserPromptSubmit`/`Stop`/`PreCompact`）。两条都小而确定。
