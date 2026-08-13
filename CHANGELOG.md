@@ -42,6 +42,12 @@
   "非 Windows 上必须静默跳过"，**但没有任何平台守卫**——测试名不会让它只在非 Windows 上跑，
   Windows CI 上 headless runner 无窗口走 `error` 分支即红。
 - `test_commands` 补 `ignore_cleanup_errors=True`（上轮被编码错误挡在前面的同类问题）。
+- **`grep_search` 的路径拼法与 `glob_search` 对齐**（CI 第三轮抓到）。`search.py` 三处 `relative_to`
+  里唯独 grep 那处漏了 `.replace("\\", "/")`，于是 Windows 上 `glob_search` 吐 `src/app.py`、
+  `grep_search` 吐 `src\app.py`——**同一个文件两种拼法递给模型**。工作区相对路径的对外拼法只能有一种。
+- `test_commands` 的集成用例按平台选 shell。原来写死 `shell="bash"`，绕过 config 的 `_resolve_shell`
+  （Windows→powershell）；而 Windows 上 `bash` 解析到 `C:\Windows\System32\bash.exe` 这个 **WSL 存根**，
+  未装发行版时返回 exit 1 + 一段 UTF-16LE 英文提示。
 
 ## [3.67.0] - 2026-08-13
 
