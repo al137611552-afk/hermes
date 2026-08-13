@@ -1306,6 +1306,11 @@ body.plan-on .composer::before {
 .rvd-round-sep { font-size: 11px; color: var(--muted); text-transform: uppercase;
   letter-spacing: .04em; margin-top: 12px; padding-top: 6px; border-top: 1px solid var(--border); }
 .rvd-stream > .rvd-round-sep:first-child { margin-top: 4px; border-top: none; padding-top: 0; }
+/* 分批评审的批次分隔条：比轮次分隔**弱一档**（轮次是大节、批次是节内的小节），
+   否则两种分隔线粗细一样，一屏里看不出哪个是大边界。自带全部样式、不蹭 .rvd-round-sep——
+   style.css 是按功能顺序追加的大文件，后写的同特异性规则永远赢（见 CLAUDE.md 已踩过的坑）。*/
+.rvd-batch-sep { font-size: 11px; color: var(--muted); margin-top: 8px;
+  padding: 2px 8px; border-left: 2px solid var(--border-strong); opacity: .85; }
 .rvd-turn { border: 1px solid var(--border); border-left: 3px solid var(--border-strong);
   border-radius: 8px; background: var(--bg); padding: 8px 10px; margin-top: 8px; }
 .rvd-turn-main { border-left-color: var(--accent);

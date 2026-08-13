@@ -1115,6 +1115,36 @@ class Conversation:
                 plan[role] = self.active_model
         return plan
 
+    def _warn_thin_review_budget(self) -> None:
+        """开跑前预检：哪个角色的**模型档 max_tokens** 压过了评审基线预算，现在就说清楚。
+
+        为什么要预检而不是等截断后再提示：评审一跑十几分钟，等镜头把话说到一半被切才发现
+        "预算被砍到 1024"，前面的时间全白等；而且**两个镜头默认走异构模型**，出问题的常常是
+        用户根本没留意的那个副档（真机反馈：只有产品镜头两批都截断，技术镜头好好的）。
+        只警告不拦截——沿用本模块一贯立场（喂事实、让用户决定）。
+        """
+        base = int(getattr(self.res.config.agent, "design_review_verdict_max_tokens", 0) or 0)
+        if base <= 0:
+            return
+        try:
+            plan = self.review_model_plan()
+            provider_for = self._design_review_provider_for()
+        except Exception:  # noqa: BLE001 — 预检绝不能把评审本身搞挂
+            return
+        for role in ("product", "technical"):
+            try:
+                prov = provider_for(role)
+                cap = int(getattr(prov, "max_tokens", 0) or 0)
+            except Exception:  # noqa: BLE001
+                continue
+            if 0 < cap < base:
+                self.emit("review_warn", {
+                    "reviewer": role, "profile": plan.get(role) or self.active_model,
+                    "error": f"该模型档的 max_tokens={cap}，低于评审结论上限 {base}——"
+                             f"本角色的进言实际只有 {cap} tokens 可写，很可能说到一半被截断。"
+                             f"去「设置 → Provider」把这个档的 max_tokens 调高（调「评审结论上限」无效）。",
+                })
+
     def _profile_key_ready(self, profile: str) -> bool:
         """该模型档案现在能不能真的发出请求：档案存在 且 它的 api_key_env 解析得出非空 key。"""
         cfg = self.res.config
@@ -1304,6 +1334,10 @@ class Conversation:
             if err is not None:
                 self.emit("review_done", err)   # 抽取阶段失败（无决策/截断/nojson）：让前端清 busy + 提示
                 return err
+            # 预检放在**抽取之后、多轮评审之前**：抽取只有一次调用，而评审要跑十几分钟——
+            # 在这里警告仍然"够早"。**不能提到抽取之前**：那会先构造镜头的 provider，
+            # 破坏"第一次构造 provider = 抽取、必须是主模型"这条既有约束（test_conversation 钉着）。
+            self._warn_thin_review_budget()
             self._review_session = session
             self._review_applied = False      # 重新跑评审（含 ↻ 重跑）→ 复活面板，撤销上一轮终态
             if self._review_cancel.is_set():

@@ -696,6 +696,44 @@ def scale_review_budget(base: int, n_decisions: int, model_cap: "int | None" = N
     return max(1, want)
 
 
+def review_budget_detail(base: int, n_decisions: int,
+                         model_cap: "int | None" = None) -> "tuple[int, str]":
+    """返回 (生效预算, 谁定的)。`who` ∈ `base` / `per_decision` / `model_cap`（纯函数）。
+
+    **为什么需要它**：生效预算是 `min(max(评审结论上限, 600×条数+800), 模型档 max_tokens)` 三者博弈的
+    结果，而截断提示原来一律让用户"调高「评审结论上限」"——当真正卡住的是**模型档 max_tokens**
+    （或「主模型输出上限」覆盖）时，用户照着提示调了那个旋钮**一点用都没有**，只会得出
+    "复杂方案评审总超限、这功能没用"的结论。真机反馈就撞在这上面。
+    诊断信息必须指向**真正生效的那个约束**，否则等于把人往错的方向支。
+    """
+    want = scale_review_budget(base, n_decisions)          # 未受 model_cap 约束的诉求
+    cap = int(model_cap or 0)
+    if cap > 0 and cap < want:
+        return cap, "model_cap"
+    return want, ("per_decision" if want > int(base or 0) else "base")
+
+
+# 各约束对应的**用户可见旋钮**——提示里必须指名道姓，别只说"去设置里调"。
+BUDGET_KNOB_ZH = {
+    "base": "设置 →「限额与预算 → 评审」→「评审结论上限 max_tokens」",
+    "per_decision": "减少一次评审的决策条数（预算已按条数自动放宽，仍不够）",
+    "model_cap": "该模型档的 max_tokens（设置 → Provider），"
+                 "或「限额与预算 → 主模型 / 主循环」→「输出上限 max_tokens」若你覆盖过它",
+}
+
+
+def truncation_note(name: str, budget: int, who: str, is_main: bool) -> str:
+    """截断提示：说清**生效预算是多少、被谁卡住、该调哪个旋钮**（纯函数，便于单测钉死措辞）。"""
+    knob = BUDGET_KNOB_ZH.get(who, BUDGET_KNOB_ZH["base"])
+    head = (("⚠ 主模型回复达输出上限被截断：结构化决策 JSON 可能不完整，"
+             "**本轮的决定可能没有生效**（决策状态保持原样）。")
+            if is_main else
+            ("⚠ 本镜头输出达上限被截断：**排在后面的决策没有被评到**，"
+             "请把以上意见当作只覆盖了前一部分的**有偏子集**——没被提到 ≠ 没问题。"))
+    return (f"\n\n_（{head}本次生效预算 **{budget} tokens**，"
+            f"受限于：**{knob}**。改这一处才有用。）_")
+
+
 REVIEW_TIMEOUT_CAP_FACTOR = 2.0    # 超时最多放宽到基准的几倍（够 10 条决策写完，又不让卡死的调用拖太久）
 
 
@@ -814,6 +852,12 @@ def run_review(decisions, review_fn, max_rounds: int = 3, reviewers=REVIEWERS,
         for bi, batch in enumerate(batches):
             if cancel and cancel():
                 break
+            # 分批时先告诉前端"接下来的流式文本属于第几批"——`review_delta` 事件只带 (角色, 文本)，
+            # 没有这个信标，前端无法把同一轮里同一角色的多段进言分开，会把第 2 批的字直接追加进
+            # 第 1 批的气泡里（挤成一团、且第 1 批的结论被覆盖）。单批时不发，老行为零变化。
+            if len(batches) > 1:
+                _emit("batch_start", {"round": round_idx, "batch": bi + 1, "batches": len(batches),
+                                      "ids": [d.id for d in batch]})
             try:
                 review_fn.scope = len(batch)   # 按**本批**规模伸缩预算，不再按全量（同 .partial 属性约定）
             except AttributeError:
@@ -920,15 +964,16 @@ def make_review_fn(provider_for, max_tokens: int = REVIEW_MAX_TOKENS, on_delta=N
                 except Exception:  # noqa: BLE001
                     pass
         if stop in ("max_tokens", "length"):       # 达上限被截断：补可见提示（别让用户/主模型面对无声断句）
+            # **必须报出真正卡住的那一处**：生效预算是「评审结论上限 / 按条数放宽 / 模型档 max_tokens」
+            # 三者取小的结果，原来一律让用户去调「评审结论上限」——真凶是模型档上限时，
+            # 用户调了那个旋钮毫无变化，只会得出"复杂方案评审总超限＝没用"的结论（真机反馈撞的就是这个）。
+            eff, who = review_budget_detail(max_tokens, getattr(review_fn, "scope", 0),
+                                            getattr(provider, "max_tokens", None))
             if name == MAIN:
-                # 主模型被截断比镜头严重一个量级：末尾 JSON 没了 = 本轮决定一条都不落地，必须说清楚。
-                note = ("\n\n_（⚠ 主模型回复达输出上限被截断：结构化决策 JSON 可能不完整，"
-                        "**本轮的决定可能没有生效**（决策状态保持原样）。请调高该模型档的 max_tokens，"
-                        "或减少一次评审的决策条数后点 ↻ 重跑。）_")
-            else:
-                note = ("\n\n_（⚠ 本镜头输出达上限被截断：**排在后面的决策没有被评到**，"
-                        "请把以上意见当作只覆盖了前一部分的**有偏子集**——没被提到 ≠ 没问题。"
-                        "可在设置调高「评审结论上限」，或减少一次评审的决策条数。）_")
+                # 主模型走 main_max_tokens（缺省=模型档上限），与评审员不是同一个旋钮。
+                eff = main_max_tokens or getattr(provider, "max_tokens", 0) or eff
+                who = "model_cap"
+            note = truncation_note(name, eff, who, name == MAIN)
             out.append(note)
             if on_delta:
                 try:

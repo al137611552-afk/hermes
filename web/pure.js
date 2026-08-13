@@ -464,6 +464,25 @@
   function debateMainRoundLabel(round) {
     return `第 ${round || 1} 轮 · ${DEBATE_MAIN_LABEL}`;
   }
+  // 分批评审（决策多时切批，每批一段进言）：同一轮里同一角色会说多次，标签必须把批次说清楚，
+  // 否则两段进言看着像模型自己重复了一遍。单批（batches<=1）时不加后缀——日常方案界面零变化。
+  function debateBatchSuffix(batch, batches) {
+    const n = Number(batches) || 0;
+    const i = Number(batch) || 0;
+    return n > 1 && i > 0 ? ` · 第 ${i}/${n} 批` : "";
+  }
+  // 某一批的分隔条文案：说清这批评哪几条决策，用户才知道"这段只覆盖了部分"。
+  function debateBatchSepText(batch, batches, ids) {
+    const list = Array.isArray(ids) ? ids.filter(Boolean) : [];
+    const head = `第 ${Number(batch) || 1}/${Number(batches) || 1} 批`;
+    return list.length ? `${head}：${list.join("、")}` : head;
+  }
+  // 发言块的索引键：分批后 (轮, 角色) 不再唯一——同一轮同一角色每批各一块，漏掉批次会让
+  // 第 2 批的流式文本追加进第 1 批的气泡、且第 1 批的结论被覆盖。
+  function debateTurnKey(role, batch) {
+    const i = Number(batch) || 0;
+    return i > 1 ? `${role}#${i}` : String(role);
+  }
   const DEBATE_STATUS_ZH = {
     Accepted: "采纳", Rejected: "否决", Deferred: "后置", NeedUser: "待拍板",
   };
@@ -972,6 +991,7 @@
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,
     DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_MAIN, DEBATE_MAIN_LABEL, debateMainRoundLabel,
     DEBATE_STATUS_ZH, splitVerdictProse, verdictTally, debateConvergedText,
+    debateBatchSuffix, debateBatchSepText, debateTurnKey,
     planSessionList,
     WS_TAB_KEYS, wsTabVisible, resolveWorkspaceTabs, formatOpenFileError,
   };
