@@ -15,7 +15,9 @@ from agentcore.agent.design_review import (  # noqa: E402
     ACCEPTED, DEFERRED, NEEDUSER, OPEN, REJECTED, Decision, DesignReviewSession,
     apply_review, build_review_prompt, can_start_coding, count_blocking,
     focus_count, review_output_spec, scale_review_budget, scale_review_timeout,
-    MAIN, build_main_reply_prompt, main_output_spec,
+    MAIN, build_main_reply_prompt, main_output_spec, apply_main_reply,
+    needs_verdict_rescue, build_verdict_rescue_prompt, merge_rescued_verdict,
+    batch_decisions, batch_scope_note,
     auto_reviewer_models, is_heterogeneous, usable_profiles,
     diagnose_decisions, escalate_unresolved, gate_status,
     make_review_fn, parse_decisions, render_consensus, round_snapshot, run_review,
@@ -676,10 +678,16 @@ def test_run_review_scales_both_reviewer_and_main_timeouts(monkeypatch=None):
                       lambda n, p: "[]", max_rounds=2, timeout=180, main_timeout=120)
     finally:
         dr._run_reviewers_serial = orig
-    by_name = dict(seen)
-    assert by_name["product"] == scale_review_timeout(180, 10)   # 评审员侧
-    assert by_name[MAIN] == scale_review_timeout(120, 10)        # 主模型侧同样伸缩
-    assert by_name["product"] > 180 and by_name[MAIN] > 120       # 确实放宽了，不是原样透传
+    # **有意的行为变更（② 分批评审）**：评审员侧的超时/预算现在按「这次调用真正覆盖的那一批」
+    # 伸缩，不再按全量决策数——一次调用只评 ≤REVIEW_BATCH_SIZE 条，按 10 条给预算就虚高了。
+    # 主模型侧不变：它仍是一次调用读全部决策。
+    prod = [t for n, t in seen if n == "product"]
+    main_t = [t for n, t in seen if n == MAIN]
+    assert len(prod) == 2, "10 条决策应分 2 批（8 + 2）"
+    assert prod[0] == scale_review_timeout(180, 8)               # 第一批 8 条
+    assert prod[1] == scale_review_timeout(180, 2)               # 第二批 2 条（小批不放宽）
+    assert main_t[0] == scale_review_timeout(120, 10)            # 主模型仍按全量伸缩
+    assert prod[0] > 180 and main_t[0] > 120                     # 确实放宽了，不是原样透传
 
 
 def test_main_output_spec_limits_prose_but_never_the_json():
@@ -773,6 +781,153 @@ def test_usable_profiles_filters_by_key_presence():
     # 界面显示成正常的多模型讨论，实际那一路没 key、调不通。空白 key 同样不算。
     assert usable_profiles(models, env) == ["has"]
     assert usable_profiles({}, env) == []
+
+
+# ---- ② 分批评审（保覆盖 + 成本封顶）-----------------------------------------
+# 分工：批次决定"看到哪些"（覆盖），focus_count 决定"展开说哪些"（密度）。
+
+def test_batch_decisions_single_batch_when_small():
+    """≤size 条 → 单批，行为与分批前完全一致（日常方案不受影响）。"""
+    ds = [_d(f"d{i}") for i in range(8)]
+    assert batch_decisions(ds, size=8, max_batches=3) == [ds]      # 恰好装满仍是一批
+    assert batch_decisions(ds[:1], size=8) == [ds[:1]]
+    assert batch_decisions([], size=8) == []                       # 空方案不产生空批
+
+
+def test_batch_decisions_splits_and_covers_everything():
+    """分批的意义就是覆盖：切完之后每条决策都必须出现，且不重复。"""
+    ds = [_d(f"d{i}") for i in range(20)]
+    batches = batch_decisions(ds, size=8, max_batches=3)
+    assert len(batches) == 3
+    ids = [d.id for b in batches for d in b]
+    assert ids == [d.id for d in ds]              # 全覆盖、保序、不重不漏
+
+
+def test_batch_decisions_caps_batch_count():
+    """成本封顶：超出的并进最后一批，不无限扩批次（否则 30 条 = 4 批 × 2 镜头 × N 轮）。"""
+    ds = [_d(f"d{i}") for i in range(50)]
+    batches = batch_decisions(ds, size=8, max_batches=3)
+    assert len(batches) == 3                       # 批次数被封住
+    assert len(batches[0]) == 8 and len(batches[1]) == 8
+    assert len(batches[2]) == 34                   # 尾巴全并进最后一批（靠 focus 挑重点）
+    assert len([d for b in batches for d in b]) == 50   # 仍然一条不漏
+
+
+def test_batch_scope_note_tells_reviewer_the_rest_exists():
+    """分批最大的副作用是镜头以为方案就这么大——必须明说其余决策在别的批次。"""
+    ds = [_d(f"d{i}") for i in range(20)]
+    batches = batch_decisions(ds, size=8, max_batches=3)
+    note = batch_scope_note(0, len(batches), batches[0], ds)
+    assert "共 20 条" in note and "第 1 批" in note
+    assert "不要" in note                          # 别替其余决策表态
+    assert batch_scope_note(0, 1, ds, ds) == ""    # 单批不加噪声
+
+
+def test_run_review_batches_and_every_decision_is_seen():
+    """端到端：20 条决策分 3 批，每条都出现在某一批的提示词里。"""
+    seen_prompts = []
+
+    def review_fn(name, prompt):
+        seen_prompts.append((name, prompt))
+        if name == MAIN:
+            return '```json\n[]\n```'
+        return "进言"
+    ds = [_d(f"d{i}") for i in range(20)]
+    run_review(ds, review_fn, max_rounds=2)
+    reviewer_prompts = " ".join(p for n, p in seen_prompts if n != MAIN)
+    for d in ds:
+        assert f"id={d.id}" in reviewer_prompts, f"{d.id} 从未被任何一批评审看到"
+    # 3 批 × 2 镜头 = 6 次评审员调用（成本可预测）
+    assert sum(1 for n, _p in seen_prompts if n != MAIN) == 6
+
+
+def test_run_review_small_plan_is_one_batch_no_extra_calls():
+    """回归：小方案不该因为这次改动多花任何一次调用。"""
+    calls = []
+
+    def review_fn(name, prompt):
+        calls.append(name)
+        return '```json\n[]\n```' if name == MAIN else "进言"
+    run_review([_d(f"d{i}") for i in range(5)], review_fn, max_rounds=2)
+    assert sum(1 for n in calls if n != MAIN) == 2      # 单批 × 2 镜头
+    assert sum(1 for n in calls if n == MAIN) == 1
+
+
+# ---- ③ 主模型 verdict 救援 --------------------------------------------------
+# 主模型回复是唯一改 Decision 状态处；抠不到 JSON = 这一轮决定一条都不落地（散文再好也白跑）。
+# 以前只在事后提示"可能没有生效"，现在补一次「只要结论」的短调用把它救回来。
+
+def test_needs_verdict_rescue_matches_what_apply_can_actually_read():
+    """判据必须与 apply_main_reply 的取法一致，否则会"判不用救、但 apply 拿不到"。"""
+    ok = '回复。\n```json\n[{"id":"d1","status":"Accepted"}]\n```'
+    assert needs_verdict_rescue(ok) is False
+    assert needs_verdict_rescue('裸数组也认：[{"id":"d1","status":"Accepted"}]') is False
+    # 需要救的两种成因
+    assert needs_verdict_rescue("我觉得这个方案挺好的，可以开工了。") is True      # 大白话
+    assert needs_verdict_rescue('长篇散文…\n```json\n[{"id":"d1","stat') is True  # 截断没闭合
+    assert needs_verdict_rescue("") is True
+    # 与 apply 的一致性：判不用救的，apply 一定拿得到
+    ds = [_d("d1", OPEN)]
+    assert apply_main_reply(ds, ok)[0].status == ACCEPTED
+
+
+def test_build_verdict_rescue_prompt_feeds_back_prose_and_ids():
+    ds = [_d("d1", OPEN), _d("d2", OPEN)]
+    reply = "我认为 d1 该采纳，d2 需要用户拍板。理由是……" + "啰嗦" * 50
+    p = build_verdict_rescue_prompt(ds, reply)
+    assert "d1" in p and "d2" in p
+    assert "我认为 d1 该采纳" in p          # 回喂已写出的判断，模型不必重想
+    assert "只输出 JSON" in p
+    assert "决策d1" in p                    # 带上标题便于对齐
+
+
+def test_merge_rescued_verdict_makes_apply_work():
+    """救回来的 JSON 接上去后，apply_main_reply 要能正常生效。"""
+    ds = [_d("d1", OPEN, ["旧问"], choice="SQLite")]
+    truncated = "散文写了很多但 JSON 没输出完 ```json\n[{\"id\":\"d1\",\"stat"
+    rescue = '```json\n[{"id":"d1","current_choice":"DuckDB","status":"Accepted",' \
+             '"resolve_blocking":["旧问"]}]\n```'
+    merged = merge_rescued_verdict(truncated, rescue)
+    out = apply_main_reply(ds, merged)[0]
+    assert out.status == ACCEPTED and out.current_choice == "DuckDB" and out.blocking == []
+
+
+def test_merge_rescued_verdict_ignores_unusable_rescue():
+    """救援也失败 → 原样返回，别把噪声掺进给用户看的回复里。"""
+    reply = "原始回复"
+    assert merge_rescued_verdict(reply, "救援也吐了大白话") == reply
+    assert merge_rescued_verdict(reply, "") == reply
+
+
+def test_run_review_rescues_lost_verdict_end_to_end():
+    """端到端：主模型第一次没给 JSON，救援调用补上后决策真的生效了。"""
+    calls = []
+
+    def review_fn(name, prompt):
+        calls.append((name, prompt))
+        if name != MAIN:
+            return "镜头进言：我觉得 d1 有风险。"
+        if "只输出 JSON" in prompt:                     # 这是救援调用
+            return '```json\n[{"id":"d1","status":"Accepted"}]\n```'
+        return "主模型逐条回复，写了长长的散文……但 JSON 被截断了"   # 第一次：抠不到
+    ds = [_d("d1", OPEN)]
+    res = run_review(ds, review_fn, max_rounds=2)   # max_rounds=1 是零轮（初始快照占一轮）
+    assert res["decisions"][0].status == ACCEPTED, "救援后决策应已生效"
+    assert sum(1 for n, p in calls if n == MAIN and "只输出 JSON" in p) == 1  # 只救一次
+
+
+def test_run_review_no_rescue_call_when_verdict_is_fine():
+    """正常路径零额外成本：抠得到 JSON 就绝不发救援调用。"""
+    calls = []
+
+    def review_fn(name, prompt):
+        calls.append((name, prompt))
+        if name != MAIN:
+            return "进言"
+        return '回复。\n```json\n[{"id":"d1","status":"Accepted"}]\n```'
+    run_review([_d("d1", OPEN)], review_fn, max_rounds=2)
+    assert any(n == MAIN for n, _p in calls), "得真跑过一轮，否则这条断言是空的"
+    assert not any("只输出 JSON" in p for _n, p in calls)
 
 
 def _run_all():
