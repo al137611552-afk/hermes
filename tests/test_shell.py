@@ -1,10 +1,12 @@
 """RunShellTool 前台执行：成功路径 + 超时杀整棵进程树（真机 bug：前台启动 GUI 卡住关不掉、反复几次）。
 
-独立 runner（不依赖 pytest）。Linux 上用 bash 跑；杀树走 POSIX killpg（Windows 走 taskkill /T，真机验）。
+独立 runner（不依赖 pytest）。**跨平台**：shell 与命令走 tests/_shellenv.py（Linux=bash / Windows=powershell）；
+杀树 POSIX 走 killpg、Windows 走 Job Object + taskkill /T。少数 POSIX 专属用例显式跳过，见 ROADMAP 第二档。
 """
 import sys
 import time
 import os
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -99,6 +101,11 @@ def test_bg_daemon_inheriting_pipe_returns_fast():
 
 
 def test_runaway_output_is_bounded_not_oom():
+    if IS_WIN:
+        # POSIX 专属：靠 `resource.setrlimit(RLIMIT_AS)` 把子进程内存卡在 200MB 来证明"没上限就会 OOM"，
+        # Windows 没有 resource 模块（等价物是 Job Object 的内存限额，得另写）；`yes` 也不存在。
+        # 输出上限本身是平台无关的纯逻辑，Windows 侧的 OOM 证明待补，见 ROADMAP「第二档」。
+        return
     # 压测揪出的 OOM：疯狂刷 stdout 的命令老实现无上限堆内存 => timeout 前先把进程 OOM。修后应有上限、
     # timeout 处被终止且能正常返回超时错误（不崩）。用 200MB 内存上限的子进程隔离验证不 OOM。
     import subprocess as _sp
@@ -124,9 +131,10 @@ def test_runaway_output_is_bounded_not_oom():
 def test_noninteractive_env_is_injected():
     # 主流 agent 通病：git log 进 less 等 q / git push 私库等凭据 / git commit 开 vim / apt 问 y/n 静默挂死。
     # 硬化做法=注入非交互环境变量。此处验证子进程确实拿到这些变量（Windows 上正是靠它们避免真挂死）。
-    out = _tool().run({"command":
-        "for v in GIT_TERMINAL_PROMPT GIT_PAGER PAGER GIT_EDITOR EDITOR DEBIAN_FRONTEND PIP_NO_INPUT; do "
-        "echo \"$v=$(printenv $v)\"; done", "background": False})
+    _vars = ["GIT_TERMINAL_PROMPT", "GIT_PAGER", "PAGER", "GIT_EDITOR", "EDITOR",
+             "DEBIAN_FRONTEND", "PIP_NO_INPUT"]
+    out = _tool().run({"command": seq(*(f'echo "{v}={env_ref(v)}"' for v in _vars)),
+                       "background": False})
     for expect in ("GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "PAGER=cat",
                    "GIT_EDITOR=true", "EDITOR=true", "DEBIAN_FRONTEND=noninteractive", "PIP_NO_INPUT=1"):
         assert expect in out, f"未注入非交互硬化变量 {expect}；实际输出：\n{out}"
@@ -316,13 +324,25 @@ def test_noninteractive_env_covers_npm_ssh_gh_and_ci():
     # 以及覆盖面最大的 CI=1。这些拿不到就只能等超时。
     names = ["CI", "NPM_CONFIG_YES", "npm_config_yes", "SSH_ASKPASS_REQUIRE", "GH_PROMPT_DISABLED",
              "GIT_SSH_COMMAND", "HUSKY", "COMPOSER_NO_INTERACTION", "NO_COLOR", "HOMEBREW_NO_AUTO_UPDATE"]
-    cmd = "; ".join(f'echo "{n}=$(printenv {n})"' for n in names)
+    cmd = seq(*(f'echo "{n}={env_ref(n)}"' for n in names))
     out = _tool().run({"command": cmd, "background": False})
-    for expect in ("CI=1", "NPM_CONFIG_YES=true", "npm_config_yes=true", "SSH_ASKPASS_REQUIRE=never",
-                   "GH_PROMPT_DISABLED=1", "HUSKY=0", "COMPOSER_NO_INTERACTION=1", "NO_COLOR=1",
-                   "HOMEBREW_NO_AUTO_UPDATE=1"):
+    for expect in ("SSH_ASKPASS_REQUIRE=never", "GH_PROMPT_DISABLED=1", "HUSKY=0",
+                   "COMPOSER_NO_INTERACTION=1", "NO_COLOR=1", "HOMEBREW_NO_AUTO_UPDATE=1"):
         assert expect in out, f"未注入 {expect}；实际：\n{out}"
     assert "BatchMode=yes" in out, "GIT_SSH_COMMAND 应带 BatchMode（ssh 首次连主机的 yes/no 会挂死）"
+
+    # **CI 不能断言字面量 "1"**：它是"改语义"的开关，`hardened_env()` 走 setdefault 尊重用户
+    # （见 test_user_set_ci_is_respected_not_overridden）。而在 CI 机器上父环境本来就有 CI=true——
+    # 那正是 setdefault 要保护的场景。所以这里只断言"被设成了某个非空值"。
+    ci = re.search(r"^CI=(.+)$", out, re.M)
+    assert ci and ci.group(1).strip(), f"CI 应有非空值；实际：\n{out}"
+
+    # **npm 的两个大小写变体在 Windows 上是同一个变量**（环境变量名不区分大小写，后设的覆盖前一个），
+    # 所以只能要求"至少有一个是 true"；POSIX 上两个都该在。
+    npm_hits = [v for v in ("NPM_CONFIG_YES=true", "npm_config_yes=true") if v in out]
+    assert npm_hits, f"npm 免确认变量一个都没注入；实际：\n{out}"
+    if not IS_WIN:
+        assert len(npm_hits) == 2, f"POSIX 上大小写两个变体都该注入；实际：\n{out}"
 
 
 def test_user_set_ci_is_respected_not_overridden():

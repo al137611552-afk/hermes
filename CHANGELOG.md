@@ -48,6 +48,10 @@
   `python3 -m http.server`，而真机上 `.venv\Scripts\python.exe -m http.server`、PowerShell 的
   `& 'C:\...\python.exe' -m ...`、`/usr/bin/python3 -m ...` 都匹配不上——**探针静默失效，
   用户白等满整个 timeout**。正则加可选路径前缀（含开引号与 `.exe`），17 条用例验过无误报。
+- **`CI` 环境变量的断言不再写死字面量**。`hardened_env()` 对"改语义"的开关走 `setdefault` 尊重用户，
+  而 CI 机器上父环境本来就有 `CI=true`——那正是 setdefault 要保护的场景，测试却断言 `CI=1`。
+  改为断言"被设成非空值"。同一用例还暴露 **Windows 环境变量名不区分大小写**：
+  `NPM_CONFIG_YES` 与 `npm_config_yes` 是同一个变量、后设的覆盖前一个，故只能要求至少一个为 true。
 - CI actions 升版避开 Node 20 弃用：`checkout@v4→v5`、`setup-python@v5→v6`、`setup-node@v4→v6`。
 - **产物落盘无损**：`ArtifactStore.put` 与 Tee 的写入补 `newline=""`。文本模式在 Windows 上把 `\n`
   翻成 `\r\n`，导致落盘字节数 ≠ `chars`（台账 `bytes` 取 `st_size`、`max_total_bytes` 配额按它算），

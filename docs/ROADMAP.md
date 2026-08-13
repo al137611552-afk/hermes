@@ -265,6 +265,8 @@ A 是地基，必须先过。B/C 可并行起步但 C 依赖 B 的 signals。D �
     Windows 上重现概率更高，恰恰最该在那儿跑。要单独排一段试 Windows 等价构造（句柄继承语义不同）。
   - `test_shell.test_timeout_kills_child_tree` / `test_procs.test_long_running_stop_kills_tree` ——
     进程树终止在 Windows 上是 Job Object 那套，跟 `$!` + `wait` 不是一回事，要另写用例。
+  - `test_shell.test_runaway_output_is_bounded_not_oom` —— 靠 `resource.setrlimit(RLIMIT_AS)` 证明
+    "没上限就会 OOM"，Windows 没有 `resource`（等价物是 Job Object 内存限额），`yes` 也不存在。
   - `test_procs.test_write_input_submit_false_sends_no_newline` —— `read -n 1` 单键读在 PowerShell 里
     只有 `[Console]::ReadKey()`，它要真控制台、拿不到重定向管道。
   跨平台命令底座见 `tests/_shellenv.py`（新加的测试要跑真命令，走它，别再写死 bash）。
