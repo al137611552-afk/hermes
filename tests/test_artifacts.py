@@ -11,12 +11,14 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # tests/_shellenv.py
 
 from agentcore.artifacts import (  # noqa: E402
     DEFAULT_THRESHOLD, HEAD_LINES, TAIL_LINES, MAX_SUMMARY_CHARS,
     ArtifactSink, ArtifactStore, format_with_handle, prune_plan, should_artifact,
     summarize_for_context,
 )
+from _shellenv import SHELL, python_c  # noqa: E402
 from agentcore.tools.search import GlobSearchTool, GrepSearchTool  # noqa: E402
 from agentcore.tools.shell import RunShellTool  # noqa: E402
 from agentcore.tools.web import WebFetchTool  # noqa: E402
@@ -282,7 +284,7 @@ def _sink(tmp: Path, **kw) -> ArtifactSink:
 
 def test_shell_small_output_has_no_artifact(tmp: Path):
     """正常大小的命令：不落产物、无任何间接层（阈值以下零开销）。"""
-    tool = RunShellTool(tmp, shell="bash", timeout=30, artifacts=_sink(tmp))
+    tool = RunShellTool(tmp, shell=SHELL, timeout=30, artifacts=_sink(tmp))
     out = tool.run({"command": "echo hello"})
     assert "hello" in out and "产物" not in out
     assert ArtifactStore(tmp).list() == []
@@ -292,10 +294,9 @@ def test_shell_overflow_keeps_full_output_in_artifact(tmp: Path):
     """真跑一条输出超上限的命令：内存里被截断，产物里是完整的。"""
     from agentcore.tools import shell as shell_mod
     sink = _sink(tmp)
-    tool = RunShellTool(tmp, shell="bash", timeout=60, artifacts=sink)
+    tool = RunShellTool(tmp, shell=SHELL, timeout=60, artifacts=sink)
     # 30 万字符 > 20 万上限；末尾放个标记，验证"被截掉的尾部"确实进了产物
-    cmd = ("python3 -c \"import sys;sys.stdout.write('A'*300000);"
-           "sys.stdout.write('TAIL_MARKER')\"")
+    cmd = python_c("import sys;sys.stdout.write('A'*300000);sys.stdout.write('TAIL_MARKER')")
     out = tool.run({"command": cmd})
 
     # 新行为：回「摘要（头+尾）+ 句柄」，而不是 20 万字符的头部截断
@@ -313,16 +314,16 @@ def test_shell_overflow_keeps_full_output_in_artifact(tmp: Path):
 
 def test_shell_without_sink_keeps_old_behaviour(tmp: Path):
     """没接产物入口＝行为同 3.53：截断 + 老提示，不提产物。"""
-    tool = RunShellTool(tmp, shell="bash", timeout=60)
-    out = tool.run({"command": "python3 -c \"import sys;sys.stdout.write('A'*250000)\""})
+    tool = RunShellTool(tmp, shell=SHELL, timeout=60)
+    out = tool.run({"command": python_c("import sys;sys.stdout.write('A'*250000)")})
     assert "已截断" in out and "产物" not in out
 
 
 def test_shell_tee_self_destructs_when_below_threshold(tmp: Path):
     """阈值设得比上限还高时，tee 收尾自我销毁，提示回落到老文案（不给死句柄）。"""
-    tool = RunShellTool(tmp, shell="bash", timeout=60,
+    tool = RunShellTool(tmp, shell=SHELL, timeout=60,
                         artifacts=_sink(tmp, threshold=500_000))
-    out = tool.run({"command": "python3 -c \"import sys;sys.stdout.write('A'*250000)\""})
+    out = tool.run({"command": python_c("import sys;sys.stdout.write('A'*250000)")})
     assert "已截断" in out and "产物" not in out
     assert ArtifactStore(tmp).list() == []
     assert not list((tmp / ".hermes" / "artifacts").glob("*"))
@@ -380,11 +381,11 @@ def test_registry_injects_sink_into_shell_and_fetch(tmp: Path):
     from agentcore.config import WebConfig
     from agentcore.tools.registry import build_registry
     sink = _sink(tmp)
-    reg = build_registry(tmp, shell="bash", web=WebConfig(), artifacts=sink)
+    reg = build_registry(tmp, shell=SHELL, web=WebConfig(), artifacts=sink)
     assert reg.get("run_bash")._artifacts is sink
     assert reg.get("web_fetch")._artifacts is sink
     # 不传就是 None＝老行为
-    reg2 = build_registry(tmp, shell="bash", web=WebConfig())
+    reg2 = build_registry(tmp, shell=SHELL, web=WebConfig())
     assert reg2.get("run_bash")._artifacts is None and reg2.get("web_fetch")._artifacts is None
 
 
@@ -410,7 +411,7 @@ def test_background_tee_keeps_output_dropped_by_ring_buffer(tmp: Path):
             "sys.stdout.write('EARLY_MARKER\\n')\n"
             "for i in range(3000): sys.stdout.write('x'*100 + '\\n')\n"
             "sys.stdout.flush()\n")
-    entry = mgr.start(["python3", "-c", code], str(tmp), "python3 -c <spam>")
+    entry = mgr.start([sys.executable, "-c", code], str(tmp), "python3 -c <spam>")
     assert _wait(lambda: entry.proc.poll() is not None and entry.trimmed)
     time.sleep(0.3)   # 让读线程收尾（tee.close）
 
@@ -427,7 +428,7 @@ def test_background_read_tool_gives_handle_only_when_data_lost(tmp: Path):
     """没丢数据时不提产物（不给日常输出添噪音）；丢了才给句柄。"""
     from agentcore.tools.procs import ProcessManager, ProcessOutputTool
     mgr = ProcessManager(artifacts=_sink(tmp))
-    entry = mgr.start(["python3", "-c", "print('hi')"], str(tmp), "python3 -c print")
+    entry = mgr.start([sys.executable, "-c", "print('hi')"], str(tmp), "python3 -c print")
     assert _wait(lambda: entry.proc.poll() is not None)
     time.sleep(0.3)
     out = ProcessOutputTool(mgr).run({"id": entry.id})
@@ -440,7 +441,7 @@ def test_background_read_tool_gives_handle_only_when_data_lost(tmp: Path):
 def test_background_without_sink_unchanged(tmp: Path):
     from agentcore.tools.procs import ProcessManager
     mgr = ProcessManager()
-    entry = mgr.start(["python3", "-c", "print('hi')"], str(tmp), "python3 -c print")
+    entry = mgr.start([sys.executable, "-c", "print('hi')"], str(tmp), "python3 -c print")
     assert _wait(lambda: entry.proc.poll() is not None)
     time.sleep(0.2)
     r = mgr.read(entry.id)
@@ -456,7 +457,7 @@ def test_background_artifact_readable_while_running(tmp: Path):
     code = ("import sys,time\n"
             "sys.stdout.write('LIVE\\n'); sys.stdout.flush()\n"
             "time.sleep(30)\n")
-    entry = mgr.start(["python3", "-c", code], str(tmp), "long runner")
+    entry = mgr.start([sys.executable, "-c", code], str(tmp), "long runner")
     try:
         assert _wait(lambda: entry.tee is not None
                      and (tmp / entry.tee.artifact.rel).read_text(encoding="utf-8").strip() == "LIVE")

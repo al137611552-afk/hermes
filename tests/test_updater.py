@@ -105,17 +105,33 @@ def test_apply_update_git_missing_message():
 
 def test_default_run_git_pull_real_integration():
     # 真 git：建 origin → clone → 在 origin 加提交 → _default_run 走 git pull --ff-only（用硬化环境）应拉到。
-    origin = tempfile.mkdtemp()
-    clone = tempfile.mkdtemp()
-    g = "git -c user.email=a@b.c -c user.name=t"
-    subprocess.run(f"cd {origin} && git init -q -b main && echo v1 > f && {g} add -A && {g} commit -q -m c1",
-                   shell=True, capture_output=True, check=True)
-    subprocess.run(f"git clone -q {origin} {clone}", shell=True, capture_output=True, check=True)
-    subprocess.run(f"cd {origin} && echo v2 >> f && {g} add -A && {g} commit -q -m c2",
-                   shell=True, capture_output=True, check=True)
-    rc, out = updater._default_run(["git", "pull", "--ff-only"], clone)
+    #
+    # **别用 `cd X && ...` + shell=True**（2026-08-13 CI 踩过）：cmd.exe 的 `cd` **不跨盘符切换，
+    # 且照样返回 0**。GitHub runner 上检出在 D:\a\...、临时目录在 C:\Users\...，于是整串命令
+    # 悄悄跑在**检出目录**里——git init/commit 落到 hermes 仓库自己的工作树上，origin 始终是空目录，
+    # 下一步 clone 才报 exit 128。走 cwd= 传目录、argv 传列表，两个平台语义一致，也不吃引号/转义。
+    origin = Path(tempfile.mkdtemp())
+    clone = Path(tempfile.mkdtemp())
+    g = ["git", "-c", "user.email=a@b.c", "-c", "user.name=t"]
+
+    def run(argv, cwd=None):
+        # check=True 的默认报错只有退出码，stderr 被 capture 吞掉——把它带进异常，
+        # 否则下次再红又得靠猜（这次的 exit 128 就是这么白查了一轮）。
+        p = subprocess.run(argv, cwd=cwd, capture_output=True, text=True)
+        assert p.returncode == 0, f"{argv} (cwd={cwd}) rc={p.returncode}\nstderr: {p.stderr}\nstdout: {p.stdout}"
+
+    run(["git", "init", "-q", "-b", "main"], cwd=origin)
+    (origin / "f").write_text("v1\n", encoding="utf-8")
+    run(g + ["add", "-A"], cwd=origin)
+    run(g + ["commit", "-q", "-m", "c1"], cwd=origin)
+    run(["git", "clone", "-q", str(origin), str(clone)])
+    (origin / "f").write_text("v1\nv2\n", encoding="utf-8")
+    run(g + ["add", "-A"], cwd=origin)
+    run(g + ["commit", "-q", "-m", "c2"], cwd=origin)
+
+    rc, out = updater._default_run(["git", "pull", "--ff-only"], str(clone))
     assert rc == 0, f"git pull 应成功：{out}"
-    assert (Path(clone) / "f").read_text().count("v2") == 1, "新提交内容应已拉到本地"
+    assert (clone / "f").read_text(encoding="utf-8").count("v2") == 1, "新提交内容应已拉到本地"
 
 
 def test_api_check_update_disabled_by_default_and_makes_no_request():

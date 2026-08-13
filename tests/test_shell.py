@@ -8,13 +8,17 @@ import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # tests/_shellenv.py
 
+from _shellenv import (  # noqa: E402
+    IS_WIN, SHELL, echo, echo_no_newline, seq, sleep, tick_loop,
+)
 from agentcore.tools.shell import RunShellTool          # noqa: E402
 from agentcore.tools.base import ToolError              # noqa: E402
 
 
 def _tool(timeout=5):
-    return RunShellTool(Path.cwd(), shell="bash", timeout=timeout)
+    return RunShellTool(Path.cwd(), shell=SHELL, timeout=timeout)
 
 
 def test_foreground_success_returns_stdout_and_exit_code():
@@ -28,6 +32,11 @@ def test_foreground_nonzero_exit_reported():
 
 
 def test_timeout_terminates_and_steers_to_background():
+    if IS_WIN:
+        # 用 `sleep 30 & wait` 是为了造一个**不会自退**的前台命令。PowerShell 里没有等价的
+        # "后台起子进程再 wait"，换成裸 Start-Sleep 测的就只是"超时能不能杀"、
+        # 丢掉了"shell 自己不退"这一半。Windows 侧待补，见 ROADMAP「第二档」。
+        return
     # 前台跑一个不会自退的常驻命令：应在 ~timeout 内被终止并抛错，不无限挂起；错误信息强指向 background:true。
     tool = _tool(timeout=1)
     t0 = time.time()
@@ -43,6 +52,10 @@ def test_timeout_terminates_and_steers_to_background():
 
 
 def test_timeout_kills_child_tree():
+    if IS_WIN:
+        # POSIX 专属：靠 `$!` 拿后台子进程 pid 再验它被杀。PowerShell 没有 `$!`，
+        # 进程树终止在 Windows 上是另一套机制（Job Object），要单独写用例。见 ROADMAP「第二档」。
+        return
     # 杀树验证：命令启动一个 grandchild sleep 并把它的 pid 写进临时文件；超时杀树后该 pid 不应再存活。
     import tempfile
     pidfile = Path(tempfile.mkdtemp()) / "child.pid"
@@ -68,6 +81,12 @@ def test_timeout_kills_child_tree():
 
 
 def test_bg_daemon_inheriting_pipe_returns_fast():
+    if IS_WIN:
+        # **这条最该在 Windows 上跑，但没有现成等价写法**：要造"子进程继承 stdout 且活得比 shell 久"，
+        # PowerShell 的 Start-Job/Start-Process 起的都是独立进程、句柄继承关系不同，
+        # 凑出来的版本守的不是同一件事。**这是本次 CI 留下的最大覆盖缺口**，
+        # 单独排一段去试 Windows 等价构造，见 ROADMAP「第二档」。
+        return
     # 压测揪出的隐藏死锁：命令用 `&` 后台起了继承 stdout 的子进程（dev server 常态），shell 本身瞬间
     # echo 完退出，但老实现 communicate() 等管道 EOF => 白挂满 timeout 再被当超时报错。修后应秒回。
     tool = _tool(timeout=8)      # timeout 给大，若仍等 EOF 会挂满 8s
@@ -170,7 +189,7 @@ def test_foreground_stream_is_actually_realtime_not_buffered_until_exit():
         if "EARLY" in delta:
             stamps.append(time.time())
 
-    _tool(timeout=20).run({"command": "printf 'EARLY\\n'; sleep 3", "background": False}, stream=_on)
+    _tool(timeout=20).run({"command": seq(echo("EARLY"), sleep(3)), "background": False}, stream=_on)
     assert stamps, "命令跑完前应已推出第一段增量"
     assert stamps[0] - t0 < 2.0, f"第一段应几乎立刻到达（实测 {stamps[0] - t0:.1f}s），不该等到进程退出"
 
@@ -384,7 +403,7 @@ def test_foreground_prompt_is_detected_and_killed_before_timeout():
     t0 = time.time()
     raised = None
     try:
-        tool.run({"command": "printf 'Ok to proceed? (y)'; sleep 30", "background": False})
+        tool.run({"command": seq(echo_no_newline("Ok to proceed? (y)"), sleep(30)), "background": False})
     except ToolError as e:
         raised = str(e)
     finally:
@@ -407,7 +426,7 @@ def test_busy_command_printing_prompt_like_text_is_not_killed():
     shell._PROMPT_QUIET_SECONDS = 1.0
     try:
         out = _tool(timeout=20).run(
-            {"command": "echo 'prompt [y/N]'; for i in 1 2 3 4 5 6; do echo working $i; sleep 0.5; done",
+            {"command": seq(echo("'prompt [y/N]'"), tick_loop(6, "working", 0.5)),
              "background": False})
     finally:
         shell._PROMPT_QUIET_SECONDS = orig_quiet
@@ -419,7 +438,7 @@ def test_plain_timeout_message_separates_three_causes():
     tool = _tool(timeout=1)
     raised = None
     try:
-        tool.run({"command": "sleep 30", "background": False})
+        tool.run({"command": sleep(30), "background": False})
     except ToolError as e:
         raised = str(e)
     assert raised is not None

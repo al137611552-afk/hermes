@@ -34,6 +34,16 @@
   它们在旧代码的 Linux 上均放行，**把 Windows 专属教训钉进本地闸门**。
 
 ### Changed
+- **测试的 shell 假设收敛进 `tests/_shellenv.py`**（CI 第四轮后）。`shell="bash"` / `["bash","-lc"]`
+  原本散落 9 个文件 37 处，Windows 上 `bash` 是 WSL 存根，于是一批测试必红、且**每修一层才露下一层**。
+  底座统一给出 `SHELL` / `SHELL_ARGV` / `RUN_TOOL` 与命令构造器（`echo`/`sleep`/`seq`/`big_output`/
+  `tick_loop`/`read_var`/`python_c`），已接入 `test_artifacts`/`test_procs`/`test_hooks`/`test_shell`。
+  **hook 另有一套**：`HookRunner` 在 Windows 上走 `cmd /c`（不是 PowerShell），且英文机 cmd 代码页是
+  cp437/850——hook 的 stdout 只能用 ASCII，中文经 cmd 出来必是乱码（产品按 utf-8 解码）。
+  真 POSIX 专属的 4 条用例显式跳过并记进 ROADMAP 第二档，**不凑语义不同的版本**。
+- `test_updater` 改用 `cwd=` 传目录、argv 传列表，并把 stderr 带进断言。原来的 `cd X && ...` +
+  `shell=True` 在 Windows 上是**静默错的**：cmd 的 `cd` 不跨盘符切换却照样返回 0，而 runner 的检出在
+  `D:\a\...`、临时目录在 `C:\Users\...`——整串 git init/commit 实际落在**检出自己的工作树**上。
 - CI actions 升版避开 Node 20 弃用：`checkout@v4→v5`、`setup-python@v5→v6`、`setup-node@v4→v6`。
 - **产物落盘无损**：`ArtifactStore.put` 与 Tee 的写入补 `newline=""`。文本模式在 Windows 上把 `\n`
   翻成 `\r\n`，导致落盘字节数 ≠ `chars`（台账 `bytes` 取 `st_size`、`max_total_bytes` 配额按它算），
