@@ -117,8 +117,9 @@ def test_put_writes_file_and_ledger(tmp: Path):
     assert len(rows) == 1 and rows[0]["id"] == art.id
     assert rows[0]["bytes"] == p.stat().st_size
     assert rows[0]["origin"] == "pytest -q" and rows[0]["session_id"] == 7
-    # 台账放在产物目录外
-    assert store.ledger_path == tmp / ".hermes" / "artifacts.json"
+    # 台账放在产物目录外。比对要用 resolve 后的 tmp：ArtifactStore 存的是 workspace.resolve()，
+    # 而 Windows 临时目录是 8.3 短名（C:\Users\RUNNER~1\...），resolve 会展开成长名、两边对不上。
+    assert store.ledger_path == tmp.resolve() / ".hermes" / "artifacts.json"
 
 
 def test_ids_increment_and_survive_reopen(tmp: Path):

@@ -6,6 +6,25 @@
 
 ## [Unreleased]
 
+### Fixed
+- **CI 首跑 21 个测试文件红——修 Windows/locale 假设**（release workflow 的第一次真跑）。
+  `build` job 因 `needs: test` 从未启动，所以不是"打包失败"，是**打包前的回归闸门红了**。
+  病因不是产品回归，而是 **GitHub windows runner 是英文 locale（cp1252）**，跟开发用的中文 Windows（cp936）不同：
+  - **stdout 编码**（7 个文件）：测试打印的 `✓` 与中文在 cp1252 下直接 `UnicodeEncodeError`。
+    workflow 钉死 `PYTHONIOENCODING=utf-8` + `PYTHONUTF8=1`。**不能靠把测试输出改成 ASCII 解决**
+    ——本项目测试文案本来就是中文，改字形只是把撞墙位置往后挪。
+  - **sqlite 句柄未关**（8 个文件）：`TemporaryDirectory` 清理时 .db 还开着 → `WinError 32`。
+    失败发生在断言全过之后，改用 `ignore_cleanup_errors=True`（Linux 允许删已打开文件，故只在 Windows 现形）。
+  - **`read_text()` 未给 encoding**（`test_fixture`）：按 locale 读 UTF-8 文件 → `UnicodeDecodeError`。
+  - **`test_artifacts` 路径断言**：`ArtifactStore` 存 `workspace.resolve()`，而 Windows 临时目录是
+    8.3 短名（`C:\Users\RUNNER~1\...`），resolve 会展开成长名。断言改用 `tmp.resolve()`。
+- **`_decode_best`（MCP server stderr）在非中文 Windows 上必出乱码**。原顺序 `utf-8 → 本地代码页 → gbk`：
+  单字节代码页（cp1252 等）对绝大多数字节序列都能"成功"解码、只是解成乱码，**排在前面等于吞掉一切，
+  GBK 分支永远到不了**。改为 `utf-8 → gbk → 本地代码页`——GBK 是会校验的多字节编码，非法尾字节直接抛。
+
+### Changed
+- CI actions 升版避开 Node 20 弃用：`checkout@v4→v5`、`setup-python@v5→v6`、`setup-node@v4→v6`。
+
 ## [3.67.0] - 2026-08-13
 
 方案评审的预算与可诊断性（承 v3.66.0 分批评审）。**Windows 真机验证通过**，

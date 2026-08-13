@@ -43,7 +43,7 @@ def test_capture_reproduces_bug(tmp: Path):
     # 文件落地、命名规范
     f = tmp / "tests" / "test_capture_add_bug.py"
     assert f.is_file()
-    assert "现象：add(2,2)" in f.read_text()
+    assert "现象：add(2,2)" in f.read_text(encoding="utf-8")
     # 跑一次确认当前复现（失败）
     assert "已固化复现 fixture：tests/test_capture_add_bug.py" in out
     assert "已确认当前复现" in out

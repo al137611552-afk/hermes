@@ -23,7 +23,9 @@ def _fm(tmp: Path) -> FailureMemory:
 # ---- aggregate ----------------------------------------------------------
 
 def test_aggregate_groups_by_class():
-    with tempfile.TemporaryDirectory() as d:
+    # ignore_cleanup_errors：Windows 上 sqlite 连接还开着就删不掉 .db（WinError 32），
+    # 而清理失败发生在断言全过之后，不该把测试判红（Linux 允许删已打开的文件，故只在 Windows 现形）。
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = Path(d)
         fm = _fm(tmp)
         # 两条不同的路都因 not_found 失败
@@ -42,7 +44,7 @@ def test_aggregate_groups_by_class():
 
 
 def test_aggregate_collects_evidence():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = Path(d)
         fm = _fm(tmp)
         fm.record("fp-a", ["logic"], detail="assertion failed at line 5")
@@ -54,7 +56,7 @@ def test_aggregate_collects_evidence():
 
 
 def test_aggregate_empty_memory():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         fm = _fm(Path(d))
         assert aggregate(fm) == []
         fm.close()
@@ -63,7 +65,7 @@ def test_aggregate_empty_memory():
 # ---- propose ------------------------------------------------------------
 
 def test_propose_requires_systemic_failure():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = Path(d)
         fm = _fm(tmp)
         # 单条路失败 3 次：paths=1 < min_paths → 不升级为策略
@@ -76,7 +78,7 @@ def test_propose_requires_systemic_failure():
 
 
 def test_propose_generates_candidate_for_systemic():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = Path(d)
         fm = _fm(tmp)
         # 跨 3 条路、共 4 次 not_found → 系统性
@@ -95,7 +97,7 @@ def test_propose_generates_candidate_for_systemic():
 
 
 def test_propose_never_promotes_transient():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = Path(d)
         fm = _fm(tmp)
         # 即便有人把 transient_io 写进了 memory，也绝不成策略
@@ -108,7 +110,7 @@ def test_propose_never_promotes_transient():
 
 
 def test_propose_thresholds_tunable():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = Path(d)
         fm = _fm(tmp)
         fm.record("fp-a", ["syntax"])
@@ -129,7 +131,7 @@ def _candidate() -> Candidate:
 
 
 def test_store_propose_and_persist():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         path = Path(d) / "strategies.json"
         store = StrategyStore(path)
         s = store.propose(_candidate())
@@ -141,7 +143,7 @@ def test_store_propose_and_persist():
 
 
 def test_store_propose_idempotent_refreshes_evidence():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         store = StrategyStore(Path(d) / "s.json")
         s1 = store.propose(_candidate())
         c2 = _candidate()
@@ -153,7 +155,7 @@ def test_store_propose_idempotent_refreshes_evidence():
 
 
 def test_store_approve_requires_golden():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         store = StrategyStore(Path(d) / "s.json")
         s = store.propose(_candidate())
         # 没过 Golden 不准 active —— 语料门写进代码
@@ -171,7 +173,7 @@ def test_store_approve_requires_golden():
 
 
 def test_store_retire_and_rollback():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         store = StrategyStore(Path(d) / "s.json")
         s = store.propose(_candidate())
         store.approve(s.id, golden_passed=True)
@@ -185,7 +187,7 @@ def test_store_retire_and_rollback():
 
 
 def test_store_rollback_to_proposed():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         store = StrategyStore(Path(d) / "s.json")
         s = store.propose(_candidate())
         store.approve(s.id, golden_passed=True)
@@ -196,7 +198,7 @@ def test_store_rollback_to_proposed():
 
 
 def test_store_list_filter_by_status():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         store = StrategyStore(Path(d) / "s.json")
         a = store.propose(Candidate("auth", "走 ask_user", "r", {}))
         b = store.propose(Candidate("logic", "先 trace_run", "r", {}))
@@ -209,7 +211,7 @@ def test_store_list_filter_by_status():
 # ---- end-to-end 验收：历史轨迹 → 一条可解释、Golden 验证后生效的策略 ----
 
 def test_end_to_end_one_explainable_strategy():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = Path(d)
         fm = _fm(tmp)
         # 历史：external_blocked 在多条路上反复出现（如正面入口被挡）
@@ -290,7 +292,7 @@ def test_loop_wiring_is_inert_without_strategies():
         def __init__(self, name, inp, cid):
             self.name, self.input, self.id = name, inp, cid
 
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         store = StrategyStore(Path(d) / "s.json")           # 空 store
         fm = FailureMemory(Path(d) / "f.db")
         seen = []

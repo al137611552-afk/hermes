@@ -17,6 +17,13 @@ on:
 permissions:
   contents: write           # 建 Release / 传附件需要；其余权限一律不给
 
+# GitHub 的 windows runner 是**英文 locale（cp1252）**，跟开发用的中文 Windows（cp936）不是一回事：
+# 测试里打印的 "✓" 和中文在 cp1252 下直接 UnicodeEncodeError，把一批本来全过的文件判红
+# （2026-08-13 首跑 21 个文件失败，7 个是这个原因）。钉死 UTF-8，别让**输出装饰**决定构建成败。
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"           # 连带把 open() 的默认编码也切成 UTF-8（PEP 540），源码/数据文件都按 UTF-8 读
+
 jobs:
   # 先跑全回归再出包——"全绿才算完成"是本项目的硬规矩（CLAUDE.md），
   # 红着的构建不该被发出去。顺带：这也是**唯一能自动跑 Windows 侧回归**的地方，
@@ -24,11 +31,11 @@ jobs:
   test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"      # pyproject 要求 >=3.11
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
       - name: 装依赖
@@ -53,8 +60,8 @@ jobs:
     needs: test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: 装依赖 + PyInstaller

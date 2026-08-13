@@ -131,6 +131,14 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - **mcp SDK 2.0 改了字段名**：`Tool.inputSchema` → `input_schema`。`manager.tool_input_schema()` 两名都认——
   别"清理"成只读一个，`pyproject` 写的是 `mcp>=1.2`，新旧机器都可能遇到。踩过的坑是所有 MCP server
   一起连不上（`AttributeError`），而纯 mock 单测全绿——**MCP 相关改动要连真 server 跑一次**。
+- **CI 的 windows runner 是英文 locale（cp1252），你的真机是中文（cp936）——别拿"本地过了"当 CI 会过**
+  （2026-08-13 首跑 21 个文件红）：① 测试打印中文/`✓` 在 cp1252 下 `UnicodeEncodeError`
+  （workflow 已钉 `PYTHONIOENCODING=utf-8` + `PYTHONUTF8=1`；**别指望改字形绕过**，测试文案本来就是中文）；
+  ② `TemporaryDirectory` 清理时 sqlite 还开着 → `WinError 32`（Linux 允许删已打开文件，**只在 Windows 现形**）；
+  ③ 读文件不给 `encoding="utf-8"` 就按 locale 解；④ Windows 临时目录是 8.3 短名
+  （`C:\Users\RUNNER~1\...`），跟 `Path.resolve()` 后的长名**比对不相等**；
+  ⑤ **单字节代码页解码永远"成功"**——把 cp1252 排在 GBK 前面等于吞掉一切、只是解成乱码（`_decode_best` 踩过）。
+  另：`build.ps1` **本身不跑测试**，所以本地打包成功不代表 CI 的 `test` 闸门会绿。
 - **动手前先确认工作目录是不是 git 检出**（2026-08-07 踩过）：`/root` 下同时有 `hermes-dev`(旧快照,无 git) 和 `hermes-latest`(真检出)，按名字猜会把功能建在落后好几个版本的树上，最后要整套移植。先 `git rev-parse --is-inside-work-tree` + 比对 `pyproject.toml` 版本与远端 tag。
 
 ## 非目标

@@ -210,7 +210,9 @@ def test_failure_record_carries_decision_label():
         def __init__(self, name, inp, cid):
             self.name, self.input, self.id = name, inp, cid
 
-    with tempfile.TemporaryDirectory() as td:
+    # ignore_cleanup_errors：Windows 上 sqlite 连接还开着就删不掉 .db（WinError 32），
+    # 而清理失败发生在断言全过之后，不该把测试判红（Linux 允许删已打开的文件，故只在 Windows 现形）。
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
         fm = FailureMemory(Path(td) / "f.db")
         world = WorldState()
         nudged = set()
