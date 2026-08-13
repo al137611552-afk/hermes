@@ -45,6 +45,7 @@ const EV = {
   REVIEW_SEED: "review_seed",
   REVIEW_DELTA: "review_delta",
   REVIEW_ROUND_START: "review_round_start",
+  REVIEW_BATCH_START: "review_batch_start",   // 分批评审：本轮接下来的流式文本属于第几批（单批时后端不发）
   REVIEW_REVIEWER_DONE: "review_reviewer_done",
   REVIEW_MAIN_REPLY_START: "review_main_reply_start",   // v5 hub：主模型逐轮回复开始（两评审员进言完毕）
   REVIEW_MAIN_REPLY_DONE: "review_main_reply_done",      // v5 hub：主模型本轮回复完成（含结构化决策）
@@ -1445,6 +1446,8 @@ window.__onAgentEvent = function (msg) {
     debateSeeded(v, data); markActivity(v);
   } else if (event === EV.REVIEW_ROUND_START) {
     debateRoundStart(v, data); markActivity(v);
+  } else if (event === EV.REVIEW_BATCH_START) {
+    debateBatchStart(v, data); markActivity(v);
   } else if (event === EV.REVIEW_DELTA) {
     // reviewer=="main" → 主模型回复整宽区；否则 → 产品/技术分列（v5 hub-and-spoke）
     if (data && data.reviewer === DEBATE_MAIN) debateMainDelta(v, data);
@@ -2179,7 +2182,7 @@ function startDebate(v, data) {
     seedEl: box.querySelector(".rvd-seed"),
     streamEl: box.querySelector(".rvd-stream"),
     footEl: box.querySelector(".rvd-foot"),
-    rounds: new Map(), curRound: 0,
+    rounds: new Map(), curRound: 0, curBatch: 0, curBatches: 0,
   };
   scrollView(v);
 }
@@ -2210,13 +2213,17 @@ function debateSeeded(v, data) {
 }
 
 // 单个发言块（某轮某角色）——首次流式时按到达顺序惰性创建，天然保证「产品→技术→主模型」的竖向次序。
-function debateTurn(v, round, role) {
+function debateTurn(v, round, role, batch) {
   const d = v && v.debate; if (!d) return null;
   let rec = d.rounds.get(round);
   if (!rec) { rec = { turns: {} }; d.rounds.set(round, rec); }
-  if (rec.turns[role]) return rec.turns[role];
   const isMain = role === DEBATE_MAIN;
-  const label = isMain ? debateMainRoundLabel(round) : DEBATE_ROLE_LABELS[role];
+  // 分批：同一轮同一角色每批各占一块（主模型不分批，仍是每轮一块）。
+  const bt = isMain ? 0 : (batch || d.curBatch || 0);
+  const key = debateTurnKey(role, bt);
+  if (rec.turns[key]) return rec.turns[key];
+  const label = isMain ? debateMainRoundLabel(round)
+    : DEBATE_ROLE_LABELS[role] + debateBatchSuffix(bt, d.curBatches);
   const el = document.createElement("div");
   el.className = "rvd-turn" + (isMain ? " rvd-turn-main" : "");
   el.innerHTML =
@@ -2229,7 +2236,7 @@ function debateTurn(v, round, role) {
     verdict: el.querySelector(".rvd-turn-verdict"),
     text: "", done: false,
   };
-  rec.turns[role] = cell;
+  rec.turns[key] = cell;
   return cell;
 }
 
@@ -2237,10 +2244,24 @@ function debateRoundStart(v, data) {
   const d = v && v.debate; if (!d) return;
   const round = (data && data.round) || 1;
   d.curRound = round;
+  d.curBatch = 0; d.curBatches = 0;   // 换轮清批次状态，否则第 2 轮会沿用上一轮的批号
   if (!d.rounds.has(round)) d.rounds.set(round, { turns: {} });
   const sep = document.createElement("div");   // 轮次分隔
   sep.className = "rvd-round-sep";
   sep.textContent = "第 " + round + " 轮";
+  d.streamEl.appendChild(sep);
+  scrollView(v);
+}
+
+// 分批评审的批次分隔条。**必须有**：同一轮里同一角色会说多次，没有边界的话两段进言看着像
+// 模型自己把话重复了一遍。顺带把本批评了哪几条决策写出来，用户才知道这段只覆盖了部分。
+function debateBatchStart(v, data) {
+  const d = v && v.debate; if (!d || !data) return;
+  d.curBatch = Number(data.batch) || 1;
+  d.curBatches = Number(data.batches) || 1;
+  const sep = document.createElement("div");
+  sep.className = "rvd-batch-sep";
+  sep.textContent = debateBatchSepText(data.batch, data.batches, data.ids);
   d.streamEl.appendChild(sep);
   scrollView(v);
 }
@@ -2257,7 +2278,8 @@ function debateDelta(v, data) {
 
 function debateReviewerDone(v, data) {
   const d = v && v.debate; if (!d || !data) return;
-  const cell = debateTurn(v, data.round || d.curRound || 1, data.reviewer); if (!cell) return;
+  const cell = debateTurn(v, data.round || d.curRound || 1, data.reviewer, data.batch);
+  if (!cell) return;
   cell.done = true;
   const raw = typeof data.verdict === "string" ? data.verdict : (cell.text || "");
   const { prose, json } = splitVerdictProse(raw);

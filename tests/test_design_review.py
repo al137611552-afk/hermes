@@ -17,7 +17,7 @@ from agentcore.agent.design_review import (  # noqa: E402
     focus_count, review_output_spec, scale_review_budget, scale_review_timeout,
     MAIN, build_main_reply_prompt, main_output_spec, apply_main_reply,
     needs_verdict_rescue, build_verdict_rescue_prompt, merge_rescued_verdict,
-    batch_decisions, batch_scope_note,
+    batch_decisions, batch_scope_note, review_budget_detail, truncation_note,
     auto_reviewer_models, is_heterogeneous, usable_profiles,
     diagnose_decisions, escalate_unresolved, gate_status,
     make_review_fn, parse_decisions, render_consensus, round_snapshot, run_review,
@@ -851,6 +851,68 @@ def test_run_review_small_plan_is_one_batch_no_extra_calls():
     run_review([_d(f"d{i}") for i in range(5)], review_fn, max_rounds=2)
     assert sum(1 for n in calls if n != MAIN) == 2      # 单批 × 2 镜头
     assert sum(1 for n in calls if n == MAIN) == 1
+
+
+def test_batch_start_event_only_when_actually_batched():
+    """前端靠这个信标把同一轮同一角色的多段进言分开；单批不发（老行为零变化）。"""
+    events = []
+
+    def review_fn(name, prompt):
+        return '```json\n[]\n```' if name == MAIN else "进言"
+
+    # 单批（3 条）：不该有 batch_start
+    run_review([_d(f"d{i}") for i in range(3)], review_fn, max_rounds=2,
+               on_event=lambda k, p: events.append((k, p)))
+    assert not [e for e in events if e[0] == "batch_start"], "单批不该发 batch_start"
+
+    # 多批（20 条 → 3 批）：每批一个，且带齐 round/batch/batches/ids
+    events.clear()
+    run_review([_d(f"d{i}") for i in range(20)], review_fn, max_rounds=2,
+               on_event=lambda k, p: events.append((k, p)))
+    starts = [p for k, p in events if k == "batch_start"]
+    assert len(starts) == 3, len(starts)
+    assert [p["batch"] for p in starts] == [1, 2, 3]
+    assert all(p["batches"] == 3 and p["round"] == 1 for p in starts)
+    # ids 要能让前端写出"本批评了哪几条"，且合起来正好是全量
+    assert [i for p in starts for i in p["ids"]] == [f"d{i}" for i in range(20)]
+
+
+# ---- 截断提示必须指向真正卡住的那个旋钮 --------------------------------------
+# 真机反馈：复杂方案评审被截断，提示让去调「评审结论上限」，用户调了毫无变化——因为真凶是
+# 模型档 max_tokens。指错旋钮会让人得出"这功能没用"的结论，比不给提示更糟。
+
+def test_review_baseline_leaves_room_for_verbose_models():
+    """基线 8192 不是拍脑袋：max_tokens 是**上限不是预留**（不写就不花钱），压低买不到简洁、
+    只会在啰嗦的模型上把话切断。实测 deepseek 8 条决策自然写 ~2272 tok，各家差一倍以上，
+    基线要按啰嗦的那一档留余量。**这条测试是防止有人以"省钱"为由把它压回 4096。**"""
+    from agentcore.config import AgentConfig
+    base = AgentConfig().design_review_verdict_max_tokens
+    assert base >= 8192, f"评审基线被压到 {base}，会在啰嗦的模型上截断（见本测试注释）"
+    # 实测最坏值的 3 倍余量以内都算合理；低于 2 倍就该警惕
+    assert base >= 2272 * 2
+
+
+def test_review_budget_detail_names_the_real_limiter():
+    assert review_budget_detail(4096, 3, 16384) == (4096, "base")          # 基线管着
+    assert review_budget_detail(4096, 8, 16384) == (5600, "per_decision")  # 按条数放宽后管着
+    assert review_budget_detail(4096, 8, 256) == (256, "model_cap")        # 模型档卡死
+    assert review_budget_detail(4096, 8, 5000) == (5000, "model_cap")
+    assert review_budget_detail(4096, 3, None)[1] == "base"                # 没有 cap 就不是它
+    assert review_budget_detail(4096, 3, 0)[1] == "base"                   # 0 = 不限
+
+
+def test_truncation_note_reports_effective_budget_and_knob():
+    note = truncation_note("product", 256, "model_cap", False)
+    assert "256 tokens" in note                       # 说清生效预算是多少
+    assert "Provider" in note or "输出上限" in note    # 指向模型档那个旋钮
+    assert "评审结论上限" not in note                  # **不能**再把人支到没用的那个
+    assert "有偏子集" in note                          # 保留原有的诚实措辞
+    # 基线卡住时才该提「评审结论上限」
+    note2 = truncation_note("product", 4096, "base", False)
+    assert "评审结论上限" in note2 and "4096 tokens" in note2
+    # 主模型那条更严重的措辞不能丢
+    note3 = truncation_note(MAIN, 8192, "model_cap", True)
+    assert "决定可能没有生效" in note3 and "8192 tokens" in note3
 
 
 # ---- ③ 主模型 verdict 救援 --------------------------------------------------

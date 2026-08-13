@@ -141,8 +141,13 @@ class AgentConfig(BaseModel):
     design_review_max_rounds: int = 4  # 评审轮数上限（含初始规划快照）：4 = 最多 3 个讨论轮（v5 hub-and-spoke），防无限互评
     design_review_timeout_s: int = 180       # 单个评审角色单次调用超时（秒）：v5 进言更长（上限 4096），90s 太紧会超时丢内容；
                                              # 超时不再丢成空——已流式内容会被回捞（见 _run_reviewers_serial）
-    design_review_verdict_max_tokens: int = 4096  # 单角色评审进言输出上限：v5 评审员是讨论参与者（散文进言给主模型+展示给用户），
-                                                   # 2048 太紧会当场截断（真机反馈"产品镜头没说完就断"）；4096 够一份方案的批评说完整，仍是防跑飞安全网
+    design_review_verdict_max_tokens: int = 8192  # 单角色评审进言输出上限（**基线**，实际预算还会按决策条数放宽）。
+                                                   # 2048→4096→8192 三次都是被真机截断推上来的。**别再往回压**：
+                                                   # max_tokens 是「上限」不是「预留」——按实际生成的 token 计费，
+                                                   # 设高了模型不写就不花钱。把它压低**买不到简洁**（模型该啰嗦还是啰嗦），
+                                                   # 只会在啰嗦的模型上把话从中间切断。控制篇幅靠的是 focus_count 的范围纪律
+                                                   # （只深说 ≤6 条）+ 分批，不是靠这个闸。实测 deepseek 8 条决策自然写 2272 tok，
+                                                   # 但各家差一倍以上——基线要按啰嗦的那一档留余量
     design_review_models: dict = {}    # 异构路由：reviewer 名→模型档案名（如 {"technical":"openai/gpt-4o"}）。
                                        # 角色名：product（产品/市场镜头）、technical（技术镜头）；旧键 execution/architecture 读时自动归一。
                                        # 空=全部用当前主模型（同模型双角色，离线零成本）；推荐给两角色各配一个异构档形成真·双脑评审
@@ -686,7 +691,8 @@ LIMITS_SPEC = (
     {"key": "agent.design_review_timeout_s", "group": "评审", "label": "单角色超时（秒）",
      "hint": "慢/卡的评审调用按空评审跳过", "type": "int", "min": 10, "max": 600},
     {"key": "agent.design_review_verdict_max_tokens", "group": "评审", "label": "评审结论上限 max_tokens",
-     "hint": "防长篇大论的安全网；被截断可调高", "type": "int", "min": 256, "max": 32000},
+     "hint": "基线预算（还会按决策条数自动放宽）。是上限不是预留——设高了不用不花钱，被截断就调高",
+     "type": "int", "min": 256, "max": 32000},
     # 自主 / crazy
     {"key": "agent.crazy_max_rounds", "group": "自主模式（crazy）", "label": "外层目标循环最大轮数",
      "hint": "无人值守的预算护栏", "type": "int", "min": 1, "max": 500},
