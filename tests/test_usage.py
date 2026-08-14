@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agentcore.providers.anthropic_p import _usage as anthropic_usage   # noqa: E402
 from agentcore.providers.openai_p import _usage as openai_usage         # noqa: E402
 from agentcore.store.pricing import (  # noqa: E402
-    BUNDLED_PRICES, Price, cost_of, is_stale, match_price, resolve_price, summarize_costs,
+    Price, cost_of, is_stale, match_price, resolve_price, summarize_costs,
 )
 from agentcore.store.usage import (  # noqa: E402
     UsageStore, parse_usage_event, provider_kind,
@@ -234,21 +234,28 @@ def test_no_price_means_no_amount():
 
 def test_prefix_match_not_substring():
     """按 model_id 前缀匹配：`opus` 不能再命中任意含该词的名字（决策 4）。"""
-    assert match_price("claude-opus-5-20260101", BUNDLED_PRICES) is not None
-    assert match_price("my-opus-tuned", BUNDLED_PRICES) is None   # 旧的子串写法会误伤
+    table = {"gpt-4o": Price(currency="CNY", input=2.5, output=10.0, source="user"),
+             "gpt-4o-mini": Price(currency="CNY", input=0.15, output=0.6, source="user"),
+             "claude-opus": Price(currency="CNY", input=15.0, output=75.0, source="user")}
+    assert match_price("claude-opus-5-20260101", table) is not None
+    assert match_price("my-opus-tuned", table) is None      # 旧的子串写法会误伤
     # 最长前缀优先：gpt-4o-mini 必须命中自己那条，而不是更短的 gpt-4o
-    assert match_price("gpt-4o-mini", BUNDLED_PRICES).input == 0.15
-    assert match_price("gpt-4o-2026", BUNDLED_PRICES).input == 2.5
+    assert match_price("gpt-4o-mini", table).input == 0.15
+    assert match_price("gpt-4o-2026", table).input == 2.5
 
 
-def test_user_price_beats_bundled():
-    """用户手填永远赢——只有他知道自己的协议价（决策 2）。"""
-    # source="user" 是 UsageStore.user_prices() 读库时打的标，这里如实构造
+def test_price_comes_only_from_user():
+    """**不随包带内置牌价**：没填过就是没有价格，只显 token。
+
+    曾平移过一份公开牌价当兜底，但它全是美元、又未核实，而用户按人民币结算——
+    那等于安静地给出一个币种和数值都不对的金额。
+    """
+    assert resolve_price("gpt-4o") is None
+    assert resolve_price("claude-opus-5") is None
     mine = {"deepseek-v4-flash": Price(currency="CNY", input=1.0, output=2.0, source="user")}
     p = resolve_price("deepseek-v4-flash", mine)
     assert p.currency == "CNY" and p.source == "user"
-    # 没填过的模型仍回落内置牌价
-    assert resolve_price("gpt-4o", mine).currency == "USD"
+    assert resolve_price("gpt-4o", mine) is None, "别人的价目不该外溢到没填过的模型"
 
 
 def test_currencies_never_summed_together():
@@ -274,12 +281,6 @@ def test_stale_price_detection():
                     "2026-08-14") is True
     assert is_stale(Price(currency="USD", input=1, output=1, as_of="不是日期"),
                     "2026-08-14") is True
-
-
-def test_bundled_prices_are_all_unverified():
-    """内置牌价一律标未核实——它们是平移过来的粗估，换个地方放不会变得更可信。"""
-    assert BUNDLED_PRICES and all(not p.verified for p in BUNDLED_PRICES.values())
-    assert all(p.source == "bundled" for p in BUNDLED_PRICES.values())
 
 
 def test_store_price_roundtrip_and_cost():
@@ -319,6 +320,71 @@ def test_price_update_overwrites_not_duplicates():
         assert len(prices) == 1 and prices["m"].input == 2.0
         s.delete_price("m")
         assert s.user_prices() == {}
+        s.close()
+
+
+# ---- P3 后端 API（面板的数据源）---------------------------------------------
+
+class _FakeConv:
+    def __init__(self, store): self._s = store
+    def _get_usage_store(self): return self._s
+
+
+def _api_with(store):
+    """造一个只带 active 会话的 Api 壳子——不跑 __init__（不起对话/存储/模型）。"""
+    from agentcore.bridge import api as apimod
+    a = object.__new__(apimod.Api)
+    a.active = _FakeConv(store)
+    return a
+
+
+def test_api_usage_summary_shapes():
+    with tempfile.TemporaryDirectory() as tmp:
+        s = _store(tmp)
+        s.record(model_id="m1", input_uncached=100, input_cache_read=900, output=50,
+                 agent_role="main")
+        s.record(model_id="m2", output=20, agent_role="delegate:sub-1", measured=False)
+        out = _api_with(s).usage_summary(days=30)
+        assert out["ok"] is True
+        assert out["total"]["rows"] == 2
+        assert {r["bucket"] for r in out["by_model"]} == {"m1", "m2"}
+        assert {r["bucket"] for r in out["by_role"]} == {"main", "delegate:sub-1"}
+        assert out["by_day"], "按天切分要有数据"
+        assert out["total"]["estimated_rows"] == 1
+        assert out["unpriced_rows"] == 2, "没填价格的模型应被计出来，面板据此提示"
+        s.close()
+
+
+def test_api_usage_summary_degrades_without_store():
+    """台账关掉时给明确错误，不是崩、也不是假装有数据。"""
+    a = object.__new__(__import__("agentcore.bridge.api", fromlist=["x"]).Api)
+    a.active = _FakeConv(None)
+    assert a.usage_summary()["ok"] is False
+
+
+def test_api_price_crud_and_validation():
+    with tempfile.TemporaryDirectory() as tmp:
+        s = _store(tmp)
+        api = _api_with(s)
+        assert api.set_model_price("m1", {"currency": "cny", "input": "2", "output": "8",
+                                          "cache_read": "0.2", "as_of": "2026-08-14"})["ok"]
+        row = api.get_model_prices()["user"][0]
+        assert row["currency"] == "CNY", "币种归一成大写"
+        assert row["source"] == "user" and row["verified"] is True
+        assert row["cache_write"] is None, "没填的就是没填，不许替用户编一个"
+
+        # 填错要拦住并说清楚，别把坏数据写进账里
+        assert api.set_model_price("", {"input": 1, "output": 1})["ok"] is False
+        assert api.set_model_price("m2", {"input": "", "output": 1})["ok"] is False
+        assert api.set_model_price("m2", {"input": -1, "output": 1})["ok"] is False
+        assert api.set_model_price("m2", {"input": "abc", "output": 1})["ok"] is False
+
+        # 有价之后金额才出得来
+        s.record(model_id="m1", input_uncached=1_000_000, output=1_000_000)
+        assert round(_api_with(s).usage_summary()["by_currency"]["CNY"]["amount"], 6) == 10.0
+
+        assert api.delete_model_price("m1")["ok"]
+        assert api.get_model_prices()["user"] == []
         s.close()
 
 

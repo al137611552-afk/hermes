@@ -442,6 +442,93 @@ class Api:
                 "node": bool(shutil.which("npx") or shutil.which("node")),
                 "connected": bool(bt), "tools": len(bt)}
 
+    # ---- 用量与成本（ADR 0025 P3）------------------------------------------
+
+    def _usage_store(self):
+        """拿共享的 UsageStore（懒建、失败降级 None）。走 Conversation 那条既有通路，
+        免得同一个库在两处各开一个连接。"""
+        conv = getattr(self, "active", None)
+        return conv._get_usage_store() if conv is not None else None
+
+    def usage_summary(self, days: int = 30) -> dict:
+        """用量面板的数据源：按模型 / 角色 / 天三种切分 + 分币种成本。
+
+        **金额与 token 分开给**：没有可信价格的模型照样有 token，只是没有金额
+        （ADR 0025 决策 3）。前端据 `unpriced_rows`/`estimated_rows` 标注可信度。
+        """
+        store = self._usage_store()
+        if store is None:
+            return {"ok": False, "error": "用量台账未启用"}
+        import time as _t
+        since = _t.time() - max(int(days), 1) * 86400
+        try:
+            cost = store.totals_with_cost(since=since)
+            return {
+                "ok": True,
+                "days": int(days),
+                "total": (store.totals(since=since) or [{}])[0],
+                "by_model": store.totals(group_by="model_id", since=since),
+                "by_role": store.totals(group_by="agent_role", since=since),
+                "by_day": store.totals(group_by="day", since=since),
+                "by_currency": cost["by_currency"],
+                "unpriced_rows": cost["unpriced_rows"],
+                "unpriced_models": cost.get("unpriced_models", []),
+                "models_seen": cost.get("models_seen", []),
+                "cost_inferred": cost["inferred"],
+            }
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    def get_model_prices(self) -> dict:
+        """当前生效的价目——**只有用户填的**（不随包带牌价，见 pricing 模块注释）。"""
+        store = self._usage_store()
+        users = store.user_prices() if store is not None else {}
+
+        def _row(mid, p):
+            return {"model_id": mid, "currency": p.currency, "input": p.input,
+                    "output": p.output, "cache_read": p.cache_read,
+                    "cache_write": p.cache_write, "as_of": p.as_of,
+                    "source": p.source, "verified": p.verified, "note": p.note}
+
+        return {"ok": True, "user": [_row(k, v) for k, v in sorted(users.items())]}
+
+    def set_model_price(self, model_id: str, price: dict) -> dict:
+        """存一条用户价目。**用户填的是权威**——只有他知道自己的协议价（决策 2）。"""
+        from ..store.pricing import Price
+        store = self._usage_store()
+        if store is None:
+            return {"ok": False, "error": "用量台账未启用"}
+        mid = (model_id or "").strip()
+        if not mid:
+            return {"ok": False, "error": "模型名不能为空"}
+        try:
+            def _num(key, required=False):
+                v = price.get(key)
+                if v in (None, ""):
+                    if required:
+                        raise ValueError(f"{key} 必填")
+                    return None
+                v = float(v)
+                if v < 0:
+                    raise ValueError(f"{key} 不能为负")
+                return v
+            p = Price(currency=(price.get("currency") or "USD").strip().upper(),
+                      input=_num("input", True), output=_num("output", True),
+                      cache_read=_num("cache_read"), cache_write=_num("cache_write"),
+                      as_of=(price.get("as_of") or "").strip(),
+                      source="user", verified=True, note=(price.get("note") or "").strip())
+        except (TypeError, ValueError) as e:
+            return {"ok": False, "error": f"价格填写有误：{e}"}
+        store.set_price(mid, p)
+        return {"ok": True}
+
+    def delete_model_price(self, model_id: str) -> dict:
+        store = self._usage_store()
+        if store is None:
+            return {"ok": False, "error": "用量台账未启用"}
+        store.delete_price((model_id or "").strip())
+        return {"ok": True}
+
     def check_update(self) -> dict:
         """应用内更新（ADR 0020 T1）：查 GitHub 最新版本 tag 与本地比对。前端启动时静默调，有新版才弹条幅。
         返回 {ok, current, latest?, newer?, notes_url?, error?}；网络失败 ok=False（前端不打扰）。

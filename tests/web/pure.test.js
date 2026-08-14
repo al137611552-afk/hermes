@@ -7,7 +7,8 @@ const {
   computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
   needsKeySetup, validateModelProfile,
   resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
-  accumulateUsage, estimateCostUsd,
+  accumulateUsage,
+  usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
   findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
   formatEval,
   reviewGateLabel, decisionsByStatus, decisionNeedsUser,
@@ -309,29 +310,6 @@ test("accumulateUsage：从空起累加 input/output/cache，turns 计数；不�
   assert.deepEqual(a, { input: 100, output: 50, cacheRead: 20, turns: 1, ...z }); // 原对象不变
   // 缺字段/非数字安全
   assert.deepEqual(accumulateUsage(null, {}), { input: 0, output: 0, cacheRead: 0, turns: 1, ...z });
-});
-
-test("estimateCostUsd：按 model_id 前缀匹配，未知模型返回 null", () => {
-  // claude-sonnet: in 3 / out 15（每百万）
-  const c = estimateCostUsd("claude-sonnet-4-6", { input: 1e6, output: 1e6, cacheRead: 0 });
-  assert.ok(Math.abs(c - 18) < 1e-9);
-  // 缓存读按输入价 10%：kimi in 0.15
-  const k = estimateCostUsd("kimi-k2", { input: 0, output: 0, cacheRead: 1e6 });
-  assert.ok(Math.abs(k - 0.015) < 1e-9);
-  // 写缓存不假装便宜：按输入价全额算
-  const w = estimateCostUsd("kimi-k2", { input: 0, output: 0, cacheWrite: 1e6 });
-  assert.ok(Math.abs(w - 0.15) < 1e-9);
-  // 最长前缀优先：gpt-4o-mini 命中自己（0.15），不被更短的 gpt-4o（2.5）抢走
-  const mini = estimateCostUsd("gpt-4o-mini-2026", { input: 1e6 });
-  assert.ok(Math.abs(mini - 0.15) < 1e-9);
-  // **有意变更（ADR 0025 决策 4）**：改前缀匹配、且传的是真实 model_id 而非档名。
-  // 旧行为是拿档名做子串匹配——"ark-kimi" 这种档名会命中 kimi，而 "我的主力" 永远命中不了；
-  // 更糟的是 "opus" 会命中任何含该词的自定义档名。下面两条钉住新语义。
-  assert.equal(estimateCostUsd("ark-kimi", { input: 1e6 }), null, "档名不再参与匹配");
-  assert.equal(estimateCostUsd("my-opus-tuned", { input: 1e6 }), null, "子串不再算命中");
-  // 未知模型 -> null
-  assert.equal(estimateCostUsd("some-random-model", { input: 1e6, output: 1e6 }), null);
-  assert.equal(estimateCostUsd("", { input: 1 }), null);
 });
 
 test("accumulateUsage：写缓存单独累计，估算标记一路带下去", () => {
@@ -939,4 +917,37 @@ test("非网页目标（本地路径/应用）不提浏览器的事", () => {
   assert.equal(handoffBrowserHint("path", { enabled: true, headed: false }), null);
   assert.equal(handoffBrowserHint("app", { enabled: false }), null);
   assert.equal(handoffBrowserHint("url", null).level, "warn");   // 状态拿不到＝按最坏情况提示
+});
+
+test("用量面板纯逻辑：总计/命中率/分币种/可信度提示（ADR 0025 P3）", () => {
+  const row = { input_uncached: 100, input_cache_read: 900, input_cache_write: 10, output: 50 };
+  assert.equal(usageRowTotal(row), 1060);
+  assert.equal(usageRowTotal(null), 0);
+
+  // 命中率 = 命中 ÷ (命中 + 未命中)；真跑见过 99% 的极端值
+  assert.ok(Math.abs(cacheHitRate(row) - 0.9) < 1e-9);
+  // **没有输入时返回 null 而不是 0%**：0% 会被读成"缓存完全没起作用"，而事实是没有输入
+  assert.equal(cacheHitRate({ output: 10 }), null);
+  assert.equal(cacheHitRate(null), null);
+
+  // 多币种各给一行，绝不相加（决策 4）
+  const lines = formatCostLines({ USD: { amount: 1.5 }, CNY: { amount: 12.3456, inferred: true } });
+  assert.equal(lines.length, 2);
+  assert.deepEqual(lines.map((l) => l.currency), ["CNY", "USD"]);
+  assert.equal(lines[0].text, "CNY 12.35");
+  assert.equal(lines[0].inferred, true);
+  assert.equal(lines[1].inferred, false);
+  // 小额不要显示成 0.00
+  assert.equal(formatCostLines({ USD: { amount: 0.0006 } })[0].text, "USD 0.0006");
+  assert.deepEqual(formatCostLines(null), []);
+
+  // 可信度提示：把不确定性明说，而不是给一个干净的假数（决策 3）
+  const notes = usageCaveats({ total: { estimated_rows: 3 }, unpriced_rows: 2, cost_inferred: true });
+  assert.equal(notes.length, 3);
+  assert.ok(notes[0].includes("估算"));
+  assert.ok(notes[1].includes("没填价格"));
+  assert.ok(notes[2].includes("推断"));
+  // 一切都实测、都有价 → 不出提示（满屏警告等于没有警告）
+  assert.deepEqual(usageCaveats({ total: { estimated_rows: 0 }, unpriced_rows: 0 }), []);
+  assert.deepEqual(usageCaveats(null), []);
 });

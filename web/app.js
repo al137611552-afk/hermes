@@ -1100,25 +1100,26 @@ function updateUsageChip() {
   if (!u || !u.turns) { chip.hidden = true; return; }
   chip.hidden = false;
   const total = u.input + u.output + u.cacheRead + (u.cacheWrite || 0);
-  // 按**真实 model_id**（usage 事件带来的）算，不是档名——档名匹配价目表本来就是错的
-  const cost = estimateCostUsd(u.model || "", u);
-  const costTxt = cost != null ? `　≈ $${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}` : "";
-  // 有任何一轮的用量是估出来的就标出来，别让它冒充实测（ADR 0025 决策 3）
+  // **chip 不显示金额**：它曾写死美元 + 内置粗估价，而真实单价（人民币）由用户填在面板里。
+  // 金额只在用量面板出现（ADR 0025 决策 2/3）。
+  // 有任何一轮的用量是估出来的就标出来，别让它冒充实测（决策 3）
   const estTxt = u.estimated ? "　（含估算）" : "";
   if (tokenBudget > 0) {
     const pct = (total / tokenBudget) * 100;
     const pctTxt = pct < 10 ? pct.toFixed(1) : Math.round(pct);
-    chip.textContent = `已用 ${pctTxt}% · ${fmtK(total)}/${fmtK(tokenBudget)}${costTxt}${estTxt}`;
+    chip.textContent = `已用 ${pctTxt}% · ${fmtK(total)}/${fmtK(tokenBudget)}${estTxt}`;
   } else {
-    chip.textContent = `Σ ${fmtK(total)} tok${costTxt}${estTxt}`;
+    chip.textContent = `Σ ${fmtK(total)} tok${estTxt}`;
   }
   const budgetLine = tokenBudget > 0
     ? `\n预算 ${tokenBudget} tokens，剩 ${Math.max(0, tokenBudget - total)}（${(total / tokenBudget * 100).toFixed(1)}% 已用）`
     : "";
   chip.title =
     `本会话累计（本次打开以来，共 ${u.turns} 轮）\n` +
-    `输入 ${u.input} / 输出 ${u.output} / 缓存 ${u.cacheRead} tokens` + budgetLine +
-    (cost != null ? `\n成本 ≈ $${cost.toFixed(4)}（按公开列表价粗估，仅供参考）` : "\n（当前模型无价目，仅统计 token）");
+    `未命中输入 ${u.input} / 缓存读 ${u.cacheRead} / 缓存写 ${u.cacheWrite || 0} / 输出 ${u.output} tokens` +
+    budgetLine +
+    (u.estimated ? "\n⚠ 含估算轮次（端点没回传用量）" : "") +
+    "\n点击查看跨会话用量与成本";
 }
 
 // 数字缩写：1234 -> 1.2k，1200000 -> 1.2M（累计芯片用，省地方）
@@ -2754,9 +2755,172 @@ function renderShortcuts() {
     ).join("") + "</div>"
   ).join("");
 }
+// ---- 用量面板（ADR 0025 P3）--------------------------------------------------
+// 数据全部来自后端 usage.db（跨会话、跨重启），不是顶栏 chip 那份"本次打开以来"的内存累计。
+const usageOverlay = document.getElementById("usage-overlay");
+
+function openUsagePanel() {
+  if (!usageOverlay) return;
+  usageOverlay.hidden = false;
+  // **必须入浮层栈**：不入栈则 Esc 被下层吃掉，自己挂的监听永远收不到（v3.63 踩过）
+  pushLayer(usageOverlay, closeUsagePanel);
+  refreshUsagePanel();
+}
+function closeUsagePanel() {
+  if (!usageOverlay) return;
+  usageOverlay.hidden = true;
+  popLayer(usageOverlay);
+}
+
+function usageNum(n) { return (Number(n) || 0).toLocaleString("zh-CN"); }
+
+function renderUsageTable(title, rows, labelHead) {
+  if (!rows || !rows.length) return "";
+  const body = rows.map((r) => {
+    const rate = cacheHitRate(r);
+    return `<tr><td title="${escapeHtml(String(r.bucket ?? ""))}">${escapeHtml(String(r.bucket ?? "—"))}</td>` +
+      `<td class="num-strong">${usageNum(usageRowTotal(r))}</td>` +
+      `<td>${usageNum(r.input_uncached)}</td>` +
+      `<td>${usageNum(r.input_cache_read)}</td>` +
+      `<td>${usageNum(r.input_cache_write)}</td>` +
+      `<td>${usageNum(r.output)}</td>` +
+      `<td>${rate == null ? "—" : (rate * 100).toFixed(0) + "%"}</td>` +
+      `<td>${usageNum(r.rows)}${r.estimated_rows ? ` <span class="usage-est">估 ${r.estimated_rows}</span>` : ""}</td></tr>`;
+  }).join("");
+  return `<div class="usage-sec"><h4>${escapeHtml(title)}</h4><div class="table-wrap">` +
+    `<table class="usage-table"><thead><tr><th>${escapeHtml(labelHead)}</th><th>总计</th>` +
+    `<th>未命中输入</th><th>缓存读</th><th>缓存写</th><th>输出</th><th>命中率</th><th>轮次</th>` +
+    `</tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
+
+async function refreshUsagePanel() {
+  const daysSel = document.getElementById("usage-days");
+  const days = Number(daysSel && daysSel.value) || 30;
+  const cards = document.getElementById("usage-cards");
+  const tables = document.getElementById("usage-tables");
+  const caveats = document.getElementById("usage-caveats");
+  if (cards) cards.innerHTML = `<div class="usage-empty">载入中…</div>`;
+  const s = await window.pywebview.api.usage_summary(days);
+  if (!s || !s.ok) {
+    if (cards) cards.innerHTML = `<div class="usage-empty">${escapeHtml((s && s.error) || "读取失败")}</div>`;
+    if (tables) tables.innerHTML = "";
+    return;
+  }
+  const t = s.total || {};
+  // 金额**分币种各一行、绝不相加**（汇率会漂，合并又是个错数）
+  const costs = formatCostLines(s.by_currency);
+  const costHtml = costs.length
+    ? costs.map((c) => `<div class="v accent">${escapeHtml(c.text)}` +
+        `${c.inferred ? '<span class="usage-est">含推断</span>' : ""}</div>`).join("")
+    : `<div class="v">—</div><div class="sub">没填价格，只统计 token</div>`;
+  const rate = cacheHitRate(t);
+  // 命中率配一条细进度条：比例一眼可见，比孤零零一个百分数直观
+  const rateBar = rate == null ? ""
+    : `<div class="usage-bar"><i style="width:${(rate * 100).toFixed(1)}%"></i></div>`;
+  if (cards) {
+    cards.innerHTML =
+      `<div class="usage-card"><div class="k">总 TOKEN · 近 ${days} 天</div>` +
+      `<div class="v">${usageNum(usageRowTotal(t))}</div>` +
+      `<div class="sub">${usageNum(t.rows)} 轮 · 输出 ${usageNum(t.output)}</div></div>` +
+      `<div class="usage-card"><div class="k">缓存命中率</div>` +
+      `<div class="v">${rate == null ? "—" : (rate * 100).toFixed(0) + "%"}</div>` +
+      `<div class="sub">命中 ${usageNum(t.input_cache_read)} · 未命中 ${usageNum(t.input_uncached)}</div>` +
+      rateBar + `</div>` +
+      `<div class="usage-card"><div class="k">成本</div>${costHtml}</div>`;
+  }
+  if (tables) {
+    tables.innerHTML = renderUsageTable("按模型", s.by_model, "模型") +
+      renderUsageTable("按 agent 角色", s.by_role, "角色") +
+      renderUsageTable("按天", s.by_day, "日期");
+  }
+  // 价格填错名字是这块最容易踩的坑：把**实际有用量的 model_id** 灌进候选，让人选而不是打
+  const dl = document.getElementById("up-model-list");
+  if (dl) {
+    dl.innerHTML = (s.models_seen || []).map(
+      (m) => `<option value="${escapeHtml(m)}"></option>`).join("");
+  }
+  // 把不确定性明说，而不是给一个干净的假数
+  const notes = usageCaveats(s);
+  if (caveats) {
+    caveats.hidden = notes.length === 0;
+    caveats.innerHTML = notes.map((n) => `<div>⚠ ${escapeHtml(n)}</div>`).join("");
+    // 没价的模型名做成一点即填——用户不必再手抄一遍（抄错就又对不上了）
+    const unpriced = (s.unpriced_models || []).filter(Boolean);
+    if (unpriced.length) {
+      caveats.innerHTML += `<div class="usage-fill">` + unpriced.map(
+        (m) => `<button class="btn-sm" data-fill-price="${escapeHtml(m)}">填 ${escapeHtml(m)} 的价格</button>`
+      ).join(" ") + `</div>`;
+    }
+  }
+  renderPriceList();
+}
+
+async function renderPriceList() {
+  const box = document.getElementById("usage-price-list");
+  if (!box) return;
+  const r = await window.pywebview.api.get_model_prices();
+  const rows = (r && r.user) || [];
+  if (!rows.length) { box.innerHTML = `<div class="usage-empty">还没填过任何价格——填了才会显示金额。</div>`; return; }
+  box.innerHTML = `<table class="usage-table"><thead><tr><th>模型</th><th>币种</th><th>输入</th>` +
+    `<th>输出</th><th>缓存读</th><th>缓存写</th><th>生效日期</th><th></th></tr></thead><tbody>` +
+    rows.map((p) => `<tr><td>${escapeHtml(p.model_id)}</td><td>${escapeHtml(p.currency)}</td>` +
+      `<td>${p.input}</td>` +
+      `<td>${p.cache_read == null ? "—" : p.cache_read}</td>` +
+      `<td>${p.output}</td>` +
+      `<td>${p.cache_write == null ? "—" : p.cache_write}</td>` +
+      `<td>${escapeHtml(p.as_of || "—")}</td>` +
+      `<td><button class="btn-sm" data-del-price="${escapeHtml(p.model_id)}">删除</button></td></tr>`).join("") +
+    `</tbody></table>`;
+}
+
 function openShortcuts() { renderShortcuts(); shortcutsOverlay.hidden = false; pushLayer(shortcutsOverlay, closeShortcuts); }
 function closeShortcuts() { shortcutsOverlay.hidden = true; popLayer(shortcutsOverlay); }
 if (shortcutsClose) shortcutsClose.addEventListener("click", closeShortcuts);
+
+// ---- 用量面板事件（ADR 0025 P3）--------------------------------------------
+{
+  const chip = document.getElementById("usage-chip");
+  if (chip) {
+    chip.style.cursor = "pointer";
+    chip.title = "本会话累计用量（点击看跨会话明细与成本）";
+    chip.addEventListener("click", openUsagePanel);
+  }
+  const x = document.getElementById("usage-close");
+  if (x) x.addEventListener("click", closeUsagePanel);
+  const refresh = document.getElementById("usage-refresh");
+  if (refresh) refresh.addEventListener("click", refreshUsagePanel);
+  const daysSel = document.getElementById("usage-days");
+  if (daysSel) daysSel.addEventListener("change", refreshUsagePanel);
+  const save = document.getElementById("up-save");
+  if (save) save.addEventListener("click", async () => {
+    const g = (id) => (document.getElementById(id).value || "").trim();
+    const r = await window.pywebview.api.set_model_price(g("up-model"), {
+      currency: g("up-currency"), input: g("up-in"), output: g("up-out"),
+      cache_read: g("up-cr"), cache_write: g("up-cw"), as_of: g("up-asof"),
+    });
+    if (!r || !r.ok) { toast((r && r.error) || "保存失败"); return; }
+    for (const id of ["up-model", "up-in", "up-out", "up-cr", "up-cw"]) {
+      document.getElementById(id).value = "";
+    }
+    refreshUsagePanel();   // 价目变了，金额要跟着重算
+  });
+  const cav = document.getElementById("usage-caveats");
+  if (cav) cav.addEventListener("click", (e) => {
+    const mid = e.target && e.target.getAttribute && e.target.getAttribute("data-fill-price");
+    if (!mid) return;
+    const box = document.getElementById("up-model");
+    if (box) { box.value = mid; box.focus(); }
+    const det = document.querySelector(".usage-prices");
+    if (det) det.open = true;      // 折叠着的话顺手展开，否则点了像没反应
+  });
+  const list = document.getElementById("usage-price-list");
+  if (list) list.addEventListener("click", async (e) => {
+    const mid = e.target && e.target.getAttribute && e.target.getAttribute("data-del-price");
+    if (!mid) return;
+    await window.pywebview.api.delete_model_price(mid);
+    refreshUsagePanel();
+  });
+}
 if (shortcutsOverlay) shortcutsOverlay.addEventListener("click", (e) => {
   if (e.target === shortcutsOverlay) closeShortcuts();   // 点遮罩关闭
 });

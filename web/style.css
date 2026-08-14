@@ -1835,3 +1835,125 @@ body.plan-on .composer::before {
 .rv-exits .rv-btn { width: 100%; text-align: center; }
 /* 气泡操作区的「评审这段」 */
 .msg-review { white-space: nowrap; }
+
+/* ---- 用量面板（ADR 0025 P3）--------------------------------------------------
+   **只用项目既有的设计 token**（--panel-2 / --text / --muted / --border / --warn* …）。
+   初版写了 var(--panel-bg, #fafafa) 这种不存在的变量名，fallback 是浅色 →
+   暗色主题下卡片白底白字，完全看不清（2026-08-14 真机反馈）。
+   **别给不存在的变量配浅色 fallback**：本项目默认是暗色主题，写浅色兜底＝默认就是坏的。
+
+   同理 .table-wrap 在本项目里只定义在 .bubble 作用域内，面板里得自己定义，
+   否则宽表格不会横向滚动（**别给 table 加 display:block**，那是 WebView2 滚动坑）。
+   凡设了 display 的选择器都补 [hidden]，否则 el.hidden=true 仍会显示（踩过三次）。 */
+.usage-modal { width: min(940px, 94vw); max-height: 88vh; display: flex; flex-direction: column; }
+.usage-modal[hidden] { display: none; }
+
+.usage-body {
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 16px 20px 20px; overflow-y: auto; color: var(--text);
+}
+.usage-body[hidden] { display: none; }
+
+/* 工具条 */
+.usage-range { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
+.usage-range[hidden] { display: none; }
+.usage-range select { min-width: 108px; }
+.usage-range .spacer { flex: 1 1 auto; }
+
+/* 提示条：用语义警告色，两个主题都够对比 */
+.usage-caveats {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 10px 12px; border-radius: var(--radius, 9px);
+  background: var(--warn-bg); color: var(--warn);
+  border: 1px solid var(--warn-line); font-size: 12.5px; line-height: 1.55;
+}
+.usage-caveats[hidden] { display: none; }
+
+/* 概览卡 */
+.usage-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.usage-cards[hidden] { display: none; }
+.usage-card {
+  padding: 12px 14px; border-radius: var(--radius, 9px);
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+}
+.usage-card .k { font-size: 11.5px; color: var(--muted); letter-spacing: .02em; }
+.usage-card .v {
+  font-size: 21px; font-weight: 650; line-height: 1.25;
+  font-variant-numeric: tabular-nums; word-break: break-word;
+}
+.usage-card .v.accent { color: var(--accent); }
+.usage-card .sub { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* 命中率的细条：一眼看出比例，比纯数字直观 */
+.usage-bar { height: 4px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 5px; }
+.usage-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* 表格 */
+.usage-sec { display: flex; flex-direction: column; gap: 7px; }
+.usage-sec[hidden] { display: none; }
+.usage-sec h4 {
+  margin: 0; font-size: 11.5px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.usage-body .table-wrap {
+  overflow-x: auto; max-width: 100%;
+  border: 1px solid var(--border); border-radius: var(--radius, 9px); background: var(--panel-2);
+}
+.usage-table { width: 100%; border-collapse: collapse; font-size: 12.5px; color: var(--text); }
+.usage-table th, .usage-table td {
+  padding: 7px 12px; text-align: right; white-space: nowrap;
+  font-variant-numeric: tabular-nums;      /* 数字等宽，列才对得齐 */
+}
+.usage-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--panel-2); color: var(--muted);
+  font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  border-bottom: 1px solid var(--border);
+}
+.usage-table th:first-child, .usage-table td:first-child {
+  text-align: left; max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+}
+.usage-table tbody tr + tr td { border-top: 1px solid var(--border); }
+.usage-table tbody tr:hover { background: var(--hover-bg); }
+.usage-table td.num-strong { font-weight: 600; }
+
+/* 「估」标记：不是错误、但也别让它冒充实测 */
+.usage-est {
+  font-size: 10.5px; padding: 1px 6px; border-radius: 999px; margin-left: 6px;
+  background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-line);
+}
+
+/* 价目管理 */
+.usage-prices { border-top: 1px solid var(--border); padding-top: 12px; }
+.usage-prices summary { cursor: pointer; font-size: 13px; color: var(--text); user-select: none; }
+.usage-prices summary:hover { color: var(--accent); }
+.usage-hint { font-size: 12px; color: var(--muted); margin: 10px 0; line-height: 1.65; }
+.usage-price-form { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+.usage-price-form[hidden] { display: none; }
+.usage-price-form input {
+  padding: 6px 9px; border-radius: 7px; font-size: 12.5px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+}
+.usage-price-form input::placeholder { color: var(--muted); }
+.usage-price-form input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .22);
+}
+.usage-body .btn-sm {
+  padding: 6px 12px; font-size: 12.5px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+}
+.usage-body .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+.usage-body .btn-sm.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.usage-body .btn-sm.primary:hover { background: var(--accent-hover, var(--accent)); color: #fff; }
+.usage-empty { padding: 18px; text-align: center; color: var(--muted); font-size: 12.5px; }
+/* 价目表单：字段名跟着厂商定价页走（输入·未命中 / 输入·命中 / 输出），标签在上、输入在下 */
+.usage-price-form .upf { display: flex; flex-direction: column; gap: 3px; }
+.usage-price-form .upf > span { font-size: 11px; color: var(--muted); }
+.usage-price-form .btn-sm { align-self: flex-end; }
+.usage-adv { margin: -2px 0 10px; }
+.usage-adv summary { cursor: pointer; font-size: 11.5px; color: var(--muted); }
+.usage-adv summary:hover { color: var(--accent); }
+.usage-adv .upf { display: inline-flex; flex-direction: column; gap: 3px; margin-top: 7px; }
+.usage-fill { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.usage-fill[hidden] { display: none; }
