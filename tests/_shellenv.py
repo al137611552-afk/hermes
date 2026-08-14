@@ -151,3 +151,15 @@ def echo_no_newline(text: str) -> str:
     if IS_WIN:
         return f"Write-Host -NoNewline '{text}'"
     return f"printf '{text}'"
+
+
+# ---- 超时基准 -------------------------------------------------------------------
+# **普通命令别写死 5 秒**（2026-08-14 CI run #12 踩过）：Windows PowerShell 5.1 **冷启动**
+# 在负载高的 runner 上真会超过 5s——一句 `(Get-Location).Path` 就把
+# `test_cwd_absent_or_blank_defaults_to_workspace` 判红了，而同一个文件前三轮 CI 都过。
+# 这类用例验的是**别的**（cwd 回落、参数解析…），超时只是"让命令有机会跑完"的背景条件，
+# 卡太紧只会制造假红。
+#
+# **专门验超时行为的用例请显式写自己的值**（故意撞线的 timeout=1、证明探针提前返回的 30），
+# 别用这个常量——那些数字是断言的一部分，跟着平台漂移就测不出东西了。
+PLAIN_TIMEOUT = 20 if IS_WIN else 5

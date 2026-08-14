@@ -13,14 +13,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # tests/_shellenv.py
 
 from _shellenv import (  # noqa: E402
-    IS_WIN, SHELL, echo, echo_no_newline, env_ref, print_env, pwd, python_module, seq, sleep,
-    tick_loop,
+    IS_WIN, PLAIN_TIMEOUT, SHELL, echo, echo_no_newline, env_ref, print_env, pwd, python_module,
+    seq, sleep, tick_loop,
 )
 from agentcore.tools.shell import RunShellTool          # noqa: E402
 from agentcore.tools.base import ToolError              # noqa: E402
 
 
-def _tool(timeout=5):
+def _tool(timeout=PLAIN_TIMEOUT):
     return RunShellTool(Path.cwd(), shell=SHELL, timeout=timeout)
 
 
@@ -177,7 +177,7 @@ def test_win_terminate_tree_kills_job_not_just_taskkill():
 def test_foreground_streams_output_deltas():
     # 前台实时流输出：run() 传 stream 回调时，应边跑边把 stdout 增量推出，且完整拼接≈最终 stdout。
     deltas = []
-    out = _tool(timeout=5).run(
+    out = _tool().run(
         {"command": seq(echo("AAA"), echo("BBB"), echo("CCC")), "background": False},
         stream=lambda kind, delta: deltas.append((kind, delta)),
     )
@@ -474,7 +474,7 @@ def test_cwd_runs_in_subdirectory():
         ws = Path(td).resolve()
         (ws / "sub" / "deep").mkdir(parents=True)
         (ws / "sub" / "marker.txt").write_text("x", encoding="utf-8")
-        tool = RunShellTool(ws, shell=SHELL, timeout=5)
+        tool = RunShellTool(ws, shell=SHELL, timeout=PLAIN_TIMEOUT)
         # 不传 cwd：在工作区根，看不到 marker.txt
         out = tool.run({"command": "ls"})
         assert "sub" in out and "marker.txt" not in out
@@ -491,7 +491,7 @@ def test_cwd_rejects_escape_and_nondirectory():
     with tempfile.TemporaryDirectory() as td:
         ws = Path(td).resolve()
         (ws / "a.txt").write_text("x", encoding="utf-8")
-        tool = RunShellTool(ws, shell=SHELL, timeout=5)
+        tool = RunShellTool(ws, shell=SHELL, timeout=PLAIN_TIMEOUT)
         for bad, why in (("../..", "越界相对路径"), ("/etc", "工作区外绝对路径")):
             raised = None
             try:
@@ -513,7 +513,7 @@ def test_cwd_absent_or_blank_defaults_to_workspace():
     import tempfile
     with tempfile.TemporaryDirectory() as td:
         ws = Path(td).resolve()
-        tool = RunShellTool(ws, shell=SHELL, timeout=5)
+        tool = RunShellTool(ws, shell=SHELL, timeout=PLAIN_TIMEOUT)
         for params in ({"command": pwd()}, {"command": pwd(), "cwd": ""},
                        {"command": pwd(), "cwd": "   "}, {"command": pwd(), "cwd": None}):
             out = tool.run(params)
