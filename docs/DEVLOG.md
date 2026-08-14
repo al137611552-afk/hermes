@@ -40,6 +40,9 @@
 `if: startsWith(github.ref, 'refs/tags/')`，手动触发一律跳过，只有真推 tag 才走到——
 所以 v3.67.1 这个 tag 的作用就是**把流水线最后一段也走一遍**，而不只是发个版。
 （workflow 开头写着"别把真发版当流水线的第一次测试"，本轮之前对这一步恰恰还没兑现。）
+**Release 首验结果：✅ 通过**（run #10，tag `v3.67.1`）。没停在"步骤绿"上，回查了 Release 本体：
+公开（非草稿、非预发布）、`hermes-dev-3.67.1-win64.zip` 39.7 MB 与 `-src.zip` 2.4 MB 两个附件
+均为 `uploaded` 态、正文渲染正常。至此 workflow 的每一步都被真跑过一遍。
 
 ---
 
