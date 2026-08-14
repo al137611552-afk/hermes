@@ -1,6 +1,7 @@
 # ADR 0025 — 用量与成本台账（token accounting）
 
-- **状态**：草案（2026-08-14）
+- **状态**：已接受（2026-08-14）。P1/P2 已实现并**真跑验证**（两条 provider 路径各 12/12，
+  见 `scripts/diag_usage_realrun.py`）；P3 面板待做。
 - **相关**：ADR 0008（会话持久化）、ADR 0024（会话级工具预算）、`providers/anthropic_p.py`、
   `providers/openai_p.py`、`agent/loop.py`（`emit("usage")`）、`web/pure.js`（`accumulateUsage`/`estimateCostUsd`）
 - **来源**：讨论「如何优化 模型+harness 这个系统工程」时的推论——**模型是外部给定、按 token 付费的输入**，
@@ -139,12 +140,17 @@ CI 的「断言产物不含 .env / 密钥」那步也会顺带挡住它。
 
 | 期 | 内容 | 自测边界 |
 |---|---|---|
-| **P1** | 落库 + 采集补全：新库/新表、provider 三处补齐（缓存写 / DeepSeek 命中未命中 / OpenAI cached_tokens）、`measured` 标记、role 归因 | ✅ Linux 可完整自测 |
-| **P2** | 价目模型 + 成本重算：多币种、缓存三态分算、`as_of` 过期标记，替换 `estimateCostUsd` | ✅ 纯逻辑单测 |
-| **P3** | 用量面板 UI | ❌ **需 Windows 真机验** |
+| **P1** ✅ | 落库 + 采集补全：新库/新表、provider 三处补齐（缓存写 / DeepSeek 命中未命中 / OpenAI cached_tokens）、`measured` 标记、role 归因 | ✅ 单测 + **真跑 12/12 ×2 路径** |
+| **P2** ✅ | 价目模型 + 成本重算：多币种、缓存三态分算、`as_of` 过期标记，替换 `estimateCostUsd` | ✅ 纯逻辑单测（29 条） |
+| **P3** ⏳ | 用量面板 UI | ❌ **需 Windows 真机验** |
 
 **P1+P2 先做**：即使面板还没有，数据已经在攒，而且是对的。**面板可以晚，采集不能晚**——
 没采的那段时间永远补不回来。
+
+**真跑验到的一条实据**：DeepSeek 的两个端点（anthropic 兼容 / OpenAI 兼容）在同一段对话上
+都报出 **17152 命中 vs ~175 未命中**——**99% 的输入来自缓存**。改之前 OpenAI 那条路径
+`cache_read` 恒为 0，这些命中会被当成未命中按全价算，按内置粗估系数算**高估 7.8 倍**。
+这也说明缓存读单价是本 ADR 里**最值钱的一个字段**：它几乎单独决定成本数字。
 
 ## P3 的 UI 纪律（本项目已踩过的坑，实现时照此避让）
 
