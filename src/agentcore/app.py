@@ -10,25 +10,34 @@ import webview
 from .bridge import Api
 from .config import load_config
 from .paths import APP_DIR, bundled
-from .startup import clr_load_hint
+from .startup import clr_load_hint, unblock_result_message, unblock_tree
 
 
-def _show_fatal(title: str, body: str) -> None:
-    """把致命错误送到用户真能看见的地方。
+def _message_box(body: str, title: str, flags: int) -> int | None:
+    """弹 Windows 系统对话框。返回按钮 id；非 Windows 或弹窗失败返回 None。
 
-    **发布版是 `console=False`**，往 stderr 打等于没打——所以 Windows 上弹系统对话框。
-    非 Windows / 弹窗失败时退回 stderr，保证信息不丢。
+    **发布版是 `console=False`**，往 stderr 打等于没打——所以必须走对话框。
+    但 stderr 照打一份：源码模式/重定向日志时还能看见。
     """
     print(f"[{title}]\n{body}", file=sys.stderr, flush=True)
     if sys.platform != "win32":
-        return
+        return None
     try:
         import ctypes
 
-        MB_ICONERROR = 0x10
-        ctypes.windll.user32.MessageBoxW(0, body, title, MB_ICONERROR)
+        return int(ctypes.windll.user32.MessageBoxW(0, body, title, flags))
     except Exception:  # noqa: BLE001  弹窗失败不能盖住原始错误
-        pass
+        return None
+
+
+def _show_fatal(title: str, body: str) -> None:
+    _message_box(body, title, 0x10)  # MB_ICONERROR
+
+
+def _ask_yes_no(title: str, body: str) -> bool:
+    """问一句是/否。非 Windows 或弹窗失败＝当作「否」，绝不替用户默认同意。"""
+    MB_YESNO, MB_ICONWARNING, IDYES = 0x4, 0x30, 6
+    return _message_box(body, title, MB_YESNO | MB_ICONWARNING) == IDYES
 
 
 def main() -> None:
@@ -75,7 +84,10 @@ def main() -> None:
         hint = clr_load_hint(e, str(APP_DIR))
         if hint is None:
             raise
-        _show_fatal("Hermes 启动失败", hint)
+        # 问过再动手：这等于替用户抹掉一个安全标记，范围虽只限本程序目录，也不该默认同意。
+        if _ask_yes_no("Hermes 启动失败", hint):
+            cleared, failed = unblock_tree(str(APP_DIR))
+            _show_fatal("Hermes", unblock_result_message(cleared, failed, str(APP_DIR)))
         sys.exit(1)
 
     # 窗口已正常关闭、start() 返回后收尾：后台整理一次记忆，最多等 5s 不阻塞退出

@@ -39,9 +39,58 @@ def clr_load_hint(exc: BaseException, app_dir: str) -> str | None:
         "Hermes 无法启动：加载 .NET 组件失败。\n\n"
         "最常见的原因是这个程序从网上下载而来，Windows 给解压出的文件盖了「来自 Internet」的\n"
         "标记，.NET 会拒绝加载被标记的文件（程序文件本身是好的，只是被拦住了）。\n\n"
-        "解决办法——用 PowerShell 对整个程序目录跑一次：\n\n"
+        "要现在自动解除锁定吗？\n"
+        f"（只处理本程序自己的目录：{app_dir}，不碰任何其它位置）\n\n"
+        "选「否」也可以自己动手——用 PowerShell 跑：\n"
         f"    Get-ChildItem '{app_dir}' -Recurse | Unblock-File\n\n"
-        "然后重新运行本程序即可。（下次也可以在解压前右键 zip → 属性 → 勾选「解除锁定」，\n"
-        "一步到位。）\n\n"
         "若已解除锁定仍是这个错，请确认系统的 .NET Framework 版本不低于 4.7.2。"
+    )
+
+
+# NTFS 的「来自 Internet」标记就存在这个备用数据流里，删掉它＝Unblock-File 干的事。
+ZONE_STREAM = "Zone.Identifier"
+
+
+def unblock_tree(root: str, *, walk=None, remove=None) -> tuple[int, int]:
+    """清掉 root 下所有文件的「来自 Internet」标记。返回 (清掉几个, 失败几个)。
+
+    **只删这一个备用数据流，不碰文件内容本身**——与 `Unblock-File` 等价，范围限本程序目录。
+    `walk`/`remove` 可注入，好让这段在非 Windows 上也能真测（真机上就是 os.walk / os.remove）。
+    """
+    import os
+
+    walk = walk or os.walk
+    remove = remove or os.remove
+
+    cleared = failed = 0
+    for dirpath, _dirnames, filenames in walk(root):
+        for fn in filenames:
+            try:
+                remove(os.path.join(dirpath, fn) + ":" + ZONE_STREAM)
+            except FileNotFoundError:
+                pass          # 这个文件本来就没标记，正常
+            except OSError:
+                failed += 1   # 没权限/被占用等，如实计数，别假装成功
+            else:
+                cleared += 1
+    return cleared, failed
+
+
+def unblock_result_message(cleared: int, failed: int, app_dir: str) -> str:
+    """把解锁结果翻成人话。**三种结局分开说**——含糊的「已处理」会让用户不知道下一步做什么。"""
+    if failed:
+        return (
+            f"部分文件没能解除锁定（成功 {cleared} 个，失败 {failed} 个）。\n\n"
+            "多半是权限不够。请以管理员身份打开 PowerShell 跑：\n"
+            f"    Get-ChildItem '{app_dir}' -Recurse | Unblock-File\n\n"
+            "或者把整个程序目录移到你的用户目录下（例如桌面）再试。"
+        )
+    if cleared:
+        return (
+            f"已解除 {cleared} 个文件的锁定。\n\n请重新启动 Hermes。"
+        )
+    return (
+        "没有找到「来自 Internet」标记，所以问题可能另有原因。\n\n"
+        "请确认系统的 .NET Framework 版本不低于 4.7.2；若仍打不开，"
+        "把这个提示连同报错一起反馈给开发者。"
     )

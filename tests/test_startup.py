@@ -10,7 +10,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from agentcore.startup import clr_load_hint, looks_like_blocked_clr  # noqa: E402
+from agentcore.startup import (  # noqa: E402
+    ZONE_STREAM,
+    clr_load_hint,
+    looks_like_blocked_clr,
+    unblock_result_message,
+    unblock_tree,
+)
 
 
 def _real_shape() -> Exception:
@@ -71,6 +77,81 @@ def test_cycle_in_exception_chain_terminates():
     a.__context__ = b
     b.__context__ = a
     assert looks_like_blocked_clr(a) is False   # 关键是**能返回**，不是挂住
+
+
+def _fake_tree():
+    """两层目录、4 个文件——模拟 onedir 产物（exe 在根、其余在 _internal）。"""
+    return [
+        ("C:\\app", ["_internal"], ["hermes-dev.exe"]),
+        ("C:\\app\\_internal", [], ["base_library.zip", "Python.Runtime.dll", "clr.py"]),
+    ]
+
+
+def test_unblock_only_touches_zone_stream():
+    """只删 :Zone.Identifier，绝不碰文件本身——删错了就是毁产物。"""
+    asked = []
+
+    def remove(path):
+        asked.append(path)
+
+    cleared, failed = unblock_tree("C:\\app", walk=lambda r: _fake_tree(), remove=remove)
+    assert (cleared, failed) == (4, 0)
+    assert len(asked) == 4
+    assert all(p.endswith(":" + ZONE_STREAM) for p in asked)
+    # 去掉流后缀应恰好还原成原文件路径（没有多删/少删别的东西）。
+    # 期望值用 os.path.join 拼——本测试在 Linux 上跑，写死反斜杠会假红。
+    import os
+
+    assert {p.rsplit(":", 1)[0] for p in asked} == {
+        os.path.join("C:\\app", "hermes-dev.exe"),
+        os.path.join("C:\\app\\_internal", "base_library.zip"),
+        os.path.join("C:\\app\\_internal", "Python.Runtime.dll"),
+        os.path.join("C:\\app\\_internal", "clr.py"),
+    }
+
+
+def test_unblock_counts_missing_marker_as_neither():
+    """没标记的文件既不算成功也不算失败（多数文件本来就没有）。"""
+    def remove(path):
+        if "exe" not in path:
+            raise FileNotFoundError(path)
+
+    cleared, failed = unblock_tree("C:\\app", walk=lambda r: _fake_tree(), remove=remove)
+    assert (cleared, failed) == (1, 0)
+
+
+def test_unblock_reports_permission_failures():
+    """没权限要如实计数，不能假装成功——不然用户会以为解决了。"""
+    def remove(path):
+        raise PermissionError(path)
+
+    cleared, failed = unblock_tree("C:\\app", walk=lambda r: _fake_tree(), remove=remove)
+    assert (cleared, failed) == (0, 4)
+
+
+def test_result_message_distinguishes_three_outcomes():
+    """三种结局给的下一步动作必须不同。"""
+    ok = unblock_result_message(12, 0, "C:\\app")
+    part = unblock_result_message(3, 9, "C:\\app")
+    none = unblock_result_message(0, 0, "C:\\app")
+
+    assert "重新启动" in ok
+    assert "管理员" in part and "9" in part      # 失败要给出可执行的下一步
+    assert "另有原因" in none                    # 没找到标记≠已解决，别误导
+    assert len({ok, part, none}) == 3
+
+
+def test_real_walk_on_this_machine_is_harmless():
+    """拿真 os.walk 在临时目录上跑一遍：非 NTFS 上应安全无操作（不抛、不误删）。"""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "a.txt"
+        f.write_text("x", encoding="utf-8")
+        cleared, failed = unblock_tree(d)
+        assert (cleared, failed) == (0, 0)
+        assert f.read_text(encoding="utf-8") == "x"   # 文件原封不动
 
 
 if __name__ == "__main__":
