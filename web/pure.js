@@ -330,6 +330,49 @@
     return ((u.input || 0) * inP + cached + written + (u.output || 0) * outP) / 1e6;
   }
 
+  // ---- 用量面板（ADR 0025 P3）：纯逻辑，可脱离 DOM 单测 ----------------------
+
+  // 一行汇总里的 token 总数（四类相加）。
+  function usageRowTotal(r) {
+    const g = (k) => Number((r || {})[k]) || 0;
+    return g("input_uncached") + g("input_cache_write") + g("input_cache_read") + g("output");
+  }
+
+  // 缓存命中率 = 命中 ÷ (命中 + 未命中输入)。没有输入就返回 null（**不要报 0%**，
+  // 那会被读成"缓存完全没起作用"，而事实是"这段根本没有输入"）。
+  function cacheHitRate(r) {
+    const hit = Number((r || {}).input_cache_read) || 0;
+    const miss = Number((r || {}).input_uncached) || 0;
+    const denom = hit + miss;
+    return denom > 0 ? hit / denom : null;
+  }
+
+  // 金额展示：**分币种各给一行，绝不相加**（ADR 0025 决策 4——汇率会漂）。
+  // 没有任何可计价的行时返回空数组，UI 据此只显 token。
+  function formatCostLines(byCurrency) {
+    const out = [];
+    for (const [cur, v] of Object.entries(byCurrency || {})) {
+      const amt = Number(v && v.amount) || 0;
+      out.push({
+        currency: cur,
+        text: `${cur} ${amt < 0.01 ? amt.toFixed(4) : amt.toFixed(2)}`,
+        inferred: !!(v && v.inferred),
+      });
+    }
+    return out.sort((a, b) => a.currency.localeCompare(b.currency));
+  }
+
+  // 这份数字有多可信：**把不确定性说清楚，而不是给一个干净的假数**（决策 3）。
+  function usageCaveats(summary) {
+    const s = summary || {};
+    const notes = [];
+    const est = Number((s.total || {}).estimated_rows) || 0;
+    if (est > 0) notes.push(`${est} 轮的用量是估算的（端点没回传），不可用于对账`);
+    if (Number(s.unpriced_rows) > 0) notes.push(`${s.unpriced_rows} 个模型没填价格，只统计了 token`);
+    if (s.cost_inferred) notes.push("部分缓存单价是按输入价推断的，金额偏高");
+    return notes;
+  }
+
   // 工具输出折叠判定（P2）：超过行数/字符阈值时默认只展示前若干行，给「展开」入口。
   // 返回 folded=false 表示短、原样全显；folded=true 时 preview 是截断预览、full 是全文。
   // 前台实时流输出：把新增量拼到已有 live 缓冲，并只保留尾部 maxChars（长跑命令不撑爆 DOM）。
@@ -1003,6 +1046,7 @@
     ACTIVITY_KEYS, toolActivityLabel, WINDOW_TITLE_BASE, windowBadgeTitle, unreadDoneCount,
     computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
     needsKeySetup, validateModelProfile,
+    usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
     accumulateUsage, estimateCostUsd, MODEL_PRICING,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,

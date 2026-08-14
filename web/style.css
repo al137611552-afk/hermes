@@ -1835,3 +1835,46 @@ body.plan-on .composer::before {
 .rv-exits .rv-btn { width: 100%; text-align: center; }
 /* 气泡操作区的「评审这段」 */
 .msg-review { white-space: nowrap; }
+
+/* ---- 用量面板（ADR 0025 P3）--------------------------------------------------
+   **完全自带样式，不蹭 .settings-body**：style.css 是按功能顺序追加的大文件，后写的
+   同特异性规则永远赢——v3.63 就是蹭老类被后面的 display:flex 盖掉、整块压成一列。
+   凡是设了 display 的选择器都补一条 [hidden]，否则 el.hidden=true 也照常显示（踩过三次）。 */
+.usage-modal { width: min(920px, 92vw); max-height: 86vh; }
+.usage-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; overflow-y: auto; }
+.usage-body[hidden] { display: none; }
+
+.usage-range { display: flex; align-items: center; gap: 10px; }
+.usage-range[hidden] { display: none; }
+
+.usage-caveats { display: flex; flex-direction: column; gap: 4px;
+  padding: 9px 12px; border-radius: 8px; font-size: 12.5px;
+  background: var(--warn-bg, #fff6e5); color: var(--warn-fg, #8a5a00); }
+.usage-caveats[hidden] { display: none; }
+
+.usage-cards { display: flex; flex-wrap: wrap; gap: 10px; }
+.usage-cards[hidden] { display: none; }
+.usage-card { flex: 1 1 150px; padding: 10px 12px; border-radius: 9px;
+  border: 1px solid var(--border, #e2e2e6); background: var(--panel-bg, #fafafa); }
+.usage-card .k { font-size: 12px; opacity: .7; }
+.usage-card .v { font-size: 18px; font-weight: 600; margin-top: 2px; }
+.usage-card .sub { font-size: 11.5px; opacity: .65; margin-top: 2px; }
+
+.usage-sec { margin-top: 4px; }
+.usage-sec h4 { margin: 0 0 6px; font-size: 13px; opacity: .8; }
+/* 宽表格用外层容器滚动，**别给 table 加 display:block**（WebView2 会把 scrollHeight 算塌） */
+.usage-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.usage-table th, .usage-table td { padding: 5px 8px; text-align: right;
+  border-bottom: 1px solid var(--border, #ececf0); white-space: nowrap; }
+.usage-table th:first-child, .usage-table td:first-child { text-align: left; }
+.usage-table th { font-weight: 600; opacity: .75; }
+
+.usage-prices { border-top: 1px solid var(--border, #ececf0); padding-top: 10px; }
+.usage-prices summary { cursor: pointer; font-size: 13px; }
+.usage-hint { font-size: 12px; opacity: .75; margin: 8px 0; line-height: 1.6; }
+.usage-price-form { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.usage-price-form[hidden] { display: none; }
+.usage-price-form input { padding: 5px 7px; border-radius: 6px;
+  border: 1px solid var(--border, #d9d9de); font-size: 12.5px; }
+.usage-est { font-size: 11px; padding: 1px 5px; border-radius: 4px;
+  background: var(--warn-bg, #fff6e5); color: var(--warn-fg, #8a5a00); }

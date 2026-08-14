@@ -322,6 +322,71 @@ def test_price_update_overwrites_not_duplicates():
         s.close()
 
 
+# ---- P3 后端 API（面板的数据源）---------------------------------------------
+
+class _FakeConv:
+    def __init__(self, store): self._s = store
+    def _get_usage_store(self): return self._s
+
+
+def _api_with(store):
+    """造一个只带 active 会话的 Api 壳子——不跑 __init__（不起对话/存储/模型）。"""
+    from agentcore.bridge import api as apimod
+    a = object.__new__(apimod.Api)
+    a.active = _FakeConv(store)
+    return a
+
+
+def test_api_usage_summary_shapes():
+    with tempfile.TemporaryDirectory() as tmp:
+        s = _store(tmp)
+        s.record(model_id="m1", input_uncached=100, input_cache_read=900, output=50,
+                 agent_role="main")
+        s.record(model_id="m2", output=20, agent_role="delegate:sub-1", measured=False)
+        out = _api_with(s).usage_summary(days=30)
+        assert out["ok"] is True
+        assert out["total"]["rows"] == 2
+        assert {r["bucket"] for r in out["by_model"]} == {"m1", "m2"}
+        assert {r["bucket"] for r in out["by_role"]} == {"main", "delegate:sub-1"}
+        assert out["by_day"], "按天切分要有数据"
+        assert out["total"]["estimated_rows"] == 1
+        assert out["unpriced_rows"] == 2, "没填价格的模型应被计出来，面板据此提示"
+        s.close()
+
+
+def test_api_usage_summary_degrades_without_store():
+    """台账关掉时给明确错误，不是崩、也不是假装有数据。"""
+    a = object.__new__(__import__("agentcore.bridge.api", fromlist=["x"]).Api)
+    a.active = _FakeConv(None)
+    assert a.usage_summary()["ok"] is False
+
+
+def test_api_price_crud_and_validation():
+    with tempfile.TemporaryDirectory() as tmp:
+        s = _store(tmp)
+        api = _api_with(s)
+        assert api.set_model_price("m1", {"currency": "cny", "input": "2", "output": "8",
+                                          "cache_read": "0.2", "as_of": "2026-08-14"})["ok"]
+        row = api.get_model_prices()["user"][0]
+        assert row["currency"] == "CNY", "币种归一成大写"
+        assert row["source"] == "user" and row["verified"] is True
+        assert row["cache_write"] is None, "没填的就是没填，不许替用户编一个"
+
+        # 填错要拦住并说清楚，别把坏数据写进账里
+        assert api.set_model_price("", {"input": 1, "output": 1})["ok"] is False
+        assert api.set_model_price("m2", {"input": "", "output": 1})["ok"] is False
+        assert api.set_model_price("m2", {"input": -1, "output": 1})["ok"] is False
+        assert api.set_model_price("m2", {"input": "abc", "output": 1})["ok"] is False
+
+        # 有价之后金额才出得来
+        s.record(model_id="m1", input_uncached=1_000_000, output=1_000_000)
+        assert round(_api_with(s).usage_summary()["by_currency"]["CNY"]["amount"], 6) == 10.0
+
+        assert api.delete_model_price("m1")["ok"]
+        assert api.get_model_prices()["user"] == []
+        s.close()
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in sorted(globals().items()):

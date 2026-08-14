@@ -192,6 +192,54 @@
     </div>
   </div>
 
+  <!-- 用量面板（ADR 0025 P3）。复用 .settings-overlay 只为居中遮罩；**内容区完全自带样式**
+       （usage-* 前缀），不蹭 .settings-body —— style.css 是按功能顺序追加的大文件，
+       后写的同特异性规则永远赢，蹭老类会被压成一列竖排字（v3.63 踩过）。 -->
+  <div id="usage-overlay" class="settings-overlay" hidden>
+    <div class="settings-modal usage-modal">
+      <header class="settings-head">
+        <span class="settings-title">用量与成本</span>
+        <button id="usage-close" class="settings-x" title="关闭" aria-label="关闭">
+          <span class="ico" data-icon="x" data-sz="15"></span>
+        </button>
+      </header>
+      <div class="usage-body">
+        <div class="usage-range">
+          <label>统计范围
+            <select id="usage-days">
+              <option value="1">今天</option>
+              <option value="7">近 7 天</option>
+              <option value="30" selected>近 30 天</option>
+              <option value="365">近一年</option>
+            </select>
+          </label>
+          <button id="usage-refresh" class="btn-sm">刷新</button>
+        </div>
+        <div id="usage-caveats" class="usage-caveats" hidden></div>
+        <div id="usage-cards" class="usage-cards"></div>
+        <div id="usage-tables"></div>
+        <details class="usage-prices">
+          <summary>价目管理（填了才有金额）</summary>
+          <p class="usage-hint">
+            只有你知道自己的真实单价——协议价 / 代理价 / 阶梯价，官网牌价未必适用。
+            <b>没填价格的模型只统计 token、不显示金额</b>。单价按<b>每百万 token</b> 填。
+          </p>
+          <div class="usage-price-form">
+            <input id="up-model" placeholder="模型名（如 deepseek-v4-flash）" />
+            <input id="up-currency" placeholder="币种" value="CNY" size="5" />
+            <input id="up-in" placeholder="输入" size="6" />
+            <input id="up-out" placeholder="输出" size="6" />
+            <input id="up-cr" placeholder="缓存读" size="6" />
+            <input id="up-cw" placeholder="缓存写" size="6" />
+            <input id="up-asof" placeholder="生效日期 2026-08-14" size="12" />
+            <button id="up-save" class="btn-sm">保存</button>
+          </div>
+          <div id="usage-price-list" class="table-wrap"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
   <div id="shortcuts-overlay" class="settings-overlay" hidden>
     <div class="settings-modal shortcuts-modal">
       <header class="settings-head">

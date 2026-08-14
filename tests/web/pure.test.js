@@ -8,6 +8,7 @@ const {
   needsKeySetup, validateModelProfile,
   resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
   accumulateUsage, estimateCostUsd,
+  usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
   findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
   formatEval,
   reviewGateLabel, decisionsByStatus, decisionNeedsUser,
@@ -939,4 +940,37 @@ test("非网页目标（本地路径/应用）不提浏览器的事", () => {
   assert.equal(handoffBrowserHint("path", { enabled: true, headed: false }), null);
   assert.equal(handoffBrowserHint("app", { enabled: false }), null);
   assert.equal(handoffBrowserHint("url", null).level, "warn");   // 状态拿不到＝按最坏情况提示
+});
+
+test("用量面板纯逻辑：总计/命中率/分币种/可信度提示（ADR 0025 P3）", () => {
+  const row = { input_uncached: 100, input_cache_read: 900, input_cache_write: 10, output: 50 };
+  assert.equal(usageRowTotal(row), 1060);
+  assert.equal(usageRowTotal(null), 0);
+
+  // 命中率 = 命中 ÷ (命中 + 未命中)；真跑见过 99% 的极端值
+  assert.ok(Math.abs(cacheHitRate(row) - 0.9) < 1e-9);
+  // **没有输入时返回 null 而不是 0%**：0% 会被读成"缓存完全没起作用"，而事实是没有输入
+  assert.equal(cacheHitRate({ output: 10 }), null);
+  assert.equal(cacheHitRate(null), null);
+
+  // 多币种各给一行，绝不相加（决策 4）
+  const lines = formatCostLines({ USD: { amount: 1.5 }, CNY: { amount: 12.3456, inferred: true } });
+  assert.equal(lines.length, 2);
+  assert.deepEqual(lines.map((l) => l.currency), ["CNY", "USD"]);
+  assert.equal(lines[0].text, "CNY 12.35");
+  assert.equal(lines[0].inferred, true);
+  assert.equal(lines[1].inferred, false);
+  // 小额不要显示成 0.00
+  assert.equal(formatCostLines({ USD: { amount: 0.0006 } })[0].text, "USD 0.0006");
+  assert.deepEqual(formatCostLines(null), []);
+
+  // 可信度提示：把不确定性明说，而不是给一个干净的假数（决策 3）
+  const notes = usageCaveats({ total: { estimated_rows: 3 }, unpriced_rows: 2, cost_inferred: true });
+  assert.equal(notes.length, 3);
+  assert.ok(notes[0].includes("估算"));
+  assert.ok(notes[1].includes("没填价格"));
+  assert.ok(notes[2].includes("推断"));
+  // 一切都实测、都有价 → 不出提示（满屏警告等于没有警告）
+  assert.deepEqual(usageCaveats({ total: { estimated_rows: 0 }, unpriced_rows: 0 }), []);
+  assert.deepEqual(usageCaveats(null), []);
 });
