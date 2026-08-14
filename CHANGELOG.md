@@ -21,6 +21,16 @@
 - **`_decode_best`（MCP server stderr）在非中文 Windows 上必出乱码**。原顺序 `utf-8 → 本地代码页 → gbk`：
   单字节代码页（cp1252 等）对绝大多数字节序列都能"成功"解码、只是解成乱码，**排在前面等于吞掉一切，
   GBK 分支永远到不了**。改为 `utf-8 → gbk → 本地代码页`——GBK 是会校验的多字节编码，非法尾字节直接抛。
+- **打包被一个我们根本不用的可选子模块打断**（CI 第八轮：`test` 全绿、`build` 首次跑到打包步骤即炸）。
+  `collect_submodules` 是靠**逐个 `__import__` 子包**发现依赖的，递归到 `mcp.cli` 时触发
+  `mcp/cli/cli.py` 顶层的 `import typer`——那是 `mcp[cli]` 可选 extra，我们没装；它失败后
+  **直接 `sys.exit(1)`**，把 PyInstaller 的探测子进程一并带走，整个打包中断。hermes 只用 MCP 客户端。
+  spec 给 `collect_submodules` 加 `filter` 跳过路径分量为 `cli` 的子包——**filter 挡在递归之前**
+  （`for sub in subpackages: if filter(sub): todo.append(sub)`），子包连 import 都不会发生。
+  **`on_error` 兜不住这种崩**：它是 `except Exception`，而 `SystemExit` 是 `BaseException`；
+  改 `"warn"` 只为把所有失败包都报出来（默认 `"warn once"` 只报第一个，后面的静默吞掉）。
+  **按路径分量匹配，别写 `".cli" not in name`**：子串写法会连 `mcp.client` 一起干掉
+  （"mcp.client" 里就含 ".cli"），打包照样成功但产物没有 MCP 客户端——**静默坏掉**。
 
 ### Security
 - **`skillhub._safe_extract` 在 Windows 上不拒绝绝对路径 → 恶意技能包可写出 dest 之外**（CI 第二轮抓到）。

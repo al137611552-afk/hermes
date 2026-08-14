@@ -139,6 +139,10 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   （`C:\Users\RUNNER~1\...`），跟 `Path.resolve()` 后的长名**比对不相等**；
   ⑤ **单字节代码页解码永远"成功"**——把 cp1252 排在 GBK 前面等于吞掉一切、只是解成乱码（`_decode_best` 踩过）。
   另：`build.ps1` **本身不跑测试**，所以本地打包成功不代表 CI 的 `test` 闸门会绿。
+- **改 `hermes-dev.spec` 的 `collect_submodules` 前先读它里面的 `_skip_cli` 注释**（2026-08-14 踩过）：
+  它靠**逐个 `__import__` 子包**发现依赖，某个可选 extra 的 CLI 子模块（`mcp.cli.cli`）import 失败后
+  `sys.exit(1)`，会把探测子进程连同整个打包一起带走。**过滤器必须按路径分量匹配**——
+  写成子串 `".cli" not in name` 会连 `mcp.client` 一起干掉，打包照样成功但产物没有 MCP 客户端（静默坏掉）。
 - **动手前先确认工作目录是不是 git 检出**（2026-08-07 踩过）：`/root` 下同时有 `hermes-dev`(旧快照,无 git) 和 `hermes-latest`(真检出)，按名字猜会把功能建在落后好几个版本的树上，最后要整套移植。先 `git rev-parse --is-inside-work-tree` + 比对 `pyproject.toml` 版本与远端 tag。
 
 ## 非目标
