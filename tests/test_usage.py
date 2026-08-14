@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from agentcore.providers.anthropic_p import _usage as anthropic_usage   # noqa: E402
 from agentcore.providers.openai_p import _usage as openai_usage         # noqa: E402
 from agentcore.store.pricing import (  # noqa: E402
-    BUNDLED_PRICES, Price, cost_of, is_stale, match_price, resolve_price, summarize_costs,
+    Price, cost_of, is_stale, match_price, resolve_price, summarize_costs,
 )
 from agentcore.store.usage import (  # noqa: E402
     UsageStore, parse_usage_event, provider_kind,
@@ -234,21 +234,28 @@ def test_no_price_means_no_amount():
 
 def test_prefix_match_not_substring():
     """按 model_id 前缀匹配：`opus` 不能再命中任意含该词的名字（决策 4）。"""
-    assert match_price("claude-opus-5-20260101", BUNDLED_PRICES) is not None
-    assert match_price("my-opus-tuned", BUNDLED_PRICES) is None   # 旧的子串写法会误伤
+    table = {"gpt-4o": Price(currency="CNY", input=2.5, output=10.0, source="user"),
+             "gpt-4o-mini": Price(currency="CNY", input=0.15, output=0.6, source="user"),
+             "claude-opus": Price(currency="CNY", input=15.0, output=75.0, source="user")}
+    assert match_price("claude-opus-5-20260101", table) is not None
+    assert match_price("my-opus-tuned", table) is None      # 旧的子串写法会误伤
     # 最长前缀优先：gpt-4o-mini 必须命中自己那条，而不是更短的 gpt-4o
-    assert match_price("gpt-4o-mini", BUNDLED_PRICES).input == 0.15
-    assert match_price("gpt-4o-2026", BUNDLED_PRICES).input == 2.5
+    assert match_price("gpt-4o-mini", table).input == 0.15
+    assert match_price("gpt-4o-2026", table).input == 2.5
 
 
-def test_user_price_beats_bundled():
-    """用户手填永远赢——只有他知道自己的协议价（决策 2）。"""
-    # source="user" 是 UsageStore.user_prices() 读库时打的标，这里如实构造
+def test_price_comes_only_from_user():
+    """**不随包带内置牌价**：没填过就是没有价格，只显 token。
+
+    曾平移过一份公开牌价当兜底，但它全是美元、又未核实，而用户按人民币结算——
+    那等于安静地给出一个币种和数值都不对的金额。
+    """
+    assert resolve_price("gpt-4o") is None
+    assert resolve_price("claude-opus-5") is None
     mine = {"deepseek-v4-flash": Price(currency="CNY", input=1.0, output=2.0, source="user")}
     p = resolve_price("deepseek-v4-flash", mine)
     assert p.currency == "CNY" and p.source == "user"
-    # 没填过的模型仍回落内置牌价
-    assert resolve_price("gpt-4o", mine).currency == "USD"
+    assert resolve_price("gpt-4o", mine) is None, "别人的价目不该外溢到没填过的模型"
 
 
 def test_currencies_never_summed_together():
@@ -274,12 +281,6 @@ def test_stale_price_detection():
                     "2026-08-14") is True
     assert is_stale(Price(currency="USD", input=1, output=1, as_of="不是日期"),
                     "2026-08-14") is True
-
-
-def test_bundled_prices_are_all_unverified():
-    """内置牌价一律标未核实——它们是平移过来的粗估，换个地方放不会变得更可信。"""
-    assert BUNDLED_PRICES and all(not p.verified for p in BUNDLED_PRICES.values())
-    assert all(p.source == "bundled" for p in BUNDLED_PRICES.values())
 
 
 def test_store_price_roundtrip_and_cost():

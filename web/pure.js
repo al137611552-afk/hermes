@@ -293,43 +293,6 @@
     };
   }
 
-  // 成本估算价目表：USD / 每百万 token，[模型名子串(小写), 输入价, 输出价]。
-  // ⚠ 公开列表价粗估、会随官方调价过时；要校准就改这里。匹配不到则不显示成本。
-  const MODEL_PRICING = [
-    ["claude-opus", 15, 75], ["opus", 15, 75],
-    ["claude-sonnet", 3, 15], ["sonnet", 3, 15],
-    ["claude-haiku", 0.8, 4], ["haiku", 0.8, 4],
-    ["gpt-4o-mini", 0.15, 0.6], ["gpt-4o", 2.5, 10],
-    ["deepseek", 0.27, 1.1],
-    ["kimi", 0.15, 2.5], ["moonshot", 0.15, 2.5], ["k2", 0.15, 2.5],
-  ];
-
-  // 估算累计成本（USD）。命中价目表才算，否则返回 null（UI 据此只显 token、不显 $）。
-  //
-  // **按 model_id 前缀匹配**（ADR 0025 决策 4）。原来是拿**档名**做子串匹配，两处都错：
-  // 档名是用户随便起的（叫「我的主力」就永远匹配不上），而子串会让 `opus` 命中任何含该词
-  // 的名字。现在 usage 事件带了真实 `model`，用它。最长前缀优先，免得 gpt-4o 抢走 gpt-4o-mini。
-  //
-  // **缓存仍按输入价的 10% 粗估**——这是继承下来的假设，各厂商实际差别很大；真实单价要等
-  // 用户在面板里填（P3 接通后以后端 model_prices 为准）。真跑见过一轮 99% 输入来自缓存命中，
-  // 所以这个系数几乎决定整个数字，UI 必须把它标成「≈」。
-  function estimateCostUsd(model, usage) {
-    const m = String(model || "").toLowerCase();
-    if (!m) return null;
-    let hit = null, hitLen = -1;
-    for (const row of MODEL_PRICING) {
-      const pat = row[0];
-      if (m.startsWith(pat) && pat.length > hitLen) { hit = row; hitLen = pat.length; }
-    }
-    if (!hit) return null;
-    const u = usage || {};
-    const [, inP, outP] = hit;
-    const cached = (u.cacheRead || 0) * inP * 0.1;
-    // 写缓存没有单独价目时按输入价算（不假装它便宜）
-    const written = (u.cacheWrite || 0) * inP;
-    return ((u.input || 0) * inP + cached + written + (u.output || 0) * outP) / 1e6;
-  }
-
   // ---- 用量面板（ADR 0025 P3）：纯逻辑，可脱离 DOM 单测 ----------------------
 
   // 一行汇总里的 token 总数（四类相加）。
@@ -1048,7 +1011,7 @@
     needsKeySetup, validateModelProfile,
     usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
-    accumulateUsage, estimateCostUsd, MODEL_PRICING,
+    accumulateUsage,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval, extractArtifacts, extractWaitingProcess, debateHeader,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,

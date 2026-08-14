@@ -478,8 +478,7 @@ class Api:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
     def get_model_prices(self) -> dict:
-        """当前生效的价目：用户填的 + 内置牌价（各自标出来源与是否已核实）。"""
-        from ..store.pricing import BUNDLED_PRICES
+        """当前生效的价目——**只有用户填的**（不随包带牌价，见 pricing 模块注释）。"""
         store = self._usage_store()
         users = store.user_prices() if store is not None else {}
 
@@ -489,9 +488,7 @@ class Api:
                     "cache_write": p.cache_write, "as_of": p.as_of,
                     "source": p.source, "verified": p.verified, "note": p.note}
 
-        return {"ok": True,
-                "user": [_row(k, v) for k, v in sorted(users.items())],
-                "bundled": [_row(k, v) for k, v in sorted(BUNDLED_PRICES.items())]}
+        return {"ok": True, "user": [_row(k, v) for k, v in sorted(users.items())]}
 
     def set_model_price(self, model_id: str, price: dict) -> dict:
         """存一条用户价目。**用户填的是权威**——只有他知道自己的协议价（决策 2）。"""

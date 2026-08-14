@@ -11,10 +11,10 @@
 - **匹配 `model_id` 而不是档名**，且用**前缀**匹配而非任意子串——旧的子串写法会让
   `opus` 命中任何名字含该词的档（决策 4）。
 
-**内置价目表的态度**：这里的条目是从 `web/pure.js` 的 `MODEL_PRICING` **原样迁移**过来的
-（那是仓库里既有的、已经在用的估价），**不是新查的**，所以一律 `verified=False`、
-`as_of` 留空，UI 必须标注"未核实的粗估"。**不凭记忆往里加新价格**——写错一个数字，
-它会安静地把每一笔账都算错，而这正是本 ADR 要消灭的东西。用户手填的价格永远优先。
+**这里没有内置价目表，是刻意的**：曾平移过一份公开牌价当兜底，但它全是美元、又未经核实，
+而用户按人民币结算——两条加起来就是**安静地给出一个币种和数值都不对的金额**。
+价格一律由用户在面板里填（字段与厂商定价页一致：输入·未命中 / 输入·命中 / 输出）。
+**不凭记忆往代码里写价格**：写错一个数字，它会安静地把每一笔账都算错。
 """
 from __future__ import annotations
 
@@ -37,27 +37,6 @@ class Price:
     note: str = ""
 
 
-# 从 web/pure.js 的 MODEL_PRICING 平移（USD/每百万 token，[输入, 输出]）。
-# **按 model_id 前缀匹配**，不是子串：`opus` 这种词不会再误伤档名。
-# 全部 verified=False —— 它们本来就是"公开列表价粗估"，此处只是换个地方放，没有变得更可信。
-_BUNDLED_RAW = [
-    ("claude-opus", 15.0, 75.0),
-    ("claude-sonnet", 3.0, 15.0),
-    ("claude-haiku", 0.8, 4.0),
-    ("gpt-4o-mini", 0.15, 0.6),
-    ("gpt-4o", 2.5, 10.0),
-    ("deepseek", 0.27, 1.1),
-    ("kimi", 0.15, 2.5),
-    ("moonshot", 0.15, 2.5),
-]
-
-BUNDLED_PRICES: dict[str, Price] = {
-    prefix: Price(currency="USD", input=i, output=o, source="bundled", verified=False,
-                  note="自 pure.js 平移的公开牌价粗估，未核实")
-    for prefix, i, o in _BUNDLED_RAW
-}
-
-
 def match_price(model_id: str | None, table: dict[str, Price]) -> Price | None:
     """按 **最长前缀** 匹配价格；匹配不到返回 None（调用方据此只显 token）。
 
@@ -74,18 +53,19 @@ def match_price(model_id: str | None, table: dict[str, Price]) -> Price | None:
     return best[1] if best else None
 
 
-def resolve_price(model_id: str | None, user_prices: dict[str, Price] | None = None,
-                  bundled: dict[str, Price] | None = None) -> Price | None:
-    """价格优先级：**用户手填（精确 model_id）> 用户前缀 > 内置牌价**（决策 2）。
+def resolve_price(model_id: str | None, user_prices: dict[str, Price] | None = None) -> Price | None:
+    """价格**只来自用户手填**：先精确 `model_id`，再前缀匹配；都没有 → None（只显 token）。
 
-    用户填的永远赢——只有他知道自己的协议价/代理价/阶梯价，官网牌价对他未必适用。
+    **不再随包带内置牌价**（2026-08-14 改）：原来平移了一份 pure.js 的公开牌价当兜底，
+    但它①全是美元，而用户按人民币结算；②未经核实。两条加起来＝**安静地给出一个币种和
+    数值都不对的金额**，正是本 ADR 要消灭的东西。宁可只显 token。
     """
     users = user_prices or {}
     if model_id and model_id.strip().lower() in {k.strip().lower() for k in users}:
         for k, v in users.items():
             if k.strip().lower() == model_id.strip().lower():
                 return v
-    return match_price(model_id, users) or match_price(model_id, bundled or BUNDLED_PRICES)
+    return match_price(model_id, users)
 
 
 def cost_of(tokens: dict, price: Price | None) -> dict | None:

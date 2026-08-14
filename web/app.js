@@ -1100,9 +1100,9 @@ function updateUsageChip() {
   if (!u || !u.turns) { chip.hidden = true; return; }
   chip.hidden = false;
   const total = u.input + u.output + u.cacheRead + (u.cacheWrite || 0);
-  // 按**真实 model_id**（usage 事件带来的）算，不是档名——档名匹配价目表本来就是错的
-  const cost = estimateCostUsd(u.model || "", u);
-  const costTxt = cost != null ? `　≈ $${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}` : "";
+  // **chip 不再显示金额**：它写死过美元、又只有内置粗估价，而真实单价（人民币）在面板里。
+  // 金额只在用量面板出现——那里用的是用户自己填的价目（ADR 0025 决策 2/3）。
+  const costTxt = "";
   // 有任何一轮的用量是估出来的就标出来，别让它冒充实测（ADR 0025 决策 3）
   const estTxt = u.estimated ? "　（含估算）" : "";
   if (tokenBudget > 0) {
@@ -2777,8 +2777,8 @@ function renderUsageTable(title, rows, labelHead) {
   if (!rows || !rows.length) return "";
   const body = rows.map((r) => {
     const rate = cacheHitRate(r);
-    return `<tr><td>${escapeHtml(String(r.bucket ?? "—"))}</td>` +
-      `<td>${usageNum(usageRowTotal(r))}</td>` +
+    return `<tr><td title="${escapeHtml(String(r.bucket ?? ""))}">${escapeHtml(String(r.bucket ?? "—"))}</td>` +
+      `<td class="num-strong">${usageNum(usageRowTotal(r))}</td>` +
       `<td>${usageNum(r.input_uncached)}</td>` +
       `<td>${usageNum(r.input_cache_read)}</td>` +
       `<td>${usageNum(r.input_cache_write)}</td>` +
@@ -2798,10 +2798,10 @@ async function refreshUsagePanel() {
   const cards = document.getElementById("usage-cards");
   const tables = document.getElementById("usage-tables");
   const caveats = document.getElementById("usage-caveats");
-  if (cards) cards.textContent = "载入中…";
+  if (cards) cards.innerHTML = `<div class="usage-empty">载入中…</div>`;
   const s = await window.pywebview.api.usage_summary(days);
   if (!s || !s.ok) {
-    if (cards) cards.textContent = (s && s.error) || "读取失败";
+    if (cards) cards.innerHTML = `<div class="usage-empty">${escapeHtml((s && s.error) || "读取失败")}</div>`;
     if (tables) tables.innerHTML = "";
     return;
   }
@@ -2809,16 +2809,22 @@ async function refreshUsagePanel() {
   // 金额**分币种各一行、绝不相加**（汇率会漂，合并又是个错数）
   const costs = formatCostLines(s.by_currency);
   const costHtml = costs.length
-    ? costs.map((c) => `<div class="v">${escapeHtml(c.text)}${c.inferred ? " *" : ""}</div>`).join("")
+    ? costs.map((c) => `<div class="v accent">${escapeHtml(c.text)}` +
+        `${c.inferred ? '<span class="usage-est">含推断</span>' : ""}</div>`).join("")
     : `<div class="v">—</div><div class="sub">没填价格，只统计 token</div>`;
+  const rate = cacheHitRate(t);
+  // 命中率配一条细进度条：比例一眼可见，比孤零零一个百分数直观
+  const rateBar = rate == null ? ""
+    : `<div class="usage-bar"><i style="width:${(rate * 100).toFixed(1)}%"></i></div>`;
   if (cards) {
     cards.innerHTML =
-      `<div class="usage-card"><div class="k">总 token（近 ${days} 天）</div>` +
+      `<div class="usage-card"><div class="k">总 TOKEN · 近 ${days} 天</div>` +
       `<div class="v">${usageNum(usageRowTotal(t))}</div>` +
-      `<div class="sub">${usageNum(t.rows)} 轮</div></div>` +
+      `<div class="sub">${usageNum(t.rows)} 轮 · 输出 ${usageNum(t.output)}</div></div>` +
       `<div class="usage-card"><div class="k">缓存命中率</div>` +
-      `<div class="v">${cacheHitRate(t) == null ? "—" : (cacheHitRate(t) * 100).toFixed(0) + "%"}</div>` +
-      `<div class="sub">命中 ${usageNum(t.input_cache_read)}</div></div>` +
+      `<div class="v">${rate == null ? "—" : (rate * 100).toFixed(0) + "%"}</div>` +
+      `<div class="sub">命中 ${usageNum(t.input_cache_read)} · 未命中 ${usageNum(t.input_uncached)}</div>` +
+      rateBar + `</div>` +
       `<div class="usage-card"><div class="k">成本</div>${costHtml}</div>`;
   }
   if (tables) {
@@ -2840,12 +2846,13 @@ async function renderPriceList() {
   if (!box) return;
   const r = await window.pywebview.api.get_model_prices();
   const rows = (r && r.user) || [];
-  if (!rows.length) { box.innerHTML = `<p class="usage-hint">还没填过任何价格。</p>`; return; }
+  if (!rows.length) { box.innerHTML = `<div class="usage-empty">还没填过任何价格——填了才会显示金额。</div>`; return; }
   box.innerHTML = `<table class="usage-table"><thead><tr><th>模型</th><th>币种</th><th>输入</th>` +
     `<th>输出</th><th>缓存读</th><th>缓存写</th><th>生效日期</th><th></th></tr></thead><tbody>` +
     rows.map((p) => `<tr><td>${escapeHtml(p.model_id)}</td><td>${escapeHtml(p.currency)}</td>` +
-      `<td>${p.input}</td><td>${p.output}</td>` +
+      `<td>${p.input}</td>` +
       `<td>${p.cache_read == null ? "—" : p.cache_read}</td>` +
+      `<td>${p.output}</td>` +
       `<td>${p.cache_write == null ? "—" : p.cache_write}</td>` +
       `<td>${escapeHtml(p.as_of || "—")}</td>` +
       `<td><button class="btn-sm" data-del-price="${escapeHtml(p.model_id)}">删除</button></td></tr>`).join("") +

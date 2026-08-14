@@ -213,6 +213,7 @@
               <option value="365">近一年</option>
             </select>
           </label>
+          <span class="spacer"></span>
           <button id="usage-refresh" class="btn-sm">刷新</button>
         </div>
         <div id="usage-caveats" class="usage-caveats" hidden></div>
@@ -221,19 +222,30 @@
         <details class="usage-prices">
           <summary>价目管理（填了才有金额）</summary>
           <p class="usage-hint">
+            字段与厂商定价页一致：<b>输入（缓存未命中）/ 输入（缓存命中）/ 输出</b>，均按<b>每百万 tokens</b>。
             只有你知道自己的真实单价——协议价 / 代理价 / 阶梯价，官网牌价未必适用。
-            <b>没填价格的模型只统计 token、不显示金额</b>。单价按<b>每百万 token</b> 填。
+            <b>没填价格的模型只统计 token、不显示金额。</b>
           </p>
           <div class="usage-price-form">
-            <input id="up-model" placeholder="模型名（如 deepseek-v4-flash）" />
-            <input id="up-currency" placeholder="币种" value="CNY" size="5" />
-            <input id="up-in" placeholder="输入" size="6" />
-            <input id="up-out" placeholder="输出" size="6" />
-            <input id="up-cr" placeholder="缓存读" size="6" />
-            <input id="up-cw" placeholder="缓存写" size="6" />
-            <input id="up-asof" placeholder="生效日期 2026-08-14" size="12" />
-            <button id="up-save" class="btn-sm">保存</button>
+            <label class="upf"><span>模型名</span>
+              <input id="up-model" placeholder="deepseek-v4-flash" size="22" /></label>
+            <label class="upf"><span>币种</span>
+              <input id="up-currency" value="CNY" size="4" /></label>
+            <label class="upf"><span>输入·缓存未命中</span>
+              <input id="up-in" placeholder="每百万" size="7" /></label>
+            <label class="upf"><span>输入·缓存命中</span>
+              <input id="up-cr" placeholder="每百万" size="7" /></label>
+            <label class="upf"><span>输出</span>
+              <input id="up-out" placeholder="每百万" size="7" /></label>
+            <label class="upf"><span>生效日期</span>
+              <input id="up-asof" placeholder="2026-08-14" size="10" /></label>
+            <button id="up-save" class="btn-sm primary">保存</button>
           </div>
+          <details class="usage-adv">
+            <summary>另有「缓存写入」单独计费的（Anthropic 系）</summary>
+            <label class="upf"><span>缓存写入·每百万</span>
+              <input id="up-cw" placeholder="留空=按未命中输入价算" size="9" /></label>
+          </details>
           <div id="usage-price-list" class="table-wrap"></div>
         </details>
       </div>
