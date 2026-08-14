@@ -278,13 +278,18 @@
   // ---- 会话累计用量（P2）----
   // 把一次 usage 事件累加进会话累计；acc 可为空。返回新累计（不改原对象）。
   function accumulateUsage(acc, ev) {
-    const a = acc || { input: 0, output: 0, cacheRead: 0, turns: 0 };
+    const a = acc || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, estimated: false };
     const e = ev || {};
     return {
       input: a.input + (Number(e.input) || 0),
       output: a.output + (Number(e.output) || 0),
       cacheRead: a.cacheRead + (Number(e.cache_read) || 0),
+      // 写缓存单独累计：它比普通输入贵，混进 input 就把成本算低了（ADR 0025）
+      cacheWrite: (a.cacheWrite || 0) + (Number(e.cache_write) || 0),
       turns: a.turns + 1,
+      // 只要有一轮是估的，整段累计就不能当精确值——UI 据此打「估」
+      estimated: !!a.estimated || e.measured === false,
+      model: e.model || a.model || "",   // 真实 model_id：计价按它，不按档名
     };
   }
 
@@ -300,15 +305,29 @@
   ];
 
   // 估算累计成本（USD）。命中价目表才算，否则返回 null（UI 据此只显 token、不显 $）。
-  // 缓存读按输入价的 10% 计（多数厂商缓存命中显著便宜，粗略折算）。
+  //
+  // **按 model_id 前缀匹配**（ADR 0025 决策 4）。原来是拿**档名**做子串匹配，两处都错：
+  // 档名是用户随便起的（叫「我的主力」就永远匹配不上），而子串会让 `opus` 命中任何含该词
+  // 的名字。现在 usage 事件带了真实 `model`，用它。最长前缀优先，免得 gpt-4o 抢走 gpt-4o-mini。
+  //
+  // **缓存仍按输入价的 10% 粗估**——这是继承下来的假设，各厂商实际差别很大；真实单价要等
+  // 用户在面板里填（P3 接通后以后端 model_prices 为准）。真跑见过一轮 99% 输入来自缓存命中，
+  // 所以这个系数几乎决定整个数字，UI 必须把它标成「≈」。
   function estimateCostUsd(model, usage) {
     const m = String(model || "").toLowerCase();
-    const u = usage || {};
-    const hit = MODEL_PRICING.find(([pat]) => m.includes(pat));
+    if (!m) return null;
+    let hit = null, hitLen = -1;
+    for (const row of MODEL_PRICING) {
+      const pat = row[0];
+      if (m.startsWith(pat) && pat.length > hitLen) { hit = row; hitLen = pat.length; }
+    }
     if (!hit) return null;
+    const u = usage || {};
     const [, inP, outP] = hit;
-    const cost = ((u.input || 0) * inP + (u.cacheRead || 0) * inP * 0.1 + (u.output || 0) * outP) / 1e6;
-    return cost;
+    const cached = (u.cacheRead || 0) * inP * 0.1;
+    // 写缓存没有单独价目时按输入价算（不假装它便宜）
+    const written = (u.cacheWrite || 0) * inP;
+    return ((u.input || 0) * inP + cached + written + (u.output || 0) * outP) / 1e6;
   }
 
   // 工具输出折叠判定（P2）：超过行数/字符阈值时默认只展示前若干行，给「展开」入口。

@@ -40,6 +40,20 @@ CREATE TABLE IF NOT EXISTS usage_log (
 CREATE INDEX IF NOT EXISTS idx_usage_ts      ON usage_log(ts);
 CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_log(session_id);
 CREATE INDEX IF NOT EXISTS idx_usage_model   ON usage_log(model_id);
+
+-- 用户手填的价目（ADR 0025 决策 2：用户填的是权威，内置牌价只是兜底）。
+-- 与账放同一个库：它们是同一件事的两半，分开放只会出现"账在价目没了"的半残状态。
+CREATE TABLE IF NOT EXISTS model_prices (
+    model_id         TEXT PRIMARY KEY,   -- 计价键：真实模型名，不是档名（决策 4）
+    currency         TEXT NOT NULL,      -- 币种一等字段，不做汇率换算
+    price_in         REAL NOT NULL,      -- 每百万 token
+    price_out        REAL NOT NULL,
+    price_cache_read  REAL,              -- NULL = 没填，算的时候回落输入价并标记 inferred
+    price_cache_write REAL,
+    as_of            TEXT,               -- 这份价格是哪天的；空=不知道，一律当过期
+    note             TEXT,
+    updated_at       REAL NOT NULL
+);
 """
 
 # token 计数列——聚合时求和的就是这几列
@@ -163,6 +177,63 @@ class UsageStore:
                    f" COALESCE(SUM(1 - measured),0) AS estimated_rows FROM usage_log{clause}")
         with self._lock:
             return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
+
+    # ---- 价目（用户手填为权威）---------------------------------------------
+
+    def set_price(self, model_id: str, price) -> None:
+        """写/覆盖一条用户价目（`price` 是 `pricing.Price`）。"""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO model_prices (model_id, currency, price_in, price_out,"
+                " price_cache_read, price_cache_write, as_of, note, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(model_id) DO UPDATE SET currency=excluded.currency,"
+                " price_in=excluded.price_in, price_out=excluded.price_out,"
+                " price_cache_read=excluded.price_cache_read,"
+                " price_cache_write=excluded.price_cache_write,"
+                " as_of=excluded.as_of, note=excluded.note, updated_at=excluded.updated_at",
+                (model_id, price.currency, float(price.input), float(price.output),
+                 price.cache_read, price.cache_write, price.as_of or "", price.note or "",
+                 time.time()),
+            )
+            self._conn.commit()
+
+    def delete_price(self, model_id: str) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM model_prices WHERE model_id = ?", (model_id,))
+            self._conn.commit()
+
+    def user_prices(self) -> dict:
+        """全部用户价目 → `{model_id: Price}`（`source="user"`、`verified=True`）。
+
+        标 `verified=True` 是因为**它是人亲手填的**——这正是 ADR 认可的权威来源；
+        内置牌价才是未核实的那一类。
+        """
+        from .pricing import Price
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM model_prices").fetchall()
+        return {
+            r["model_id"]: Price(
+                currency=r["currency"], input=r["price_in"], output=r["price_out"],
+                cache_read=r["price_cache_read"], cache_write=r["price_cache_write"],
+                as_of=r["as_of"] or "", source="user", verified=True, note=r["note"] or "",
+            )
+            for r in rows
+        }
+
+    def totals_with_cost(self, **kw) -> dict:
+        """按 `model_id` 汇总 token 并折算成本（**分币种**，不合并）。
+
+        没有价格的桶照样出 token，只是不出金额——这是 ADR 决策 3 的落点：
+        **宁可少一个数，不给一个错的数**。
+        """
+        from .pricing import resolve_price, summarize_costs
+        kw.pop("group_by", None)
+        buckets = self.totals(group_by="model_id", **kw)
+        rows = [{**b, "model_id": b["bucket"]} for b in buckets]
+        users = self.user_prices()
+        summary = summarize_costs(rows, resolve=lambda mid: resolve_price(mid, users))
+        return {"buckets": buckets, **summary}
 
     def recent(self, limit: int = 50) -> list[dict]:
         """最近若干行明细（对账用：决策 6）。"""

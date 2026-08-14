@@ -1099,15 +1099,18 @@ function updateUsageChip() {
   const u = v && v.usage;
   if (!u || !u.turns) { chip.hidden = true; return; }
   chip.hidden = false;
-  const total = u.input + u.output + u.cacheRead;
-  const cost = estimateCostUsd(modelSelect.value, u);
+  const total = u.input + u.output + u.cacheRead + (u.cacheWrite || 0);
+  // 按**真实 model_id**（usage 事件带来的）算，不是档名——档名匹配价目表本来就是错的
+  const cost = estimateCostUsd(u.model || "", u);
   const costTxt = cost != null ? `　≈ $${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}` : "";
+  // 有任何一轮的用量是估出来的就标出来，别让它冒充实测（ADR 0025 决策 3）
+  const estTxt = u.estimated ? "　（含估算）" : "";
   if (tokenBudget > 0) {
     const pct = (total / tokenBudget) * 100;
     const pctTxt = pct < 10 ? pct.toFixed(1) : Math.round(pct);
-    chip.textContent = `已用 ${pctTxt}% · ${fmtK(total)}/${fmtK(tokenBudget)}${costTxt}`;
+    chip.textContent = `已用 ${pctTxt}% · ${fmtK(total)}/${fmtK(tokenBudget)}${costTxt}${estTxt}`;
   } else {
-    chip.textContent = `Σ ${fmtK(total)} tok${costTxt}`;
+    chip.textContent = `Σ ${fmtK(total)} tok${costTxt}${estTxt}`;
   }
   const budgetLine = tokenBudget > 0
     ? `\n预算 ${tokenBudget} tokens，剩 ${Math.max(0, tokenBudget - total)}（${(total / tokenBudget * 100).toFixed(1)}% 已用）`

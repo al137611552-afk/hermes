@@ -300,25 +300,53 @@ test("foldToolOutput：短输出不折叠，超行数/字符折叠并给预览",
 });
 
 test("accumulateUsage：从空起累加 input/output/cache，turns 计数；不改原对象", () => {
+  // 形状随 ADR 0025 扩了 cacheWrite/estimated/model（写缓存单独计价、估算要可识别）
+  const z = { cacheWrite: 0, estimated: false, model: "" };
   const a = accumulateUsage(null, { input: 100, output: 50, cache_read: 20 });
-  assert.deepEqual(a, { input: 100, output: 50, cacheRead: 20, turns: 1 });
+  assert.deepEqual(a, { input: 100, output: 50, cacheRead: 20, turns: 1, ...z });
   const b = accumulateUsage(a, { input: 10, output: 5 });
-  assert.deepEqual(b, { input: 110, output: 55, cacheRead: 20, turns: 2 });
-  assert.deepEqual(a, { input: 100, output: 50, cacheRead: 20, turns: 1 }); // 原对象不变
+  assert.deepEqual(b, { input: 110, output: 55, cacheRead: 20, turns: 2, ...z });
+  assert.deepEqual(a, { input: 100, output: 50, cacheRead: 20, turns: 1, ...z }); // 原对象不变
   // 缺字段/非数字安全
-  assert.deepEqual(accumulateUsage(null, {}), { input: 0, output: 0, cacheRead: 0, turns: 1 });
+  assert.deepEqual(accumulateUsage(null, {}), { input: 0, output: 0, cacheRead: 0, turns: 1, ...z });
 });
 
-test("estimateCostUsd：命中价目表按量算，未知模型返回 null", () => {
+test("estimateCostUsd：按 model_id 前缀匹配，未知模型返回 null", () => {
   // claude-sonnet: in 3 / out 15（每百万）
   const c = estimateCostUsd("claude-sonnet-4-6", { input: 1e6, output: 1e6, cacheRead: 0 });
   assert.ok(Math.abs(c - 18) < 1e-9);
   // 缓存读按输入价 10%：kimi in 0.15
-  const k = estimateCostUsd("ark-kimi", { input: 0, output: 0, cacheRead: 1e6 });
+  const k = estimateCostUsd("kimi-k2", { input: 0, output: 0, cacheRead: 1e6 });
   assert.ok(Math.abs(k - 0.015) < 1e-9);
+  // 写缓存不假装便宜：按输入价全额算
+  const w = estimateCostUsd("kimi-k2", { input: 0, output: 0, cacheWrite: 1e6 });
+  assert.ok(Math.abs(w - 0.15) < 1e-9);
+  // 最长前缀优先：gpt-4o-mini 命中自己（0.15），不被更短的 gpt-4o（2.5）抢走
+  const mini = estimateCostUsd("gpt-4o-mini-2026", { input: 1e6 });
+  assert.ok(Math.abs(mini - 0.15) < 1e-9);
+  // **有意变更（ADR 0025 决策 4）**：改前缀匹配、且传的是真实 model_id 而非档名。
+  // 旧行为是拿档名做子串匹配——"ark-kimi" 这种档名会命中 kimi，而 "我的主力" 永远命中不了；
+  // 更糟的是 "opus" 会命中任何含该词的自定义档名。下面两条钉住新语义。
+  assert.equal(estimateCostUsd("ark-kimi", { input: 1e6 }), null, "档名不再参与匹配");
+  assert.equal(estimateCostUsd("my-opus-tuned", { input: 1e6 }), null, "子串不再算命中");
   // 未知模型 -> null
   assert.equal(estimateCostUsd("some-random-model", { input: 1e6, output: 1e6 }), null);
   assert.equal(estimateCostUsd("", { input: 1 }), null);
+});
+
+test("accumulateUsage：写缓存单独累计，估算标记一路带下去", () => {
+  let acc = accumulateUsage(null, { input: 10, output: 2, cache_read: 5, cache_write: 3,
+                                    measured: true, model: "m-1" });
+  assert.equal(acc.cacheWrite, 3);
+  assert.equal(acc.estimated, false);
+  assert.equal(acc.model, "m-1");
+  // 只要有一轮是估的，整段累计就带上标记（别让估算值冒充实测）
+  acc = accumulateUsage(acc, { input: 1, output: 1, measured: false });
+  assert.equal(acc.estimated, true);
+  assert.equal(acc.turns, 2);
+  // 后续实测轮不会把标记洗掉
+  acc = accumulateUsage(acc, { input: 1, output: 1, measured: true });
+  assert.equal(acc.estimated, true);
 });
 
 test("findMentionQuery：光标前的连续 @token 才激活，邮箱/含空格不激活", () => {

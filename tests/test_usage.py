@@ -12,6 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from agentcore.providers.anthropic_p import _usage as anthropic_usage   # noqa: E402
 from agentcore.providers.openai_p import _usage as openai_usage         # noqa: E402
+from agentcore.store.pricing import (  # noqa: E402
+    BUNDLED_PRICES, Price, cost_of, is_stale, match_price, resolve_price, summarize_costs,
+)
 from agentcore.store.usage import (  # noqa: E402
     UsageStore, parse_usage_event, provider_kind,
 )
@@ -199,6 +202,124 @@ def test_survives_reopen():
         s2 = _store(tmp)
         assert s2.totals()[0]["output"] == 9
         s2.close()
+
+
+# ---- P2 价目与成本 ----------------------------------------------------------
+
+_USD = Price(currency="USD", input=10.0, output=30.0, cache_read=1.0, cache_write=12.5)
+
+
+def test_cost_splits_cache_three_ways():
+    """缓存三态分别按各自单价算——合并成一个系数就是现有实现出错的地方。"""
+    c = cost_of({"input_uncached": 1_000_000, "input_cache_write": 1_000_000,
+                 "input_cache_read": 1_000_000, "output": 1_000_000}, _USD)
+    assert c["currency"] == "USD"
+    assert round(c["amount"], 6) == round(10.0 + 12.5 + 1.0 + 30.0, 6)
+    assert c["inferred"] is False
+
+
+def test_cost_flags_inferred_cache_price():
+    """价目没单列缓存价时回落输入价，但**必须标记**——别让推断值冒充精确值。"""
+    p = Price(currency="USD", input=10.0, output=30.0)      # 没填缓存价
+    c = cost_of({"input_cache_read": 1_000_000}, p)
+    assert c["amount"] == 10.0 and c["inferred"] is True
+    # 没用到缓存就不该标 inferred（否则满屏都是警告，等于没有警告）
+    assert cost_of({"input_uncached": 1_000_000}, p)["inferred"] is False
+
+
+def test_no_price_means_no_amount():
+    """没有可信价格就不给金额（决策 3）。"""
+    assert cost_of({"output": 999}, None) is None
+
+
+def test_prefix_match_not_substring():
+    """按 model_id 前缀匹配：`opus` 不能再命中任意含该词的名字（决策 4）。"""
+    assert match_price("claude-opus-5-20260101", BUNDLED_PRICES) is not None
+    assert match_price("my-opus-tuned", BUNDLED_PRICES) is None   # 旧的子串写法会误伤
+    # 最长前缀优先：gpt-4o-mini 必须命中自己那条，而不是更短的 gpt-4o
+    assert match_price("gpt-4o-mini", BUNDLED_PRICES).input == 0.15
+    assert match_price("gpt-4o-2026", BUNDLED_PRICES).input == 2.5
+
+
+def test_user_price_beats_bundled():
+    """用户手填永远赢——只有他知道自己的协议价（决策 2）。"""
+    # source="user" 是 UsageStore.user_prices() 读库时打的标，这里如实构造
+    mine = {"deepseek-v4-flash": Price(currency="CNY", input=1.0, output=2.0, source="user")}
+    p = resolve_price("deepseek-v4-flash", mine)
+    assert p.currency == "CNY" and p.source == "user"
+    # 没填过的模型仍回落内置牌价
+    assert resolve_price("gpt-4o", mine).currency == "USD"
+
+
+def test_currencies_never_summed_together():
+    """多币种分开汇总，绝不相加（决策 4）。"""
+    table = {"a-": Price(currency="USD", input=1.0, output=1.0),
+             "b-": Price(currency="CNY", input=7.0, output=7.0)}
+    rows = [{"model_id": "a-1", "input_uncached": 1_000_000, "output": 0},
+            {"model_id": "b-1", "input_uncached": 1_000_000, "output": 0},
+            {"model_id": "zzz", "input_uncached": 1_000_000, "output": 0}]
+    s = summarize_costs(rows, resolve=lambda mid: match_price(mid, table))
+    assert set(s["by_currency"]) == {"USD", "CNY"}
+    assert s["by_currency"]["USD"]["amount"] == 1.0
+    assert s["by_currency"]["CNY"]["amount"] == 7.0
+    assert s["unpriced_rows"] == 1, "没价格的那条只能算 token，不能混进金额"
+
+
+def test_stale_price_detection():
+    """没有 as_of 一律当过期——不知道是哪天的价格，就不能当它新鲜。"""
+    assert is_stale(Price(currency="USD", input=1, output=1), "2026-08-14") is True
+    assert is_stale(Price(currency="USD", input=1, output=1, as_of="2026-08-01"),
+                    "2026-08-14") is False
+    assert is_stale(Price(currency="USD", input=1, output=1, as_of="2025-01-01"),
+                    "2026-08-14") is True
+    assert is_stale(Price(currency="USD", input=1, output=1, as_of="不是日期"),
+                    "2026-08-14") is True
+
+
+def test_bundled_prices_are_all_unverified():
+    """内置牌价一律标未核实——它们是平移过来的粗估，换个地方放不会变得更可信。"""
+    assert BUNDLED_PRICES and all(not p.verified for p in BUNDLED_PRICES.values())
+    assert all(p.source == "bundled" for p in BUNDLED_PRICES.values())
+
+
+def test_store_price_roundtrip_and_cost():
+    with tempfile.TemporaryDirectory() as tmp:
+        s = _store(tmp)
+        s.set_price("deepseek-v4-flash",
+                    Price(currency="CNY", input=2.0, output=8.0, cache_read=0.2,
+                          as_of="2026-08-14"))
+        got = s.user_prices()["deepseek-v4-flash"]
+        assert got.currency == "CNY" and got.cache_read == 0.2
+        assert got.source == "user" and got.verified is True, "人亲手填的就是权威来源"
+
+        s.record(model_id="deepseek-v4-flash", input_uncached=1_000_000,
+                 input_cache_read=1_000_000, output=1_000_000)
+        out = s.totals_with_cost()
+        assert round(out["by_currency"]["CNY"]["amount"], 6) == round(2.0 + 0.2 + 8.0, 6)
+        assert out["unpriced_rows"] == 0
+        s.close()
+
+
+def test_store_unpriced_model_still_reports_tokens():
+    with tempfile.TemporaryDirectory() as tmp:
+        s = _store(tmp)
+        s.record(model_id="某个没人填过价的模型", output=1234)
+        out = s.totals_with_cost()
+        assert out["unpriced_rows"] == 1 and not out["by_currency"]
+        assert out["buckets"][0]["output"] == 1234, "没金额也要有 token"
+        s.close()
+
+
+def test_price_update_overwrites_not_duplicates():
+    with tempfile.TemporaryDirectory() as tmp:
+        s = _store(tmp)
+        s.set_price("m", Price(currency="USD", input=1.0, output=1.0))
+        s.set_price("m", Price(currency="USD", input=2.0, output=2.0))
+        prices = s.user_prices()
+        assert len(prices) == 1 and prices["m"].input == 2.0
+        s.delete_price("m")
+        assert s.user_prices() == {}
+        s.close()
 
 
 if __name__ == "__main__":
