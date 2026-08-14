@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-08-14 — CI 流水线首次端到端跑通（9 轮，红→绿）
+
+**阶段**：release workflow（推 tag 即出包，ADR 0020 的补缺）从写完到真跑通。
+
+**过程**：#1 在 main 上首跑，**21 个测试文件红**；#2–#8 在 `fix/ci-windows-locale` 上逐层修；**#9 全绿**。
+产物：`hermes-dev-3.67.0-win64.zip` 39.6 MB + `hermes-dev-3.67.0-src.zip` 2.4 MB（261 个文件）。
+
+**红的东西几乎全不是产品 bug，是"本地过了"给的假安全感**——分两类：
+
+1. **环境假设（#1–#7，`test` job）**：GitHub 的 windows runner 是**英文 locale（cp1252）**，
+   开发真机是中文（cp936）；`bash` 在 Windows 上是 WSL 存根；临时目录是 8.3 短名；
+   sqlite 句柄没关时 Windows 不许删目录。逐条见 CHANGELOG `[Unreleased]`。
+   **每修一层才露下一层**（shell 假设散在 9 个文件 37 处），所以才花了这么多轮——
+   后来干脆建 `tests/_shellenv.py` 底座一次收敛，而不是继续一处一处打补丁。
+2. **打包探测（#8，`build` job 第一次跑到打包步骤）**：`collect_submodules` 靠**逐个 `__import__`
+   子包**发现依赖，递归到 `mcp.cli` 触发 `import typer`（可选 extra，未装），它失败后
+   **直接 `sys.exit(1)`**，把 PyInstaller 的探测子进程一并带走 → 整个打包中断。
+   修法是 `filter` 跳过路径分量为 `cli` 的子包——**filter 挡在递归之前**，子包连 import 都不会发生。
+
+**两个值得记的判断**：
+- **`on_error` 兜不住 `SystemExit`**。它是 `except Exception`，而 `SystemExit` 属 `BaseException`。
+  第一版注释把功劳记在 `on_error="warn"` 头上，**是错的**——真正起作用的只有 filter。
+  保留 `"warn"` 的正当理由是另一个：默认 `"warn once"` 只报第一个失败包、后面静默吞掉。
+- **过滤器按路径分量匹配，不能写 `".cli" not in name`**。子串写法会把 **`mcp.client`** 一起干掉
+  （"mcp.client" 里就含 ".cli"），**打包照样成功、产物里却没有 MCP 客户端**——静默坏掉，
+  比直接炸难查得多。特意验了这条：修后 `mcp.client` 系列 23 个模块完好。
+
+**自检**：打包这一处在本地真复现过（开发机同样没装 typer）：不带 filter 复现同样的 `SystemExit: 1`，
+带 filter 后 7 个包全部收集成功。**这是少见的"Windows 专属崩溃能在 Linux 上复现"的情形**——
+因为病根是缺可选依赖，与平台无关，只是以前从没有哪条流程会在 CI 上跑打包。
+
+**验证状态**：✅ CI 全绿（#9，`2270ac2`）。**遗留**：`build` 的 Release 步骤（`gh release create/upload`）
+仍**没被验证过**——它有 `if: startsWith(github.ref, 'refs/tags/')`，手动触发一律跳过，
+只有真推一个 tag 才会走到。下次定版就是它的首验，**别把真发版当流水线的第一次测试**这句
+写在 workflow 开头，对这一步反而还没兑现。
+
+---
+
 ## 2026-08-13 — 真机反馈：复杂方案评审总被截断（病因不在分批，在基线定错了方向）
 
 **反馈**：用一份卡通电脑汇率换算原型方案跑评审，**两批的产品镜头都被截断**，

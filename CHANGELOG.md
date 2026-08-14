@@ -6,6 +6,77 @@
 
 ## [Unreleased]
 
+### Fixed
+- **CI 首跑 21 个测试文件红——修 Windows/locale 假设**（release workflow 的第一次真跑）。
+  `build` job 因 `needs: test` 从未启动，所以不是"打包失败"，是**打包前的回归闸门红了**。
+  病因不是产品回归，而是 **GitHub windows runner 是英文 locale（cp1252）**，跟开发用的中文 Windows（cp936）不同：
+  - **stdout 编码**（7 个文件）：测试打印的 `✓` 与中文在 cp1252 下直接 `UnicodeEncodeError`。
+    workflow 钉死 `PYTHONIOENCODING=utf-8` + `PYTHONUTF8=1`。**不能靠把测试输出改成 ASCII 解决**
+    ——本项目测试文案本来就是中文，改字形只是把撞墙位置往后挪。
+  - **sqlite 句柄未关**（8 个文件）：`TemporaryDirectory` 清理时 .db 还开着 → `WinError 32`。
+    失败发生在断言全过之后，改用 `ignore_cleanup_errors=True`（Linux 允许删已打开文件，故只在 Windows 现形）。
+  - **`read_text()` 未给 encoding**（`test_fixture`）：按 locale 读 UTF-8 文件 → `UnicodeDecodeError`。
+  - **`test_artifacts` 路径断言**：`ArtifactStore` 存 `workspace.resolve()`，而 Windows 临时目录是
+    8.3 短名（`C:\Users\RUNNER~1\...`），resolve 会展开成长名。断言改用 `tmp.resolve()`。
+- **`_decode_best`（MCP server stderr）在非中文 Windows 上必出乱码**。原顺序 `utf-8 → 本地代码页 → gbk`：
+  单字节代码页（cp1252 等）对绝大多数字节序列都能"成功"解码、只是解成乱码，**排在前面等于吞掉一切，
+  GBK 分支永远到不了**。改为 `utf-8 → gbk → 本地代码页`——GBK 是会校验的多字节编码，非法尾字节直接抛。
+- **打包被一个我们根本不用的可选子模块打断**（CI 第八轮：`test` 全绿、`build` 首次跑到打包步骤即炸）。
+  `collect_submodules` 是靠**逐个 `__import__` 子包**发现依赖的，递归到 `mcp.cli` 时触发
+  `mcp/cli/cli.py` 顶层的 `import typer`——那是 `mcp[cli]` 可选 extra，我们没装；它失败后
+  **直接 `sys.exit(1)`**，把 PyInstaller 的探测子进程一并带走，整个打包中断。hermes 只用 MCP 客户端。
+  spec 给 `collect_submodules` 加 `filter` 跳过路径分量为 `cli` 的子包——**filter 挡在递归之前**
+  （`for sub in subpackages: if filter(sub): todo.append(sub)`），子包连 import 都不会发生。
+  **`on_error` 兜不住这种崩**：它是 `except Exception`，而 `SystemExit` 是 `BaseException`；
+  改 `"warn"` 只为把所有失败包都报出来（默认 `"warn once"` 只报第一个，后面的静默吞掉）。
+  **按路径分量匹配，别写 `".cli" not in name`**：子串写法会连 `mcp.client` 一起干掉
+  （"mcp.client" 里就含 ".cli"），打包照样成功但产物没有 MCP 客户端——**静默坏掉**。
+
+### Security
+- **`skillhub._safe_extract` 在 Windows 上不拒绝绝对路径 → 恶意技能包可写出 dest 之外**（CI 第二轮抓到）。
+  原判据 `Path(name).is_absolute()` 跟随本机 flavour：Windows 语义下 `is_absolute()` 要求盘符**和**根
+  同时存在，`PureWindowsPath("/etc/evil.txt")` 缺盘符即判 False，于是 `dest / 它` 跳到盘符根
+  （`C:\etc\evil.txt`）。从 GitHub 技能市场装一个构造过的 zip 就能写到 C 盘任意位置。
+  **Linux 上 `is_absolute()` 返回 True、正确拦截，所以本地回归永远发现不了它。**
+  改为：① 恒用 `PureWindowsPath` 解析（同时看懂 `/` 与 `\`、认盘符与 UNC，是更严的一把尺），
+  判据拆成 `drive or root`；② 落点加围栏 `target.resolve().is_relative_to(dest.resolve())`——
+  不穷举攻击形态，直接断言真正在乎的不变量。测试补 `C:/evil.txt` 与 `..\..\evil.txt` 两条，
+  它们在旧代码的 Linux 上均放行，**把 Windows 专属教训钉进本地闸门**。
+
+### Changed
+- **测试的 shell 假设收敛进 `tests/_shellenv.py`**（CI 第四轮后）。`shell="bash"` / `["bash","-lc"]`
+  原本散落 9 个文件 37 处，Windows 上 `bash` 是 WSL 存根，于是一批测试必红、且**每修一层才露下一层**。
+  底座统一给出 `SHELL` / `SHELL_ARGV` / `RUN_TOOL` 与命令构造器（`echo`/`sleep`/`seq`/`big_output`/
+  `tick_loop`/`read_var`/`python_c`），已接入 `test_artifacts`/`test_procs`/`test_hooks`/`test_shell`。
+  **hook 另有一套**：`HookRunner` 在 Windows 上走 `cmd /c`（不是 PowerShell），且英文机 cmd 代码页是
+  cp437/850——hook 的 stdout 只能用 ASCII，中文经 cmd 出来必是乱码（产品按 utf-8 解码）。
+  真 POSIX 专属的 4 条用例显式跳过并记进 ROADMAP 第二档，**不凑语义不同的版本**。
+- `test_updater` 改用 `cwd=` 传目录、argv 传列表，并把 stderr 带进断言。原来的 `cd X && ...` +
+  `shell=True` 在 Windows 上是**静默错的**：cmd 的 `cd` 不跨盘符切换却照样返回 0，而 runner 的检出在
+  `D:\a\...`、临时目录在 `C:\Users\...`——整串 git init/commit 实际落在**检出自己的工作树**上。
+- **常驻服务探针认路径限定的写法**（移植测试时发现的真 bug）。`_LONG_RUNNING_RE` 原来只匹配裸
+  `python3 -m http.server`，而真机上 `.venv\Scripts\python.exe -m http.server`、PowerShell 的
+  `& 'C:\...\python.exe' -m ...`、`/usr/bin/python3 -m ...` 都匹配不上——**探针静默失效，
+  用户白等满整个 timeout**。正则加可选路径前缀（含开引号与 `.exe`），17 条用例验过无误报。
+- **`CI` 环境变量的断言不再写死字面量**。`hardened_env()` 对"改语义"的开关走 `setdefault` 尊重用户，
+  而 CI 机器上父环境本来就有 `CI=true`——那正是 setdefault 要保护的场景，测试却断言 `CI=1`。
+  改为断言"被设成非空值"。同一用例还暴露 **Windows 环境变量名不区分大小写**：
+  `NPM_CONFIG_YES` 与 `npm_config_yes` 是同一个变量、后设的覆盖前一个，故只能要求至少一个为 true。
+- CI actions 升版避开 Node 20 弃用：`checkout@v4→v5`、`setup-python@v5→v6`、`setup-node@v4→v6`。
+- **产物落盘无损**：`ArtifactStore.put` 与 Tee 的写入补 `newline=""`。文本模式在 Windows 上把 `\n`
+  翻成 `\r\n`，导致落盘字节数 ≠ `chars`（台账 `bytes` 取 `st_size`、`max_total_bytes` 配额按它算），
+  且工具原样输出的换行被悄悄改写——产物是现场证据，不该被翻译。
+- `test_handoff` 的 `flash_window` 用例补平台守卫并改名。原名 `..._off_windows`、文档写着
+  "非 Windows 上必须静默跳过"，**但没有任何平台守卫**——测试名不会让它只在非 Windows 上跑，
+  Windows CI 上 headless runner 无窗口走 `error` 分支即红。
+- `test_commands` 补 `ignore_cleanup_errors=True`（上轮被编码错误挡在前面的同类问题）。
+- **`grep_search` 的路径拼法与 `glob_search` 对齐**（CI 第三轮抓到）。`search.py` 三处 `relative_to`
+  里唯独 grep 那处漏了 `.replace("\\", "/")`，于是 Windows 上 `glob_search` 吐 `src/app.py`、
+  `grep_search` 吐 `src\app.py`——**同一个文件两种拼法递给模型**。工作区相对路径的对外拼法只能有一种。
+- `test_commands` 的集成用例按平台选 shell。原来写死 `shell="bash"`，绕过 config 的 `_resolve_shell`
+  （Windows→powershell）；而 Windows 上 `bash` 解析到 `C:\Windows\System32\bash.exe` 这个 **WSL 存根**，
+  未装发行版时返回 exit 1 + 一段 UTF-16LE 英文提示。
+
 ## [3.67.0] - 2026-08-13
 
 方案评审的预算与可诊断性（承 v3.66.0 分批评审）。**Windows 真机验证通过**，

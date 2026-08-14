@@ -122,7 +122,9 @@ def _run_all():
     fns = [(n, f) for n, f in globals().items() if n.startswith("test_") and inspect.isfunction(f)]
     passed = 0
     for name, fn in fns:
-        with tempfile.TemporaryDirectory() as d:
+        # ignore_cleanup_errors：Windows 上 sqlite 连接还开着就删不掉 .db（WinError 32），
+        # 而清理失败发生在断言全过之后，不该把测试判红（Linux 允许删已打开的文件，故只在 Windows 现形）。
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
             try:
                 fn(Path(d)) if "tmp" in inspect.signature(fn).parameters else fn()
                 print(f"  ok  {name}")

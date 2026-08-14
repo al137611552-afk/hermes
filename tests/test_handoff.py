@@ -247,15 +247,20 @@ def test_permission_request_still_reports_its_own_reason(tmp: Path):
     assert ("state", {"state": "awaiting", "reason": "permission"}) in got
 
 
-def test_flash_window_is_a_silent_noop_off_windows(tmp: Path):
-    """T3 任务栏闪烁：非 Windows 上必须**静默跳过**，绝不抛——提醒不该搞崩主流程。
+def test_flash_window_never_raises_and_always_returns_dict(tmp: Path):
+    """T3 任务栏闪烁：调用方**永远拿得到一个 dict**、绝不抛——提醒不该搞崩主流程。
 
-    本机（Linux）跑不到真的 FlashWindowEx，这条守的是"调用方永远拿得到一个 dict"。
-    真机行为只能在 Windows 上验。
+    **两个平台分支都要断言**：这条原来叫 `..._off_windows`、只写了非 Windows 的期望，
+    结果在 Windows CI 上必红（headless runner 没有窗口，走的是 `error` 分支而不是 `skipped`）。
+    测试名里写"off windows"不会让它只在非 Windows 上跑——**得真的加平台守卫**。
     """
     api = _api(tmp)
     r = api.flash_window()
-    assert isinstance(r, dict) and r.get("ok") is False and "skipped" in r
+    assert isinstance(r, dict) and isinstance(r.get("ok"), bool)
+    if sys.platform.startswith("win"):
+        assert r["ok"] is True or "error" in r      # 有窗口才真闪；无窗口（CI）如实报错
+    else:
+        assert r["ok"] is False and "skipped" in r
 
 
 def test_set_window_title_without_window_does_not_raise(tmp: Path):
@@ -313,7 +318,9 @@ def _run_all():
            if n.startswith("test_") and inspect.isfunction(f)]
     passed = 0
     for name, fn in fns:
-        with tempfile.TemporaryDirectory() as d:
+        # ignore_cleanup_errors：Windows 上 sqlite 连接还开着就删不掉 .db（WinError 32），
+        # 而清理失败发生在断言全过之后，不该把测试判红（Linux 允许删已打开的文件，故只在 Windows 现形）。
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
             if "tmp" in inspect.signature(fn).parameters:
                 fn(Path(d))
             else:

@@ -13,9 +13,31 @@ from PyInstaller.utils.hooks import collect_submodules
 # 惰性导入 / 动态加载的包要显式收全（mcp 在方法内 import、webview 后端动态加载等）。
 # pkg_resources：补它的内置依赖（appdirs/jaraco/packaging…），否则 exe 启动报
 # "The 'appdirs' package is required"。
+def _skip_cli(name: str) -> bool:
+    """跳过各包的 `cli` 子包。
+
+    **为什么必须跳**（2026-08-13 CI 首次跑通打包时炸的）：`collect_submodules` 是靠**逐个
+    `__import__` 子模块**来发现依赖的，而 `mcp.cli.cli` 顶层 `import typer`——那是 mcp 的可选
+    extra（`mcp[cli]`），我们没装；更要命的是它 import 失败时直接 `sys.exit(1)`，
+    把 PyInstaller 的探测子进程一并带走，整个打包中断。hermes 只用 MCP **客户端**，
+    CLI 一行都不碰，收它纯属自找麻烦（顺带还会把 typer 塞进产物）。
+
+    **按路径分量匹配，别写 `".cli" not in name`**：那个子串写法会把 **`mcp.client`** 也一起干掉
+    （"mcp.client" 里就含 ".cli"）——打包照样成功，但产物里没有 MCP 客户端，**静默坏掉**。
+
+    **只有 filter 能救，`on_error` 救不了**：`collect_submodules` 的重试兜底是
+    `except Exception`，而 `sys.exit()` 抛的 `SystemExit` 是 `BaseException`，压根不进那条分支。
+    真正起作用的是 filter 挡在**递归之前**（源码：`for sub in subpackages: if filter(sub): todo.append(sub)`），
+    子包连 `__import__` 都不会发生。
+    """
+    return "cli" not in name.split(".")
+
+
 hiddenimports = []
 for _pkg in ("webview", "anthropic", "openai", "mcp", "pydantic", "pypdf", "pkg_resources"):
-    hiddenimports += collect_submodules(_pkg)
+    # on_error="warn"：默认是 "warn once"，只报第一个失败的包、后面的静默吞掉。
+    # 这里要的是**全都报出来**（如 openai.helpers 缺 numpy），出问题时日志里能一眼看全。
+    hiddenimports += collect_submodules(_pkg, filter=_skip_cli, on_error="warn")
 hiddenimports += [
     "PIL", "PIL.Image", "PIL.ImageGrab",
     "appdirs", "jaraco.text", "jaraco.functools", "jaraco.context",

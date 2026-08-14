@@ -84,7 +84,10 @@ class GrepSearchTool(Tool):
                     break
                 for i, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
                     if rx.search(line[:MAX_GREP_LINE]):      # 截断长行：去掉灾难回溯的燃料，防 ReDoS 挂死
-                        rel = f.relative_to(self.workspace)
+                        # 归一成 "/"：**三处 relative_to 里原来只有这处漏了**，于是 Windows 上
+                        # glob_search 吐 src/app.py、grep_search 吐 src\app.py，同一个文件两种拼法
+                        # 递给模型（2026-08-13 CI 抓到）。工作区相对路径的对外拼法必须只有一种。
+                        rel = str(f.relative_to(self.workspace)).replace("\\", "/")
                         hits.append(f"{rel}:{i}: {line.strip()[:200]}")
                         if len(hits) >= MAX_HITS:
                             hits.append(f"... (已截断，仅显示前 {MAX_HITS} 条)")

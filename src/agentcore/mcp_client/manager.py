@@ -46,7 +46,13 @@ def _decode_best(data: bytes) -> str:
     if not data:
         return ""
     import locale
-    for enc in ("utf-8", locale.getpreferredencoding(False), "gbk"):
+    # **顺序要点：GBK 必须排在本地代码页前面**。单字节代码页（英文 Windows 的 cp1252 等）
+    # 对绝大多数字节序列都能"成功"解码，只是解成乱码——排在前面就等于吞掉一切，GBK 分支永远到不了
+    # （2026-08-13 CI 实测：英文 runner 上 GBK 的"系统找不到指定的路径。"被 cp1252 解成一串乱码）。
+    # GBK 是会校验的多字节编码（非法尾字节直接抛），先试它更安全。
+    # 代价：西文 locale 下少量带重音的本地错误文案可能被 GBK 蒙对成中文乱码；但 MCP server（多为 node）
+    # 输出压倒性是 UTF-8、已被第一个分支拦下，本地代码页只服务系统级错误，这个残余风险小于原来的必错。
+    for enc in ("utf-8", "gbk", locale.getpreferredencoding(False)):
         if not enc:
             continue
         try:

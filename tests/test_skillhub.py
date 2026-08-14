@@ -116,9 +116,15 @@ def test_safe_extract_rejects_attacks(tmp: Path):
     root = skillhub._safe_extract(ok, tmp / "ok")
     assert root.name == "repo-main" and (root / "a" / "b.txt").read_text() == "x"
 
+    # 下面 4 条里，**后两条是 Windows 专属逃逸**（2026-08-13 CI 抓到）：本机 flavour 解析时
+    # Linux 上 Path("C:/evil.txt") / Path("..\\..\\evil.txt") 都不含 ".."、也不 is_absolute，
+    # 落点还老实待在 dest 里，看着人畜无害；同样两条到了 Windows 上却会跳出围栏。
+    # 保留它们是为了**把只有 Windows 才暴露的教训钉进本地闸门**——别再等 CI 才发现。
     for label, data in [
         ("zip slip 相对路径", _zip({"repo/../../evil.txt": "pwned"})),
         ("绝对路径", _zip({"/etc/evil.txt": "pwned"})),
+        ("盘符绝对路径", _zip({"C:/evil.txt": "pwned"})),
+        ("反斜杠 zip slip", _zip({"..\\..\\evil.txt": "pwned"})),
     ]:
         try:
             skillhub._safe_extract(data, tmp / "bad")

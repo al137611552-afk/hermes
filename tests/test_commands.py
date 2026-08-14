@@ -10,6 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+# 跟 config._resolve_shell 同一套映射：Windows→powershell，其余→bash。
+_SHELL = "powershell" if sys.platform.startswith("win") else "bash"
+
 from agentcore.commands import (  # noqa: E402
     BUILTIN_NAMES, Command, CommandError, command_dirs, discover_commands,
     expand_arguments, parse_command_md, render_exec, render_prompt, validate_name,
@@ -193,8 +196,12 @@ def test_conversation_integration(tmp: Path):
     api = Api(AppConfig(
         active_model="m1",
         models={"m1": ModelConfig(provider="anthropic", model="x", api_key_env="K")},
+        # **shell 必须按平台选**：写死 "bash" 会绕过 config 的 _resolve_shell（Windows→powershell），
+        # 而 Windows 上 `bash` 解析到 C:\Windows\System32\bash.exe——那是 **WSL 存根**，
+        # 没装发行版时返回 exit 1 + 一段 UTF-16LE 的英文提示（2026-08-13 CI 抓到）。
+        # `echo hi` 在 powershell 里同样成立（echo 是 Write-Output 的别名），两边都真跑得起来。
         agent=AgentConfig(workspaces_root=str(tmp / "root"), auto_conventions=False,
-                          shell="bash", permissions={"allow": ["run_bash(echo *)"]}),
+                          shell=_SHELL, permissions={"allow": [f"run_{_SHELL}(echo *)"]}),
         storage=StorageConfig(enabled=True, db_path=str(tmp / "h.db")),
         memory=MemoryConfig(enabled=False), mcp=MCPConfig(enabled=False),
     ))
@@ -357,7 +364,9 @@ def main() -> int:
         t()
         n += 1
     for t in tmp_tests:
-        with tempfile.TemporaryDirectory() as td:
+        # ignore_cleanup_errors：Windows 上 sqlite 连接还开着就删不掉 .db（WinError 32），
+        # 而清理失败发生在断言全过之后，不该把测试判红（Linux 允许删已打开的文件，故只在 Windows 现形）。
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
             t(Path(td))
         n += 1
     print(f"\ntest_commands: {n}/{n} 通过")

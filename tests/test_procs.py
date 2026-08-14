@@ -10,14 +10,19 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # tests/_shellenv.py
 
+from _shellenv import (  # noqa: E402
+    IS_WIN, RUN_TOOL, SHELL, SHELL_ARGV, big_output, echo, echo_no_newline, read_var, seq, sleep, tick_loop,
+)
 from agentcore.tools import build_registry  # noqa: E402
 from agentcore.tools.base import ToolError  # noqa: E402
 from agentcore.tools.procs import (  # noqa: E402
     MAX_PROCS, ProcessManager, extract_localhost_url, url_from_command,
 )
 
-BASH = ["bash", "-lc"]
+# 用共享底座，别写死 bash：Windows 上 `bash` 是 WSL 存根（见 tests/_shellenv.py）。
+BASH = SHELL_ARGV
 
 
 def _wait(cond, timeout=5.0):
@@ -31,14 +36,14 @@ def _wait(cond, timeout=5.0):
 
 
 def _reg(tmp: Path, manager: ProcessManager):
-    return build_registry(tmp, shell="bash", process_manager=manager)
+    return build_registry(tmp, shell=SHELL, process_manager=manager)
 
 
 # ---- ProcessManager 核心 ------------------------------------------------------
 
 def test_start_read_incremental_and_exit(tmp: Path):
     m = ProcessManager()
-    e = m.start(BASH + ["echo hello; echo world"], str(tmp), "echo×2")
+    e = m.start(BASH + [seq(echo("hello"), echo("world"))], str(tmp), "echo×2")
     assert _wait(lambda: "exited" in e.status())
     assert _wait(lambda: "world" in m._get(e.id).buffer)
     r = m.read(e.id)
@@ -49,6 +54,12 @@ def test_start_read_incremental_and_exit(tmp: Path):
 
 
 def test_long_running_stop_kills_tree(tmp: Path):
+    if IS_WIN:
+        # POSIX 专属：`&` 后台 + `wait` 没有语义等价的 PowerShell 写法（Start-Job 起的是**另一个
+        # PowerShell 进程**、不是当前 shell 的子进程，测不到"整树终止"这件事）。
+        # 硬凑一个语义不同的版本比跳过更糟——绿了但守的不是同一件事。
+        # Windows 侧的整树终止待补，见 ROADMAP「第二档」。
+        return
     m = ProcessManager()
     # bash 再起一个 sleep 子进程：stop 应整树终止
     e = m.start(BASH + ["sleep 30 & echo started; wait"], str(tmp), "sleep-tree")
@@ -64,7 +75,7 @@ def test_long_running_stop_kills_tree(tmp: Path):
 def test_buffer_trim_marks(tmp: Path):
     m = ProcessManager()
     # 产出约 60 万字符 > 20 万缓冲上限：最旧被丢、读到 trimmed 提示
-    e = m.start(BASH + ["for i in $(seq 1 3000); do printf 'x%.0s' {1..200}; echo; done"],
+    e = m.start(BASH + [big_output(3000, 200)],
                 str(tmp), "spam")
     assert _wait(lambda: "exited" in e.status(), timeout=10)
     time.sleep(0.2)                          # 等读线程收尾
@@ -77,9 +88,9 @@ def test_buffer_trim_marks(tmp: Path):
 def test_max_procs_cap(tmp: Path):
     m = ProcessManager()
     for _ in range(MAX_PROCS):
-        m.start(BASH + ["sleep 20"], str(tmp), "sleep")
+        m.start(BASH + [sleep(20)], str(tmp), "sleep")
     try:
-        m.start(BASH + ["sleep 20"], str(tmp), "sleep-overflow")
+        m.start(BASH + [sleep(20)], str(tmp), "sleep-overflow")
         assert False, "应达上限"
     except ToolError as e:
         assert "上限" in str(e)
@@ -93,7 +104,7 @@ def test_unknown_id_and_list(tmp: Path):
         assert False
     except ToolError as e:
         assert "#99" in str(e)
-    e = m.start(BASH + ["echo ok"], str(tmp), "echo ok")
+    e = m.start(BASH + [echo("ok")], str(tmp), "echo ok")
     assert _wait(lambda: "exited" in e.status())
     procs = m.list()
     assert len(procs) == 1 and procs[0]["id"] == e.id and procs[0]["command"] == "echo ok"
@@ -105,7 +116,7 @@ def test_unknown_id_and_list(tmp: Path):
 def test_shell_background_and_tools(tmp: Path):
     m = ProcessManager()
     reg = _reg(tmp, m)
-    out = reg.get("run_bash").run({"command": "echo bg-out; sleep 10", "background": True})
+    out = reg.get(RUN_TOOL).run({"command": seq(echo("bg-out"), sleep(10)), "background": True})
     assert "#1" in out and "read_process_output" in out
     assert _wait(lambda: "bg-out" in m._get(1).buffer)
     assert "running" in reg.get("list_processes").run({})
@@ -115,7 +126,7 @@ def test_shell_background_and_tools(tmp: Path):
     assert "已停止" in reg.get("stop_process").run({"id": 1})
     assert _wait(lambda: "exited" in m._get(1).status())
     # 前台命令行为不变
-    assert "[exit code] 0" in reg.get("run_bash").run({"command": "echo fg"})
+    assert "[exit code] 0" in reg.get(RUN_TOOL).run({"command": "echo fg"})
     m.kill_all()
 
 
@@ -124,12 +135,12 @@ def test_registry_flags_and_no_manager(tmp: Path):
     reg = _reg(tmp, m)
     for name in ("list_processes", "read_process_output", "stop_process"):
         assert name in reg.names() and not reg.is_dangerous(name)
-    assert reg.is_dangerous("run_bash")
+    assert reg.is_dangerous(RUN_TOOL)
     # 不传 manager：三工具不注册、background 给可读错误
-    reg2 = build_registry(tmp, shell="bash")
+    reg2 = build_registry(tmp, shell=SHELL)
     assert "list_processes" not in reg2.names()
     try:
-        reg2.get("run_bash").run({"command": "echo x", "background": True})
+        reg2.get(RUN_TOOL).run({"command": "echo x", "background": True})
         assert False
     except ToolError as e:
         assert "未启用" in str(e)
@@ -173,7 +184,7 @@ def test_url_from_command():
 def test_preview_targets_command_fallback(tmp: Path):
     """输出 buffer 里没有 URL（如 http.server 的行卡在 stdout 缓冲）时，从命令抽端口兜底。"""
     m = ProcessManager()
-    e = m.start(BASH + ["sleep 30"], str(tmp), "python -m http.server 8000")
+    e = m.start(BASH + [sleep(30)], str(tmp), "python -m http.server 8000")
     time.sleep(0.2)
     tg = m.preview_targets()
     assert tg and tg[0]["url"] == "http://localhost:8000" and tg[0]["id"] == e.id
@@ -183,7 +194,7 @@ def test_preview_targets_command_fallback(tmp: Path):
 def test_preview_targets_from_output(tmp: Path):
     """运行中的进程在输出里打了本地 URL → preview_targets 识别到；退出后不再列。"""
     m = ProcessManager()
-    e = m.start(BASH + ["echo 'Serving on http://localhost:7654/'; sleep 30"],
+    e = m.start(BASH + [seq(echo("'Serving on http://localhost:7654/'"), sleep(30))],
                 str(tmp), "fake-dev-server")
     assert _wait(lambda: any(t["url"] == "http://localhost:7654/" for t in m.preview_targets()))
     tg = m.preview_targets()
@@ -194,14 +205,16 @@ def test_preview_targets_from_output(tmp: Path):
 
 def test_preview_targets_empty_when_no_url(tmp: Path):
     m = ProcessManager()
-    m.start(BASH + ["echo no-url-here; sleep 30"], str(tmp), "plain")
+    m.start(BASH + [seq(echo("no-url-here"), sleep(30))], str(tmp), "plain")
     time.sleep(0.3)
     assert m.preview_targets() == []
 
 
 # ---- P3：回答后台进程的交互提示（write_process_input / ADR 0022）----------------
 
-_PROMPT_CMD = "printf 'Ok to proceed? (y) '; read ans; echo \"[answered:$ans]\"; sleep 0.2"
+# 两边通用：`echo "[answered:$ans]"` 在 bash 和 PowerShell 里都做变量插值，字面量可原样复用。
+_PROMPT_CMD = seq(echo_no_newline("Ok to proceed? (y) "), read_var("ans"),
+                  'echo "[answered:$ans]"', sleep(0.2))
 
 
 def test_prompt_without_newline_is_visible_before_process_exits(tmp: Path):
@@ -243,7 +256,7 @@ def test_no_waiting_hint_while_output_still_flowing(tmp: Path):
     import agentcore.tools.procs as procs
     orig = procs.PROMPT_QUIET_SECONDS
     procs.PROMPT_QUIET_SECONDS = 0.3
-    cmd = "echo 'continue? [y/N]'; for i in 1 2 3 4 5 6; do echo tick $i; sleep 0.2; done"
+    cmd = seq(echo("'continue? [y/N]'"), tick_loop(6, "tick", 0.2))
     try:
         m = ProcessManager()
         e = m.start(BASH + [cmd], str(tmp), cmd)
@@ -269,7 +282,7 @@ def test_write_input_errors_are_actionable(tmp: Path):
         except ToolError as ex:
             assert expect in str(ex), str(ex)
     # 空 / 多行
-    e = m.start(BASH + ["sleep 5"], str(tmp), "sleep 5")
+    e = m.start(BASH + [sleep(5)], str(tmp), "sleep 5")
     for bad_text, expect in (("", "不能为空"), ("  ", "不能为空"), ("y\nn", "只能是一行")):
         try:
             tool.run({"id": e.id, "text": bad_text})
@@ -287,6 +300,11 @@ def test_write_input_errors_are_actionable(tmp: Path):
 
 
 def test_write_input_submit_false_sends_no_newline(tmp: Path):
+    if IS_WIN:
+        # POSIX 专属：`read -n 1`（读满一个字符即返回、不等回车）在 PowerShell 里只有
+        # `[Console]::ReadKey()`，而它要真控制台、拿不到重定向的管道输入——用它测出来的
+        # 是"控制台可用性"而不是"submit=False 不补回车"。Windows 侧待补，见 ROADMAP「第二档」。
+        return
     # 少数场景要单键响应（不补回车）。用 `read -n 1` 验：不补回车也应被读到。
     cmd = "printf 'press: '; read -n 1 c; echo \"[got:$c]\"; sleep 0.2"
     m = ProcessManager()
@@ -310,7 +328,9 @@ def _run_all():
            if n.startswith("test_") and inspect.isfunction(f)]
     passed = 0
     for name, fn in fns:
-        with tempfile.TemporaryDirectory() as d:
+        # ignore_cleanup_errors：Windows 上**还在跑的进程锁着自己的 cwd**，整个临时目录
+        # rmdir 不掉（WinError 32）。清理失败发生在断言全过之后，不该判红。
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
             if "tmp" in inspect.signature(fn).parameters:
                 fn(Path(d))
             else:

@@ -351,7 +351,10 @@ class ArtifactStore:
             data = self._read_ledger()
             art_id = self._next_id(data)
             path = self.root / f"{art_id}.txt"
-            path.write_text(text, encoding="utf-8", errors="replace")
+            # newline=""：**产物要无损**。文本模式在 Windows 上会把 "\n" 翻成 "\r\n"，
+            # 于是落盘字节数 ≠ chars（台账的 bytes 取 st_size，配额也按它算），
+            # 且工具原样输出的换行被我们悄悄改写了——产物是现场证据，不该被翻译。
+            path.write_text(text, encoding="utf-8", errors="replace", newline="")
             art = Artifact(id=art_id, rel=self.rel_of(path), tool=tool, origin=origin,
                            chars=len(text), lines=(text.count("\n") + 1) if text else 0,
                            created_at=time.time(), session_id=session_id)
@@ -381,7 +384,7 @@ class ArtifactStore:
                 data = self._read_ledger()
                 art_id = self._next_id(data)
                 path = self.root / f"{art_id}.log"
-                fh = open(path, "a", encoding="utf-8", errors="replace")
+                fh = open(path, "a", encoding="utf-8", errors="replace", newline="")
                 art = Artifact(id=art_id, rel=self.rel_of(path), tool=tool, origin=origin,
                                chars=0, lines=0, created_at=time.time(), session_id=session_id)
                 self._record(art, path)
