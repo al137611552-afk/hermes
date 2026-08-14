@@ -36,7 +36,7 @@ Get-ChildItem tests\test_*.py | ForEach-Object { py $_.FullName }
 node --test tests/web/*.test.js
 ```
 
-- 预期：**74 个** Python 文件每个 `N/N passed` 无 Traceback；前端 `ℹ pass 133 / ℹ fail 0`。
+- 预期：**73 个** Python 文件每个 `N/N passed` 无 Traceback；前端 `ℹ pass 133 / ℹ fail 0`。
 - 实际结果：__________ ✅/❌
 
 ---
