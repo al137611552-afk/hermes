@@ -14,9 +14,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _shellenv import SHELL, echo, sleep  # noqa: E402
+from _shellenv import SHELL, echo  # noqa: E402
 from agentcore.tools.procs import ProcessManager  # noqa: E402
-from agentcore.tools.shell import RunShellTool, build_argv  # noqa: E402
+from agentcore.tools.shell import RunShellTool  # noqa: E402
 
 
 def _wait_for(cond, timeout=20.0):
@@ -78,16 +78,19 @@ def test_waiter_fires_when_condition_becomes_true():
     pm = ProcessManager(on_event=lambda body, ref: got.append(body))
     with tempfile.TemporaryDirectory() as tmp:
         flag = Path(tmp) / "ready.txt"
-        # 判据：文件存在则 exit 0（跨平台都成立的最简判据）
-        py = sys.executable.replace("\\", "/")
-        cond = f'"{py}" -c "import sys,os;sys.exit(0 if os.path.exists(r\'{flag}\') else 1)"'
-        wid = pm.start_waiter(build_argv(SHELL, cond), tmp, cond, poll_seconds=5, timeout_minutes=1)
+        # 判据：文件存在则 exit 0。**直接给 argv、不套 shell**——等待器每次探测都会起一个进程，
+        # 套 PowerShell 就等于每次多付一次冷启动（Windows 上 5~10s，本项目 shell.py 注释里
+        # 早记过"PS 5.1 的老毛病"）。这条测的是**等待器逻辑**，不该被 shell 启动速度绑架
+        # （首发 CI 就栽在这：Linux 上 25s 够跑两轮，Windows 上不够）。
+        probe = [sys.executable, "-c",
+                 f"import sys,os;sys.exit(0 if os.path.exists(r'{flag}') else 1)"]
+        wid = pm.start_waiter(probe, tmp, "探测文件是否出现", poll_seconds=5, timeout_minutes=1)
         assert wid > 0
         time.sleep(1.0)
         assert not got, "条件还不成立时不该投"
         assert pm.waiters(), "等待中要能被列出来（用户/模型可查）"
         flag.write_text("ok", encoding="utf-8")
-        assert _wait_for(lambda: got, timeout=25), "条件成立后应回投"
+        assert _wait_for(lambda: got, timeout=40), "条件成立后应回投"
     assert "条件已成立" in got[0]
     assert not pm.waiters(), "投完要自己摘掉，别泄漏"
 
@@ -97,9 +100,9 @@ def test_waiter_timeout_reports_instead_of_hanging_silently():
     got = []
     pm = ProcessManager(on_event=lambda body, ref: got.append(body))
     with tempfile.TemporaryDirectory() as tmp:
-        cond = "exit 1"                      # 永不成立
-        wid = pm.start_waiter(build_argv(SHELL, cond), tmp, cond,
-                              poll_seconds=5, timeout_minutes=1)
+        # 同上：直接给 argv，别让 shell 冷启动混进被测时序
+        never = [sys.executable, "-c", "raise SystemExit(1)"]
+        wid = pm.start_waiter(never, tmp, "永不成立的判据", poll_seconds=5, timeout_minutes=1)
         # 改台账里的 deadline 即刻生效（等待器以它为准），免得真等满一分钟
         pm._waiters[wid]["deadline"] = time.time() + 0.2
         assert _wait_for(lambda: got, timeout=20)
@@ -111,8 +114,8 @@ def test_waiter_can_be_cancelled():
     """会话关掉 / 用户喊停时要停得掉，别留幽灵轮询。"""
     pm = ProcessManager(on_event=lambda body, ref: None)
     with tempfile.TemporaryDirectory() as tmp:
-        cond = "exit 1"
-        wid = pm.start_waiter(build_argv(SHELL, cond), tmp, cond, poll_seconds=5, timeout_minutes=5)
+        never = [sys.executable, "-c", "raise SystemExit(1)"]
+        wid = pm.start_waiter(never, tmp, "永不成立", poll_seconds=5, timeout_minutes=5)
         assert pm.stop_waiter(wid) is True
         assert pm.waiters() == []
         assert pm.stop_waiter(wid) is False       # 再停一次是 no-op，不抛
@@ -123,9 +126,8 @@ def test_waiter_clamps_poll_and_timeout():
     """轮询下限 / 时长上限要夹住——别把站外接口打成 DDoS，也别无限期占资源。"""
     pm = ProcessManager(on_event=lambda body, ref: None)
     with tempfile.TemporaryDirectory() as tmp:
-        cond = "exit 1"
-        wid = pm.start_waiter(build_argv(SHELL, cond), tmp, cond,
-                              poll_seconds=0, timeout_minutes=99999)
+        never = [sys.executable, "-c", "raise SystemExit(1)"]
+        wid = pm.start_waiter(never, tmp, "永不成立", poll_seconds=0, timeout_minutes=99999)
         remaining = pm.waiters()[0]["remaining_s"]
         assert remaining <= 120 * 60, f"时长上限没夹住：{remaining}s"
         pm.stop_waiter(wid)
