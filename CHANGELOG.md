@@ -4,6 +4,33 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Added
+- **用量台账（ADR 0025 P1+P2）**：每轮 token 落**独立 `data/usage.db`**（审计数据，删会话不该把账删掉），
+  **只记 token 不记金额**——价格会变会填错，金额落库就无法重算历史。
+  归因到会话 / 模型 / **agent 角色**（主 Agent 与各子 Agent 分开记，才知道钱花在哪个委派上）。
+  新增价目模型：**币种一等字段、多币种分币种汇总绝不相加**；缓存三态（未命中/写/读）分别计价；
+  用户手填的价目为权威、内置牌价只兜底；**没有可信价格就只显 token、不给金额**。
+
+### Fixed
+- **用量统计的采集口径三处错，都是"静默算错"**（真跑两条 provider 路径各 12/12 验证）：
+  - **OpenAI 系的 `cache_read` 恒为 0**：`prompt_tokens` 本就**含**缓存命中部分，旧实现直接拿它当
+    "未命中输入"，等于把命中的 token 按全价重算一遍。真跑实测一轮 **17152 命中 vs 174 未命中**
+    （99% 输入来自缓存），按内置粗估系数算**高估 7.8 倍**。现认 DeepSeek 的
+    `prompt_cache_hit_tokens`/`miss_tokens` 与 OpenAI 的 `prompt_tokens_details.cached_tokens`。
+  - **缓存写没采集**：漏了 `cache_creation_input_tokens`，而写缓存比普通输入**贵**。
+  - **端点不报用量时静默按 0 计**：那一轮成本彻底隐形、看起来免费。现改为估算 + 标记 `measured=0`，
+    UI 显示「（含估算）」——**数要有，但绝不冒充实测**。
+- **成本估算匹配的是档名而不是模型名**：`estimateCostUsd` 拿 `modelSelect.value`（用户起的档名）
+  去子串匹配价目表——档名叫「我的主力」就永远匹配不上，而 `opus` 会命中任何含该词的自定义档名。
+  改为按 usage 事件带来的真实 `model_id` 做**最长前缀**匹配。
+- **`agentcore.__version__` 漂了四个版本**（3.64.0 vs 3.68.0）。定版流程只改 pyproject/CHANGELOG/
+  DEVLOG/PRD，没人记得改它；平时看不出来是因为 `current_version()` 优先读 importlib.metadata
+  （正式安装与打包产物里都有 dist-info，**发出去的 exe 版本号是对的**），只有 metadata 查不到时
+  才回退到它——开发机 editable 安装正是这种情况，于是台账记下了错的 harness 版本。
+  已同步 + `test_updater` 加闸钉住两处一致 + CLAUDE.md 定版清单补上这个文件。
+
 ## [3.68.0] - 2026-08-14
 
 **Windows 真机验证通过**（未解锁的包上走完：弹窗 → 点「是」→ 提示成功 → 重启后正常打开）。

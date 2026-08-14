@@ -229,6 +229,19 @@ class MemoryConfig(BaseModel):
         return Path(self.db_path).expanduser() if self.db_path else (ROOT / "data" / "memory.db")
 
 
+class UsageConfig(BaseModel):
+    """用量台账（ADR 0025）：每轮的 token 落独立 SQLite，供成本面板与跨版本比较。
+
+    **只记 token 不记金额**——价格会变会填错，金额落库就无法重算历史。
+    独立 `data/usage.db`：用量是审计数据，删会话不该把账一起删掉。
+    """
+    enabled: bool = True
+    db_path: str | None = None        # None -> ROOT/data/usage.db
+
+    def resolve_db_path(self) -> Path:
+        return Path(self.db_path).expanduser() if self.db_path else (ROOT / "data" / "usage.db")
+
+
 class McpServerConfig(BaseModel):
     """单个 MCP server（stdio 本地子进程）。形状对齐 Claude Desktop 的 mcpServers。"""
     enabled: bool = True
@@ -303,6 +316,7 @@ class AppConfig(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    usage: UsageConfig = Field(default_factory=UsageConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     artifacts: ArtifactsConfig = Field(default_factory=ArtifactsConfig)

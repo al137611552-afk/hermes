@@ -14,6 +14,40 @@ from openai import OpenAI
 from .base import BaseProvider, Message, StreamEvent, ToolCall, retry_stream
 
 
+def _usage(u) -> "dict | None":
+    """规范化 OpenAI 兼容端点的 usage → 统一口径（ADR 0025）；None 安全。
+
+    **口径陷阱**：统一口径里 `input` 指**未命中缓存的输入**，而 OpenAI 系的 `prompt_tokens`
+    是**含缓存部分的总输入**——直接拿来当 `input` 会把命中缓存的 token 按全价重复计一遍。
+    两种方言都要认，且都要减：
+
+    - **OpenAI 官方**：`prompt_tokens_details.cached_tokens` = 命中数，`prompt_tokens` 含它 → 相减；
+    - **DeepSeek**：`prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`，两者相加 = `prompt_tokens`
+      → 未命中直接取 miss（**这就是"命中/未命中"**，此前整个被丢掉、恒记 0）。
+
+    `cache_write` 这些端点普遍不单独报（缓存由服务端自动管理、多数不额外收费），故记 0；
+    真有端点报了再补，别凭空造数。
+    """
+    if u is None:
+        return None
+    prompt = getattr(u, "prompt_tokens", 0) or 0
+    hit = getattr(u, "prompt_cache_hit_tokens", None)
+    miss = getattr(u, "prompt_cache_miss_tokens", None)
+    if hit is not None or miss is not None:          # DeepSeek 方言
+        hit = hit or 0
+        uncached = miss if miss is not None else max(prompt - hit, 0)
+    else:                                            # OpenAI 官方方言
+        details = getattr(u, "prompt_tokens_details", None)
+        hit = (getattr(details, "cached_tokens", 0) or 0) if details is not None else 0
+        uncached = max(prompt - hit, 0)
+    return {
+        "input": uncached,
+        "output": getattr(u, "completion_tokens", 0) or 0,
+        "cache_read": hit,
+        "cache_write": 0,
+    }
+
+
 def _tools_to_openai(tools: list[dict]) -> list[dict]:
     """Anthropic 原生 {name, description, input_schema} -> OpenAI function 格式。"""
     out = []
@@ -164,11 +198,5 @@ class OpenAIProvider(BaseProvider):
             stop_reason = "tool_use"
         else:
             stop_reason = finish_reason or "end_turn"
-        usage = None
-        if usage_obj is not None:
-            usage = {
-                "input": getattr(usage_obj, "prompt_tokens", 0) or 0,
-                "output": getattr(usage_obj, "completion_tokens", 0) or 0,
-                "cache_read": 0,
-            }
+        usage = _usage(usage_obj)
         yield StreamEvent("done", meta={"stop_reason": stop_reason, "usage": usage})
