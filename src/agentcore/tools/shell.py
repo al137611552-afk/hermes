@@ -460,6 +460,29 @@ class RunShellTool(Tool):
                 "description": "在工作区内的哪个子目录执行（相对工作区，默认工作区根）。"
                                "在子项目里跑构建/测试时用它，别在 command 里写 `cd xxx && …`。",
             },
+            "notify_on_exit": {
+                "type": "boolean",
+                "description": "配合 background:true——**进程退出时自动把结果告诉你**（无需你回来轮询）。"
+                               "适合把活交给别的 agent / 长跑软件：起完这一轮就可以结束，"
+                               "它干完你会被自动叫醒、带着完整上下文接着干。默认 false。",
+            },
+            "wait_until_success": {
+                "type": "boolean",
+                "description": "**周期重跑本命令直到它 exit 0**，成立时自动把结果告诉你。"
+                               "用于等**站外**的事（CI 跑完没、云端任务好没）——那些事没有本地进程可等，"
+                               "只能问。命令要写成「成立则退出码 0」的判据，例："
+                               "`curl -s .../runs?..| grep -q '\"status\": \"completed\"'`。"
+                               "**期间零模型成本**，不要用「自己每轮查一次」的笨办法。默认 false。",
+            },
+            "poll_seconds": {
+                "type": "integer",
+                "description": "wait_until_success 的探测间隔秒数，默认 30，下限 5。",
+            },
+            "timeout_minutes": {
+                "type": "integer",
+                "description": "wait_until_success 的最长等待分钟数，默认 30，上限 120。"
+                               "超时也会通知你（如实说条件未成立），不会无声挂死。",
+            },
         },
         "required": ["command"],
     }
@@ -508,12 +531,29 @@ class RunShellTool(Tool):
             raise ToolError("命令不能为空")
         argv = build_argv(self.shell, command)
         workdir = self._resolve_cwd(params)
+        # 等待站外条件（ADR 0026 W1）：周期重跑本命令直到 exit 0。**先判它**——
+        # 这条不是"跑一个命令"，而是"把这条命令当判据反复问"，与 background 语义不同。
+        if params.get("wait_until_success"):
+            if self._procs is None:
+                raise ToolError("当前环境未启用后台进程支持，无法等待。")
+            wid = self._procs.start_waiter(argv, workdir, command,
+                                           params.get("poll_seconds") or 30,
+                                           params.get("timeout_minutes") or 30)
+            poll = max(int(params.get("poll_seconds") or 30), 5)
+            mins = min(max(int(params.get("timeout_minutes") or 30), 1), 120)
+            return (f"已开始等待 #{wid}：每 {poll}s 探测一次，最多 {mins} 分钟。"
+                    f"条件成立（或超时）会自动通知你，**这一轮到此可以结束**，"
+                    f"不用自己反复查——期间零模型成本。")
         if params.get("background"):
             if self._procs is None:
                 raise ToolError("当前环境未启用后台进程支持，请直接前台执行。")
             entry = self._procs.start(argv, workdir, command)
+            if params.get("notify_on_exit"):
+                entry.notify_on_exit = True
             return (f"已在后台启动进程 #{entry.id}（pid {entry.proc.pid}）：{command}\n"
-                    "用 read_process_output 看输出（增量）、list_processes 查看、stop_process 停止。")
+                    + ("它退出时会**自动通知你**，这一轮到此可以结束、不用回来轮询。\n"
+                       if params.get("notify_on_exit") else "")
+                    + "用 read_process_output 看输出（增量）、list_processes 查看、stop_process 停止。")
         # 前台执行用 Popen + **等直接子进程退出**（proc.wait），而不是 communicate()。
         # 关键区别（压测实测）：communicate() 等的是"管道 EOF"——若命令用 `&` 后台起了继承 stdout 的
         # 子进程（如 `sleep 30 & echo started`），shell 明明已 echo 完退出，管道却因孤儿还占着写端而不 EOF，

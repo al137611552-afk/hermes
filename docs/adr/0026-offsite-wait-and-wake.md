@@ -1,6 +1,6 @@
 # ADR 0026 — 站外协同：等待、唤醒、与重开提醒
 
-- **状态**：草案（2026-08-14）
+- **状态**：已接受（2026-08-14）。**W1 已实现**（两种形态 + 10 条自检）；W2 暂不做，见分期。
 - **相关**：ADR 0022（交互式命令 / `procs.py`）、ADR 0023（人机换手 FR-15）、ADR 0025（用量台账，
   用于验收这条能力值不值）、`bridge/conversation.py`（`_take_injects` / `_drain_injects_to_queue`）
 - **来源**：用户观察到别的 agent 的一个闭环——**推 tag 触发 GitHub CI → 说一句"好了告诉你" →
@@ -40,11 +40,20 @@ Agent 干活躲不开**站外协同**：结果不在本机产生、也不在本�
 
 ## 决策 2 — 做成**已有工具的一个参数**，不新增工具
 
+**实现时发现要两种形态**（源于用户点出的真正用途：*"有了它才能让 hermes 去调别的 agent
+并且知道站外的进度"*）：
+
 ```
-run_<shell>(command=..., background=true,
-            wait_until="<一条命令>",      # 退出码 0 即视为条件成立
-            poll_seconds=30, timeout_minutes=30)
+# ① 调别的 agent / 长跑软件：本地进程，退出即通知（不必轮询）
+run_<shell>(command="claude -p '...'", background=true, notify_on_exit=true)
+
+# ② 等站外的事（CI / 云端任务）：没有本地进程可等，只能问 —— 周期重跑直到 exit 0
+run_<shell>(command="curl -s ... | grep -q completed",
+            wait_until_success=true, poll_seconds=30, timeout_minutes=30)
 ```
+
+**①几乎零成本**：`_reader()` 的 `finally` 本来就在进程退出时执行，以前只是自己结束、谁也不告诉，
+加一行就成了"那件事干完了"的信号源。
 
 **为什么不新造一个 `wait_for` 工具**：本项目已经踩过三次同一条规律——`trace_run`、`search_code`、
 `request_handoff` 都是**机制建好了模型不用**（提示词里的旧路标压过新工具的 description）。
@@ -110,8 +119,8 @@ run_<shell>(command=..., background=true,
 
 | 期 | 内容 | 自测边界 |
 |---|---|---|
-| **W1** | `wait_until` 参数 + 条件成立投递事实进注入缝 + 会话空闲时起一轮 | ✅ Linux 可完整自测 |
-| **W2** | "在等什么"落库 + 重开提醒（先查一次再开口） | ✅ 纯逻辑可测，提醒 UI 需真机 |
+| **W1** ✅ | `notify_on_exit` + `wait_until_success` 两种形态；投事实进 `enqueue`（忙则 steering、闲则起一轮） | ✅ 已实现，10 条自检 |
+| **W2** ⏸ | "在等什么"落库 + 重开提醒（先查一次再开口） | **暂不做**：等待期通常几分钟到十几分钟，这期间关掉整个 app 是低频场景。先看 W1 被用几次 |
 | **W3**（可选） | 定时触发 | — |
 
 **不与 OAuth 的 loopback 端点合并排期**，但实现时注意两者都需要"本机临时监听/轮询 + 结果回灌
