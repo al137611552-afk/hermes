@@ -23,6 +23,10 @@ from .shell import (hardened_env, looks_waiting_input, _StreamDecoder,
                     _win_create_job, _win_assign_job, _win_kill_job)
 
 MAX_BUF_CHARS = 200_000   # 每进程输出环形缓冲上限
+# 回投给会话的尾部输出上限：够判断成败即可。投多了白烧上下文，模型要细节可以再 read_process_output。
+_NOTIFY_TAIL_CHARS = 2_000
+MAX_WAIT_MINUTES = 120        # 等待器时长硬上限：**不许无声挂死**（ADR 0026 已知限制）
+MIN_POLL_SECONDS = 5          # 轮询下限：别把站外接口打成 DDoS，也别把本机烤了
 MAX_READ_CHARS = 50_000   # 单次 read_process_output 返回上限
 MAX_PROCS = 8             # 每对话并发后台进程上限
 PROMPT_QUIET_SECONDS = 2.0  # 后台进程静止多久后才敢说它"停在提示上等输入"（前台是 5s：前台判错要杀
@@ -71,6 +75,8 @@ def url_from_command(command: str) -> "str | None":
 class _Entry:
     """一个后台进程：Popen + 输出缓冲 + 增量读游标。"""
 
+    notify_on_exit = False    # ADR 0026 W1：退出时是否回投事实给会话
+
     def __init__(self, pid_id: int, command: str, proc: subprocess.Popen, job=None) -> None:
         self.id = pid_id
         self.command = command
@@ -91,10 +97,15 @@ class _Entry:
 class ProcessManager:
     """每对话一个：后台启动、增量读输出、停止、退出时全部清理。线程安全。"""
 
-    def __init__(self, artifacts=None) -> None:
+    def __init__(self, artifacts=None, on_event=None) -> None:
         self._lock = threading.Lock()
         self._seq = 0
         self._procs: dict[int, _Entry] = {}
+        # 等待器（ADR 0026 W1）：id -> {"thread","cancel","command","deadline"}
+        self._waiters: dict[int, dict] = {}
+        # 条件成立/进程退出时把**事实**回投给会话（由 Conversation 注入）。
+        # **只投事实不下结论**（ADR 0026 决策 3）：要不要继续、怎么继续由模型判断。
+        self.on_event = on_event
         # ADR 0021 §7：产物入口。环形缓冲是"一边收一边丢最旧"，**重跑也拿不回来**被冲掉的早期日志，
         # 所以这里不能等到工具返回时才落盘，必须在读线程里 tee。随工作区变（由 conversation 赋值）。
         self.artifacts = artifacts
@@ -176,6 +187,100 @@ class ProcessManager:
         finally:
             if entry.tee is not None:
                 entry.tee.close()   # 进程结束即定稿；文件在这之前也一直可读（append + flush）
+            # ADR 0026 W1：**进程退出即通知**（调别的 agent / 长跑软件的主场景）。
+            # 这个 finally 本来只是收尾，加一行就成了"站外任务干完了"的信号源——
+            # 以前它只是自己结束、谁也不告诉，于是 agent 永远不知道那件事已经完了。
+            if getattr(entry, "notify_on_exit", False) and self.on_event:
+                code = entry.proc.poll()
+                with self._lock:
+                    tail = entry.buffer[-_NOTIFY_TAIL_CHARS:]
+                self._fire(f"后台进程 #{entry.id} 已退出（exit={code}）：{entry.command}",
+                           tail, entry.id)
+
+    # ---- 回投事实 / 等待器（ADR 0026 W1）------------------------------------
+
+    def _fire(self, headline: str, tail: str, ref: int) -> None:
+        """把一条**事实**回投给会话。绝不加"你应该去修"这类指导（决策 3）。"""
+        if not self.on_event:
+            return
+        body = headline
+        if tail.strip():
+            body += f"\n--- 尾部输出 ---\n{tail.strip()}"
+        try:
+            self.on_event(body, ref)
+        except Exception:  # noqa: BLE001 — 回投失败不能影响进程管理本身
+            pass
+
+    def start_waiter(self, argv: list[str], cwd: str, command: str,
+                     poll_seconds: int, timeout_minutes: int) -> int:
+        """周期重跑 `command` 直到它 exit 0（或超时），期间**零模型成本**。
+
+        用于站外条件（CI 跑完了没、云端任务好了没）——那些事没有本地进程可等，
+        只能问。区别于 `/crazy` 自驱轮询：那是每轮烧一次模型调用去问"好了没"。
+        """
+        poll = max(int(poll_seconds or 30), MIN_POLL_SECONDS)
+        minutes = min(max(int(timeout_minutes or 30), 1), MAX_WAIT_MINUTES)
+        deadline = time.time() + minutes * 60
+        with self._lock:
+            self._seq += 1
+            wid = self._seq
+            cancel = threading.Event()
+            self._waiters[wid] = {"cancel": cancel, "command": command, "deadline": deadline}
+
+        def _loop() -> None:
+            n = 0
+            started = time.time()
+            while not cancel.is_set():
+                # deadline **以台账里的值为准**，不用闭包快照：否则 waiters() 报的剩余时间
+                # 和实际生效的可能是两个数（单一事实来源）。取不到＝已被摘掉，直接收工。
+                with self._lock:
+                    w = self._waiters.get(wid)
+                    dl = w["deadline"] if w else None
+                if dl is None:
+                    return
+                if time.time() >= dl:
+                    self._drop_waiter(wid)
+                    self._fire(f"等待超时：条件在 {int(time.time() - started)}s 内始终未成立"
+                               f"（已试 {n} 次）：{command}", "", wid)
+                    return
+                n += 1
+                try:
+                    r = subprocess.run(argv, cwd=cwd, capture_output=True, timeout=poll * 2)
+                    code = r.returncode
+                    out = (r.stdout or b"").decode("utf-8", "replace")[-_NOTIFY_TAIL_CHARS:]
+                except Exception as e:  # noqa: BLE001 — 单次探测失败不算条件成立，也不该终止等待
+                    code, out = None, f"（第 {n} 次探测出错：{type(e).__name__}: {e}）"
+                if code == 0:
+                    self._drop_waiter(wid)
+                    self._fire(f"等待条件已成立（第 {n} 次探测，等了 "
+                               f"{int(time.time() - started)}s）：{command}", out, wid)
+                    return
+                cancel.wait(poll)   # 可被 stop 立即打断，不是死 sleep
+
+        t = threading.Thread(target=_loop, daemon=True)
+        with self._lock:
+            self._waiters[wid]["thread"] = t
+        t.start()
+        return wid
+
+    def _drop_waiter(self, wid: int) -> None:
+        with self._lock:
+            self._waiters.pop(wid, None)
+
+    def stop_waiter(self, wid: int) -> bool:
+        with self._lock:
+            w = self._waiters.get(wid)
+        if not w:
+            return False
+        w["cancel"].set()
+        self._drop_waiter(wid)
+        return True
+
+    def waiters(self) -> list[dict]:
+        with self._lock:
+            return [{"id": k, "command": v["command"],
+                     "remaining_s": max(0, int(v["deadline"] - time.time()))}
+                    for k, v in self._waiters.items()]
 
     # ---- 写输入（P3 / ADR 0022）---------------------------------------------
 
@@ -306,6 +411,15 @@ class ProcessManager:
             return f"进程 #{pid_id} 早已结束（{entry.status()}）。"
         self._kill_tree(entry)
         return f"已停止进程 #{pid_id}（{entry.command}）。"
+
+    def cancel_all_waiters(self) -> int:
+        """会话关闭 / app 退出时清掉等待器——别留下没人认领的幽灵轮询。"""
+        with self._lock:
+            ws = list(self._waiters.values())
+            self._waiters.clear()
+        for w in ws:
+            w["cancel"].set()
+        return len(ws)
 
     def kill_all(self) -> int:
         """杀掉所有仍在运行的后台进程（关窗/删会话运行时调用），返回清理数。"""

@@ -262,7 +262,10 @@ class Conversation:
         self._handoff = HandoffBinding(self._on_handoff_request,
                                        observer=self._observe_scene)
         # 后台进程管理器（FR-10.3）：每对话一个、跨工作区切换保留；shutdown 时杀全部
-        self.procs = ProcessManager()
+        # ADR 0026 W1：站外任务干完 / 后台进程退出时，把**事实**回投进本会话并起一轮。
+        # 关键是**回到同一个上下文**——模型记得当初为什么起这件事，才谈得上"接着干"；
+        # 若醒来是白纸，它只会复述"构建失败"然后不知道干嘛。
+        self.procs = ProcessManager(on_event=self._on_external_event)
         # 产物入口（ADR 0021）：随工作区在 _build_registry 里建；None = 大输出照旧截断丢弃
         self.artifacts = None
         # 压缩摘要缓存（FR-10.4a）：(已覆盖的被丢弃消息条数, 模型生成的摘要文本)。
@@ -324,6 +327,20 @@ class Conversation:
             self.state = "queued"  # 空闲：这条就是新任务，给个 queued 过渡（worker 随即设 running）
             self.emit("state", {"state": "queued"})
         return {"ok": True, "queued": True}
+
+    def _on_external_event(self, body: str, ref: int) -> None:
+        """外部事件回投：走已有的 enqueue —— 忙则并进当前轮（steering），闲则起新一轮。
+
+        **复用 enqueue 而不是另造通路**：它的忙/闲分派与 worker 启停竞态已经处理过
+        （"退出与 enqueue 的启动都在 _worker_lock 下，无丢任务"），另写一份只会重新踩一遍。
+
+        文案上**明确标成系统通知**：这不是用户说的话，模型不该把它当人的指令来讨好；
+        它只是一条事实，怎么处理由模型自己判断（决策 3）。
+        """
+        try:
+            self.enqueue(f"［系统通知·非用户输入］{body}")
+        except Exception:  # noqa: BLE001 — 通知失败不该把进程管理拖下水
+            pass
 
     def _take_injects(self) -> list[str]:
         """供 AgentLoop 在工具回灌时拉取并清空"执行中追加的补充"（steering）。"""
@@ -476,6 +493,7 @@ class Conversation:
             rt.join(timeout)
         try:
             self.procs.kill_all()
+            self.procs.cancel_all_waiters()   # 别留下没人认领的幽灵轮询（ADR 0026）
         except Exception:  # noqa: BLE001 — 清理尽力而为
             pass
 
