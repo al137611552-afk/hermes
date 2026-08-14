@@ -4,6 +4,32 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.67.2] - 2026-08-14
+
+修 v3.67.1 的包**下载后启动即崩**。这是**自动发版才会出现的新故障**：以前的包由本机
+`build.ps1` 生成、不经过下载，所以九轮 CI 全绿也照不出它——**真正的验证边界是"用户拿到包之后"，
+不是"CI 绿了"**。
+
+### Fixed
+- **从 GitHub 下载的 exe 一运行就报 `Failed to resolve Python.Runtime.Loader.Initialize`**。
+  病根是 **Mark of the Web**：Windows 给下载来的 zip 解压出的**每个文件**盖 `Zone.Identifier`
+  标记，而 .NET Framework **拒绝从被标记的文件加载程序集**。
+  **产物本身完好无损**——查过 `Python.Runtime.dll` 与官方 wheel **字节完全一致**（sha256 相同），
+  `Python.Runtime.Loader.Initialize` 也确实在里面（解析 .NET 元数据确认；直接 grep 字符串会**误判为不存在**，
+  因为字符串堆有**后缀共享**，`Loader` 复用了 `WindowsLoader` 的尾部）。**东西全对却"解析不到"＝被拦，不是缺失。**
+  三处一起修：
+  - **exe 自己会说人话**：`startup.clr_load_hint()` 认出这类失败，弹系统对话框给出可照抄的
+    `Unblock-File` 命令（含用户自己的目录路径）。**发布版是 `console=False`，往 stderr 打等于没打**，
+    所以必须走 MessageBox。认不出来的异常**原样抛出**，不吃掉真错误。
+  - **包内随附 `首次运行必读.txt`**（内容进仓库 `docs/dist-readme.txt`，由 workflow 拷进产物）。
+  - **Release 正文第一条就写「先解除锁定」**，并给出解压前/解压后两种做法。
+
+### Changed
+- **CI 打包依赖钉版**（`build-constraints.txt`，`test` 与 `build` 两个 job 共用）。原来
+  `pip install -e .` + `pip install pyinstaller` **全不固定**，同一个 tag 重跑可能打出依赖组合不同的包。
+  只钉**决定 exe 能否启动**的那条原生链（pywebview/pythonnet/clr_loader/pywin32/pyinstaller/pillow），
+  anthropic/openai/mcp 这类纯 Python SDK **故意不钉**——它们跟上游走对用户有利，出问题也能靠改配置绕开。
+
 ## [3.67.1] - 2026-08-14
 
 CI 流水线首次端到端跑通（9 轮，#1 红 → #9 全绿）。**这一版没有新功能**，全是把

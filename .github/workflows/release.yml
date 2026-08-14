@@ -38,8 +38,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
+      # 跟 build 用**同一份约束**：测试验的依赖组合必须就是发出去的那一套，
+      # 否则"测试绿"担保不了产物。
       - name: 装依赖
-        run: pip install -e .
+        run: pip install -e . -c build-constraints.txt
       - name: Python 全回归（每个文件是独立 runner，非 pytest）
         shell: pwsh
         run: |
@@ -64,10 +66,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      # 约束见 build-constraints.txt：钉住决定 exe 能否启动的那条原生链
+      # （pywebview/pythonnet/clr_loader/pyinstaller…），纯 Python SDK 故意不钉。
       - name: 装依赖 + PyInstaller
         run: |
-          pip install -e .
-          pip install pyinstaller
+          pip install -e . -c build-constraints.txt
+          pip install pyinstaller -c build-constraints.txt
       - name: 取版本号
         id: ver
         shell: pwsh
@@ -99,10 +103,16 @@ jobs:
 
       # 解压后必须是**单层** hermes-dev\（CLAUDE.md 打包约定）。
       # Compress-Archive 传目录本身即可得到单层结构。
-      - name: 压成单层 zip
+      #
+      # 随包放一份「首次运行必读」：从网上下载的 zip，Windows 会给解压出的每个文件盖
+      # 「来自 Internet」标记（Mark of the Web），.NET 拒绝从被标记的文件加载程序集 →
+      # 启动即炸在 `Failed to resolve Python.Runtime.Loader.Initialize`（2026-08-14 真机踩到）。
+      # 这是**自动发版才会遇到的新问题**：以前本地 build.ps1 打的包不经过下载，没有标记。
+      - name: 压成单层 zip（随包带首次运行说明）
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.version }}"
+          Copy-Item docs\dist-readme.txt -Destination "dist\hermes-dev\首次运行必读.txt"
           Compress-Archive -Path dist\hermes-dev -DestinationPath "hermes-dev-$v-win64.zip" -Force
           Write-Host "产物：hermes-dev-$v-win64.zip"
 
@@ -155,7 +165,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             # **不用 here-string**：它的结束符必须顶格，而 YAML 块标量要求缩进，两者冲突。
             # 用单引号字符串数组——单引号串里反引号不当转义符（markdown 的 `code` 才能原样保留）。
+            # 「解除锁定」放**第一条**：不做这一步，下载来的包会启动即崩（Mark of the Web
+            # 让 .NET 拒绝加载被标记的文件），而报错是一串 .NET 堆栈、对用户毫无提示作用。
             $notes = @(
+              '### 下载后请先「解除锁定」',
+              '',
+              'Windows 会给下载来的压缩包盖「来自 Internet」标记，程序用到的 .NET 组件拒绝从被标记的文件加载，',
+              '不处理会启动即报 `Failed to resolve Python.Runtime.Loader.Initialize`。二选一：',
+              '',
+              '- **解压前**：右键 `.zip` → 属性 → 勾选「解除锁定」→ 确定，再解压（推荐，一步到位）；',
+              '- **解压后**：在程序目录开 PowerShell 跑 `Get-ChildItem . -Recurse | Unblock-File`。',
+              '',
+              '（包内 `首次运行必读.txt` 也写了同样的说明。）',
+              '',
+              '---',
+              '',
               '解压即用的 Windows 程序见 `*-win64.zip`（**未签名**，首次运行 SmartScreen 可能拦一下，选「仍要运行」）。',
               '源码包见 `*-src.zip`（不含密钥，需自行 `pip install -e .`）。',
               '',

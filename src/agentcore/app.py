@@ -9,7 +9,26 @@ import webview
 
 from .bridge import Api
 from .config import load_config
-from .paths import bundled
+from .paths import APP_DIR, bundled
+from .startup import clr_load_hint
+
+
+def _show_fatal(title: str, body: str) -> None:
+    """把致命错误送到用户真能看见的地方。
+
+    **发布版是 `console=False`**，往 stderr 打等于没打——所以 Windows 上弹系统对话框。
+    非 Windows / 弹窗失败时退回 stderr，保证信息不丢。
+    """
+    print(f"[{title}]\n{body}", file=sys.stderr, flush=True)
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        MB_ICONERROR = 0x10
+        ctypes.windll.user32.MessageBoxW(0, body, title, MB_ICONERROR)
+    except Exception:  # noqa: BLE001  弹窗失败不能盖住原始错误
+        pass
 
 
 def main() -> None:
@@ -48,7 +67,16 @@ def main() -> None:
     if debug:
         print("[启动计时] 交给 WebView2 渲染页面、建桥…（下面是前端上报的耗时）",
               file=sys.stderr, flush=True)
-    webview.start(debug=debug)
+    try:
+        webview.start(debug=debug)
+    except Exception as e:  # noqa: BLE001
+        # 只拦「.NET 组件加载不起来」这一类可自救的失败（详见 startup 模块的注释）。
+        # 认不出来就原样抛出——交回 PyInstaller 的 traceback 对话框，别把真异常吃掉。
+        hint = clr_load_hint(e, str(APP_DIR))
+        if hint is None:
+            raise
+        _show_fatal("Hermes 启动失败", hint)
+        sys.exit(1)
 
     # 窗口已正常关闭、start() 返回后收尾：后台整理一次记忆，最多等 5s 不阻塞退出
     # （慢/挂就放弃——靠 extracted_upto「成功才推进」保证不丢、下次切换会话补），再关 MCP / 存储。

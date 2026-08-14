@@ -4,6 +4,43 @@
 
 ---
 
+## 2026-08-14 — 真机反馈：CI 发出去的第一个包，下载后启动即崩（CI 全绿也照不出的一类）
+
+**反馈**：v3.67.1 的 exe 在 Windows 上双击就弹 .NET 堆栈，末尾是
+`RuntimeError: Failed to resolve Python.Runtime.Loader.Initialize from ...\Python.Runtime.dll`。
+
+**排查（全程在 Linux 上做完，没让用户来回试）**：把 Release 的 zip 直接下下来剖开——
+① 文件都在（`Python.Runtime.dll` 445 KB、`ClrLoader.dll` amd64、netstandard facade 齐全）；
+② 把官方 wheel 也下下来对比，**产物内的 DLL 与 wheel 字节完全一致（sha256 相同）**，
+PyInstaller 没弄坏它；③ 那就只剩"类型不在"或"加载被拒"两种可能。
+
+**我在这一步先判错了一次，值得记**：grep DLL 里的字符串找不到 `Loader`，据此下了"类型不存在"的结论。
+**错在拿 grep 当元数据解析器**——.NET 的 #Strings 堆有**后缀共享**，`Loader` 是复用
+`WindowsLoader` 的尾部存的，字节上根本不存在独立的 `\x00Loader\x00`。用 `dnfile` 正经解析 TypeDef
+一看：`Python.Runtime.Loader` 在，`Initialize`/`Shutdown` 两个方法都在。**证据形式不对，结论就是反的。**
+
+**真因＝Mark of the Web**：Windows 给下载来的 zip 解压出的每个文件盖 `Zone.Identifier`，
+.NET Framework 拒绝从被标记的文件加载程序集。用户跑
+`Get-ChildItem <目录> -Recurse | Unblock-File` 后立即正常，闭环。
+
+**为什么九轮 CI 全绿也照不出它**：以前的包都由本机 `build.ps1` 生成，**不经过下载**，没有标记。
+这个故障只在"**用户拿到包之后**"才发生——**CI 绿的边界是产物被造出来，不是产物能被用起来**。
+这跟本项目一贯的教训同源（mock 全绿掩盖集成 bug、Chromium 复现不出 WebView2 专属问题）：
+**验证必须发生在真实的使用路径上**。
+
+**三处一起修**（v3.67.2）：①`startup.clr_load_hint()` 让 exe 自己说人话——发布版
+`console=False`，**往 stderr 打等于没打**，所以走 MessageBox；认不出的异常原样抛出不吃掉真错误。
+②包内随附 `首次运行必读.txt`。③Release 正文第一条就是「先解除锁定」。
+**顺带补了个长期隐患**：CI 装依赖此前完全不钉版本，同一个 tag 重跑可能打出不同的包 →
+`build-constraints.txt` 钉住决定 exe 能否启动的那条原生链（纯 Python SDK 故意不钉）。
+
+**自检**：新增 `test_startup` 4 条（含"只在 __cause__ 里带特征串也要认出"与"认不出必须返回 None"）。
+**全回归全绿**（Python 71 文件 + 前端 132）。
+**验证状态**：⏳ 待 Windows 真机验——用户已确认 `Unblock-File` 能解，但**新加的那个人话弹窗还没被真的触发过**
+（要在没解锁的新包上双击才见得到）。用例见下方交付清单。
+
+---
+
 ## 2026-08-14 — CI 流水线首次端到端跑通（9 轮，红→绿）
 
 **阶段**：release workflow（推 tag 即出包，ADR 0020 的补缺）从写完到真跑通。
