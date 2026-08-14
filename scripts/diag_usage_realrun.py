@@ -28,13 +28,19 @@ def _env_or_die() -> tuple:
     base = os.environ.get("HERMES_RT_BASE")
     key_env = os.environ.get("HERMES_RT_KEY_ENV")
     model = os.environ.get("HERMES_RT_MODEL")
+    # 两条 provider 路径的用量口径**完全不同**（anthropic 的 input 已排除缓存，
+    # OpenAI 系的 prompt_tokens 却含缓存），所以两条都要真验，不能只验一条就当都对。
+    kind = (os.environ.get("HERMES_RT_PROVIDER") or "anthropic").strip().lower()
     if not (base and key_env and model):
         print("需要 HERMES_RT_BASE / HERMES_RT_KEY_ENV / HERMES_RT_MODEL（无默认）。", file=sys.stderr)
+        sys.exit(2)
+    if kind not in ("anthropic", "openai"):
+        print(f"HERMES_RT_PROVIDER 只能是 anthropic / openai，收到 {kind}", file=sys.stderr)
         sys.exit(2)
     if not os.environ.get(key_env):
         print(f"环境变量 {key_env} 没有值（.env 里配好或 export）。", file=sys.stderr)
         sys.exit(2)
-    return base, key_env, model
+    return base, key_env, model, kind
 
 
 def run(prompt: str, tmp: Path) -> tuple[list, Path]:
@@ -42,7 +48,7 @@ def run(prompt: str, tmp: Path) -> tuple[list, Path]:
     from agentcore.bridge.api import Api
     from agentcore.config import ModelConfig, load_config
 
-    base, key_env, model = _env_or_die()
+    base, key_env, model, kind = _env_or_die()
     cwd = os.getcwd()
     os.chdir(ROOT)                     # load_config 读项目根 config.yaml / .env
     try:
@@ -54,7 +60,7 @@ def run(prompt: str, tmp: Path) -> tuple[list, Path]:
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "hello.txt").write_text("四十二\n", encoding="utf-8")
 
-    cfg.models["rt"] = ModelConfig(provider="anthropic", model=model,
+    cfg.models["rt"] = ModelConfig(provider=kind, model=model,
                                    api_key_env=key_env, base_url=base, max_tokens=1024)
     cfg.active_model = "rt"
     cfg.agent.workspace = str(ws)
@@ -93,9 +99,10 @@ def run(prompt: str, tmp: Path) -> tuple[list, Path]:
 
 
 def main() -> int:
-    _, _, model = _env_or_die()
+    _, _, model, kind = _env_or_die()
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
+        print(f"=== provider 路径：{kind}  模型：{model} ===")
         # 让它读一个文件：制造 ≥2 步（工具往返），从而验证跨步累加
         events, usage_db = run("读一下工作区里的 hello.txt，把内容原样告诉我。", tmp)
 
@@ -122,7 +129,7 @@ def main() -> int:
         checks.append(("落库至少一行", ok, f"{len(rows)} 行"))
         if ok:
             r = rows[0]
-            checks.append(("provider 归一为 anthropic", r["provider"] == "anthropic", str(r["provider"])))
+            checks.append((f"provider 归一为 {kind}", r["provider"] == kind, str(r["provider"])))
             checks.append(("model_id 是真实模型名（不是档名）", r["model_id"] == model, str(r["model_id"])))
             checks.append(("model_profile 记的是档名", r["model_profile"] == "rt", str(r["model_profile"])))
             checks.append(("真端点回传用量 → measured=1", r["measured"] == 1, str(r["measured"])))
