@@ -4,7 +4,11 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [3.67.1] - 2026-08-14
+
+CI 流水线首次端到端跑通（9 轮，#1 红 → #9 全绿）。**这一版没有新功能**，全是把
+"本地过了"掩盖住的 Windows/locale/跨平台假设逐条修掉——其中一条是**安全修复**（技能包解压路径逃逸）。
+验证方式是 CI 在 GitHub 的 windows runner 上跑完整回归 + 真打包，**不是**开发机上的 Linux 回归。
 
 ### Fixed
 - **CI 首跑 21 个测试文件红——修 Windows/locale 假设**（release workflow 的第一次真跑）。

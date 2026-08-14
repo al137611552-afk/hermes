@@ -35,10 +35,11 @@
 带 filter 后 7 个包全部收集成功。**这是少见的"Windows 专属崩溃能在 Linux 上复现"的情形**——
 因为病根是缺可选依赖，与平台无关，只是以前从没有哪条流程会在 CI 上跑打包。
 
-**验证状态**：✅ CI 全绿（#9，`2270ac2`）。**遗留**：`build` 的 Release 步骤（`gh release create/upload`）
-仍**没被验证过**——它有 `if: startsWith(github.ref, 'refs/tags/')`，手动触发一律跳过，
-只有真推一个 tag 才会走到。下次定版就是它的首验，**别把真发版当流水线的第一次测试**这句
-写在 workflow 开头，对这一步反而还没兑现。
+**验证状态**：✅ CI 全绿（#9，`2270ac2`），已合 main 并**定版 v3.67.1**。
+**Release 步骤（`gh release create/upload`）本轮一并验掉**：它有
+`if: startsWith(github.ref, 'refs/tags/')`，手动触发一律跳过，只有真推 tag 才走到——
+所以 v3.67.1 这个 tag 的作用就是**把流水线最后一段也走一遍**，而不只是发个版。
+（workflow 开头写着"别把真发版当流水线的第一次测试"，本轮之前对这一步恰恰还没兑现。）
 
 ---
 
