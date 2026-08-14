@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS usage_log (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     ts                REAL    NOT NULL,          -- Unix 秒（UTC）
     session_id        INTEGER,                   -- 可空：无头评测/后台任务未必有会话
-    turn              INTEGER,
+    steps             INTEGER,                   -- 这一轮走了几步工具往返
     model_profile     TEXT,                      -- 档名（给人看的）。计价**不用**它
     provider          TEXT,                      -- anthropic / openai / ...
     model_id          TEXT,                      -- 真实发给 API 的模型名 —— 计价键（决策 4）
@@ -99,7 +99,7 @@ class UsageStore:
         provider: str | None = None,
         model_profile: str | None = None,
         session_id: int | None = None,
-        turn: int | None = None,
+        steps: int | None = None,
         input_uncached: int = 0,
         input_cache_write: int = 0,
         input_cache_read: int = 0,
@@ -114,11 +114,11 @@ class UsageStore:
         """记一行。全零也记——"这轮没花 token"和"这轮没记录"是两回事。"""
         with self._lock:
             cur = self._conn.execute(
-                "INSERT INTO usage_log (ts, session_id, turn, model_profile, provider, model_id,"
+                "INSERT INTO usage_log (ts, session_id, steps, model_profile, provider, model_id,"
                 " input_uncached, input_cache_write, input_cache_read, output, reasoning,"
                 " measured, agent_role, harness_version, request_id)"
                 " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (ts if ts is not None else time.time(), session_id, turn, model_profile,
+                (ts if ts is not None else time.time(), session_id, steps, model_profile,
                  provider, model_id, int(input_uncached), int(input_cache_write),
                  int(input_cache_read), int(output), int(reasoning),
                  1 if measured else 0, agent_role, harness_version, request_id),

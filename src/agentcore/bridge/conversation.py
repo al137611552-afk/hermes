@@ -2234,7 +2234,7 @@ class Conversation:
                 # 档名只对主对话成立；子 Agent 用的可能是另一个档，宁可留空也别记错
                 model_profile=self.active_model if role == "main" else None,
                 session_id=self.session_id,
-                turn=payload.get("steps"),
+                steps=payload.get("steps"),
                 input_uncached=payload.get("input", 0) or 0,
                 input_cache_write=payload.get("cache_write", 0) or 0,
                 input_cache_read=payload.get("cache_read", 0) or 0,

@@ -39,7 +39,7 @@ provider._usage() → StreamEvent.meta["usage"] → loop.py 跨步累加 → emi
 **`usage_log`（事实表，一轮一行）**
 
 ```
-ts, session_id, turn
+ts, session_id, steps
 model_profile         # 档名（用户看到的）
 provider, model_id    # 真实发给 API 的模型名 —— 计价按它，不按档名（决策 4）
 input_uncached        # 未命中缓存的输入

@@ -55,8 +55,12 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - 新功能配同风格自检（临时目录/mock，不碰网络、不连真 server）；**改完跑全部测试，全绿才算完成**。
 
 ## 定版（仅 Windows 验证通过后）
-同步改：`pyproject.toml` version + `CHANGELOG.md`（[Unreleased]→版本号+日期）+
-`DEVLOG.md`（状态改“已验证通过”）+ `PRD.md`（对应 FR 状态）。CHANGELOG 遵循 Keep a Changelog + SemVer。
+同步改：`pyproject.toml` version + **`src/agentcore/__init__.py` 的 `__version__`** +
+`CHANGELOG.md`（[Unreleased]→版本号+日期）+ `DEVLOG.md`（状态改“已验证通过”）+
+`PRD.md`（对应 FR 状态）。CHANGELOG 遵循 Keep a Changelog + SemVer。
+> `__version__` 曾漂了四个版本没人发现（2026-08-14）：`current_version()` 优先读
+> importlib.metadata，正式安装/打包产物里都读得到正确值，**只有 metadata 查不到时才回退到它**
+> （开发机 editable 安装就是这种情况）。`test_updater` 已加闸钉住两处一致。
 
 ## 配置与密钥
 - 模型档案在 `config.yaml`；密钥只在 `.env`，**绝不写进代码或文档**。

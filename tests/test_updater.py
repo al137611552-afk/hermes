@@ -159,6 +159,30 @@ def test_api_check_update_disabled_by_default_and_makes_no_request():
         updater.check_update = orig
 
 
+def test_package_version_matches_pyproject():
+    """`agentcore.__version__` 必须与 pyproject 的 version 一致。
+
+    **为什么要有这条闸**（2026-08-14 真跑用量台账时发现）：`__version__` 落后了整整四个版本
+    （3.64.0 vs 3.68.0）——因为定版流程只改 pyproject/CHANGELOG/DEVLOG/PRD，**没人记得改它**。
+    平时看不出来，是因为 `current_version()` 优先读 importlib.metadata（正式安装/打包产物里
+    都有 dist-info，读到的是对的）；**只有 metadata 查不到时才回退到它**——开发机的
+    editable 安装正是这种情况，于是台账里记下了错的 harness 版本。
+    靠人记得改的东西迟早会漂，用测试钉住。
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "pyproject.toml").read_text("utf-8")
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+    assert m, "pyproject.toml 里找不到 version"
+    from agentcore import __version__
+    assert __version__ == m.group(1), (
+        f"版本漂了：agentcore.__version__={__version__} 而 pyproject={m.group(1)}。"
+        f"定版时两处都要改（见 CLAUDE.md 定版流程）。"
+    )
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     passed = 0
