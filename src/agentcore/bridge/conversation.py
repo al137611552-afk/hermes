@@ -208,6 +208,7 @@ class Conversation:
         def _emit(event, data):
             if self._trace.recording:
                 self._trace.observe(event, data)
+            self._record_usage(event, data)
             _base_emit(event, data, self.cid)
         self.emit = _emit
         # 后台执行：每对话一条 worker 线程 + 串行任务队列（保回合顺序；惰性启动、空闲退出）
@@ -2191,6 +2192,59 @@ class Conversation:
                 st = None
             self._strategy_store_cache = st
         return st
+
+    def _get_usage_store(self):
+        """用量台账（ADR 0025）：懒建并**跨会话共用一个实例**（缓存在 Resources 上）。
+
+        共用而非每会话一个连接：用量是每轮都写的高频路径，多个连接写同一个 SQLite
+        容易撞锁；`UsageStore` 自带锁，共用一个实例即可串行化。
+        打开失败降级 None——**记账绝不能阻断对话**。
+        """
+        if not getattr(self.res.config, "usage", None) or not self.res.config.usage.enabled:
+            return None
+        store = getattr(self.res, "_usage_store_cache", None)
+        if store is None:
+            try:
+                from ..store.usage import UsageStore
+                store = UsageStore(self.res.config.usage.resolve_db_path())
+            except Exception:  # noqa: BLE001
+                store = False   # False=试过且失败，别每轮重试
+            self.res._usage_store_cache = store
+        return store or None
+
+    def _record_usage(self, event: str, data) -> None:
+        """把 usage 事件落台账。挂在 emit 咽喉上——主 Agent 与子 Agent 的用量都从这过。
+
+        子 Agent 的用量是被包成 `subagent_event` 的，**外层事件名不是 usage**；
+        漏了这一支就会把委派花的钱统统算丢（而委派恰恰是重活）。
+        """
+        from ..store.usage import parse_usage_event
+        hit = parse_usage_event(event, data)
+        if hit is None:
+            return
+        role, payload = hit
+        try:
+            store = self._get_usage_store()
+            if store is None:
+                return
+            from ..updater import current_version
+            store.record(
+                model_id=payload.get("model"),
+                provider=payload.get("provider"),
+                # 档名只对主对话成立；子 Agent 用的可能是另一个档，宁可留空也别记错
+                model_profile=self.active_model if role == "main" else None,
+                session_id=self.session_id,
+                turn=payload.get("steps"),
+                input_uncached=payload.get("input", 0) or 0,
+                input_cache_write=payload.get("cache_write", 0) or 0,
+                input_cache_read=payload.get("cache_read", 0) or 0,
+                output=payload.get("output", 0) or 0,
+                measured=bool(payload.get("measured", True)),
+                agent_role=role,
+                harness_version=current_version(),
+            )
+        except Exception:  # noqa: BLE001 — 记账失败绝不阻断对话
+            pass
 
     def _get_failure_memory(self, enabled: bool):
         """块E：懒建并复用单个 FailureMemory（跨会话死路记忆，data/failures.db）。

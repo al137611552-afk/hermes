@@ -29,13 +29,21 @@ _EPHEMERAL = {"type": "ephemeral"}
 
 
 def _usage(u) -> "dict | None":
-    """规范化 Anthropic usage → {input, output, cache_read}（FR-11.8）；None 安全。"""
+    """规范化 Anthropic usage → 统一口径（FR-11.8 / ADR 0025）；None 安全。
+
+    统一口径下 `input` 一律指**未命中缓存的输入**。Anthropic 的 `input_tokens` 本就已经
+    排除了缓存读写两部分，所以直接用即可（OpenAI 系相反，见 `openai_p._usage`）。
+
+    **`cache_write` 必须单独记**（ADR 0025 决策 1）：写缓存比普通输入**贵**，
+    以前只取 cache_read 等于把建缓存那一轮系统性少算。
+    """
     if u is None:
         return None
     return {
         "input": getattr(u, "input_tokens", 0) or 0,
         "output": getattr(u, "output_tokens", 0) or 0,
         "cache_read": getattr(u, "cache_read_input_tokens", 0) or 0,
+        "cache_write": getattr(u, "cache_creation_input_tokens", 0) or 0,
     }
 
 

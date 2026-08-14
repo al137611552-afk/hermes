@@ -117,9 +117,15 @@ def test_agent_loop_roundtrip(tmp: Path):
     assert usage["steps"] == 2 and usage["max_steps"] == 5
 
 
-def test_agent_loop_no_usage_event_when_endpoint_silent(tmp: Path):
-    """端点不回传 usage（done 无 usage）时不发 usage 事件，避免噪音。"""
+def test_agent_loop_estimates_usage_when_endpoint_silent(tmp: Path):
+    """端点不回传 usage 时**估算并标记 measured=False**（ADR 0025 决策 3）。
+
+    **这条取代了旧期望「不发 usage 事件，避免噪音」**（改于 2026-08-14，有意行为变更）：
+    旧解法确实避免了全零噪音，但代价是**那一轮的成本彻底隐形**——会话累计里凭空少一块，
+    看起来像免费。现在改成"估一个 + 如实标记是估的"：数要有，但绝不冒充实测。
+    """
     class SilentProvider:
+        model = "silent-model"
         def stream_chat(self, messages, system=None, tools=None):
             yield StreamEvent("text", "好的。")
             yield StreamEvent("done", meta={"stop_reason": "end_turn"})
@@ -127,7 +133,10 @@ def test_agent_loop_no_usage_event_when_endpoint_silent(tmp: Path):
     loop = AgentLoop(SilentProvider(), reg, PermissionGate(lambda req: None), max_steps=5)
     events = []
     loop.run([Message("user", "hi")], None, lambda e, d: events.append((e, d)))
-    assert not any(e == "usage" for e, _ in events)
+    usage = next(d for e, d in events if e == "usage")
+    assert usage["measured"] is False, "估算出来的数必须标记，否则会被拿去对账"
+    assert usage["input"] > 0 and usage["output"] > 0
+    assert usage["model"] == "silent-model"   # 计价按真实 model_id，不按档名
 
 
 def test_agent_loop_step_warning(tmp: Path):

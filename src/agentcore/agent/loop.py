@@ -18,7 +18,9 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
+from ..context import estimate_tokens, estimate_tokens_text
 from ..providers import BaseProvider, Message
+from ..store.usage import provider_kind
 from ..tools import ToolError, ToolOutput, ToolRegistry
 from .contract import NUDGE_BROWSE, NUDGE_LOGIN, NUDGE_STUCK, Need
 from .gate import PermissionGate
@@ -479,8 +481,12 @@ class AgentLoop:
         「工具结果 + 用户补充」，可据此重新评估、调整当前任务方向，而非等任务做完再当新事处理。
         """
         tools = self.registry.to_schemas()
-        # 用量累计（FR-11.8）：跨步累加 token，记步数，回合末发 usage 事件。
-        total = {"input": 0, "output": 0, "cache_read": 0}
+        # 用量累计（FR-11.8 / ADR 0025）：跨步累加 token，记步数，回合末发 usage 事件。
+        # `input` 一律指**未命中缓存**的输入；缓存写/读分列（单价不同，合并即丢失可算性）。
+        total = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+        # 端点没回传用量时改用估算，并**如实标记**——以前那种情况静默按 0 计，
+        # 于是那一轮"看起来免费"。一个自信的错数比缺失更危险（ADR 0025 决策 3）。
+        measured = True
         steps = 0
         warned = False
         self.hit_max_steps = False   # 本轮是否撞步数上限（供委派标注"子任务未完成"）
@@ -538,6 +544,10 @@ class AgentLoop:
                     if u:
                         for k in total:
                             total[k] += u.get(k, 0) or 0
+                    else:
+                        measured = False
+                        total["input"] += estimate_tokens(messages, system)
+                        total["output"] += estimate_tokens_text(assistant_text)
                     break
 
             if cancelled:  # 流式被停止打断：保留已输出的部分文本，不执行本轮残缺工具调用
@@ -752,6 +762,10 @@ class AgentLoop:
                             if u:
                                 for k in total:
                                     total[k] += u.get(k, 0) or 0
+                            else:
+                                measured = False
+                                total["input"] += estimate_tokens(messages, system)
+                                total["output"] += estimate_tokens_text(final_text)
                             break
                         elif ev.type == "error":
                             break
@@ -762,9 +776,16 @@ class AgentLoop:
             emit("error", f"工具调用已达防跑飞上限（{self.max_steps} 步，疑似原地打转），已基于已收集信息收尾。"
                           f"如确属超长任务，可在设置调高「防跑飞上限」或改用委派拆分。")
 
-        # 回合末上报用量（FR-11.8）：tokens 全 0（端点没回传用量）则不发，避免噪音
+        # 回合末上报用量（FR-11.8 / ADR 0025）：全 0 则不发，避免噪音。
+        # 带上 model/provider/measured——落台账时要按**真实 model_id** 计价（档名可以随便起），
+        # 且子 Agent 可能用的是另一个模型，不能拿主对话的模型名去套。
         if total["input"] or total["output"]:
-            emit("usage", {**total, "steps": steps, "max_steps": self.max_steps})
+            emit("usage", {
+                **total, "steps": steps, "max_steps": self.max_steps,
+                "measured": measured,
+                "model": getattr(self.provider, "model", None),
+                "provider": provider_kind(self.provider),
+            })
         return messages
 
     _PARALLEL_CAP = 4  # 同回合并发执行的 parallel_safe 调用上限（FR-10.5）
