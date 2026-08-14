@@ -2776,21 +2776,30 @@ function usageNum(n) { return (Number(n) || 0).toLocaleString("zh-CN"); }
 
 function renderUsageTable(title, rows, labelHead) {
   if (!rows || !rows.length) return "";
-  const body = rows.map((r) => {
-    const rate = cacheHitRate(r);
-    return `<tr><td title="${escapeHtml(String(r.bucket ?? ""))}">${escapeHtml(String(r.bucket ?? "—"))}</td>` +
-      `<td class="num-strong">${usageNum(usageRowTotal(r))}</td>` +
-      `<td>${usageNum(r.input_uncached)}</td>` +
-      `<td>${usageNum(r.input_cache_read)}</td>` +
-      `<td>${usageNum(r.input_cache_write)}</td>` +
-      `<td>${usageNum(r.output)}</td>` +
-      `<td>${rate == null ? "—" : (rate * 100).toFixed(0) + "%"}</td>` +
-      `<td>${usageNum(r.rows)}${r.estimated_rows ? ` <span class="usage-est">估 ${r.estimated_rows}</span>` : ""}</td></tr>`;
-  }).join("");
+  // 列名与价目表**用同一套叫法**（输入·未命中 / 输入·命中 / 输出 / 缓存写入），顺序也一致——
+  // 同一个东西在相邻两张表里换个名字，读的人就得在脑子里做一次映射，白白增加出错机会。
+  // 同样**表头与取值成对定义**，物理上不可能错位。
+  // **列名与价目表单一字不差**（输入·缓存未命中 / 输入·缓存命中 / 输出）——同一个东西换个说法，
+  // 读的人就得在脑子里做一次映射。「缓存写入」**有非零数据才出现**：多数厂商（DeepSeek 等）
+  // 缓存写入不单独计费、官网也没这个价，恒 0 的一列纯属占地方；Anthropic 系真收这笔，那时它自己会冒出来。
+  const hasWrite = rows.some((r) => (Number(r.input_cache_write) || 0) > 0);
+  const COLS = [
+    [labelHead, (r) => `<span title="${escapeHtml(String(r.bucket ?? ""))}">${escapeHtml(String(r.bucket ?? "—"))}</span>`],
+    ["总计", (r) => `<b>${usageNum(usageRowTotal(r))}</b>`],
+    ["输入·缓存未命中", (r) => usageNum(r.input_uncached)],
+    ["输入·缓存命中", (r) => usageNum(r.input_cache_read)],
+    ["输出", (r) => usageNum(r.output)],
+    ...(hasWrite ? [["缓存写入", (r) => usageNum(r.input_cache_write)]] : []),
+    ["命中率", (r) => { const x = cacheHitRate(r); return x == null ? "—" : (x * 100).toFixed(0) + "%"; }],
+    ["轮次", (r) => usageNum(r.rows) +
+      (r.estimated_rows ? ` <span class="usage-est">估 ${r.estimated_rows}</span>` : "")],
+  ];
   return `<div class="usage-sec"><h4>${escapeHtml(title)}</h4><div class="table-wrap">` +
-    `<table class="usage-table"><thead><tr><th>${escapeHtml(labelHead)}</th><th>总计</th>` +
-    `<th>未命中输入</th><th>缓存读</th><th>缓存写</th><th>输出</th><th>命中率</th><th>轮次</th>` +
-    `</tr></thead><tbody>${body}</tbody></table></div></div>`;
+    `<table class="usage-table"><thead><tr>` +
+    COLS.map(([h]) => `<th>${escapeHtml(h)}</th>`).join("") +
+    `</tr></thead><tbody>` +
+    rows.map((r) => `<tr>` + COLS.map(([, get]) => `<td>${get(r)}</td>`).join("") + `</tr>`).join("") +
+    `</tbody></table></div></div>`;
 }
 
 async function refreshUsagePanel() {
@@ -2824,7 +2833,7 @@ async function refreshUsagePanel() {
       `<div class="sub">${usageNum(t.rows)} 轮 · 输出 ${usageNum(t.output)}</div></div>` +
       `<div class="usage-card"><div class="k">缓存命中率</div>` +
       `<div class="v">${rate == null ? "—" : (rate * 100).toFixed(0) + "%"}</div>` +
-      `<div class="sub">命中 ${usageNum(t.input_cache_read)} · 未命中 ${usageNum(t.input_uncached)}</div>` +
+      `<div class="sub">缓存命中 ${usageNum(t.input_cache_read)} · 未命中 ${usageNum(t.input_uncached)}</div>` +
       rateBar + `</div>` +
       `<div class="usage-card"><div class="k">成本</div>${costHtml}</div>`;
   }
@@ -2861,15 +2870,25 @@ async function renderPriceList() {
   const r = await window.pywebview.api.get_model_prices();
   const rows = (r && r.user) || [];
   if (!rows.length) { box.innerHTML = `<div class="usage-empty">还没填过任何价格——填了才会显示金额。</div>`; return; }
-  box.innerHTML = `<table class="usage-table"><thead><tr><th>模型</th><th>币种</th><th>输入</th>` +
-    `<th>输出</th><th>缓存读</th><th>缓存写</th><th>生效日期</th><th></th></tr></thead><tbody>` +
-    rows.map((p) => `<tr><td>${escapeHtml(p.model_id)}</td><td>${escapeHtml(p.currency)}</td>` +
-      `<td>${p.input}</td>` +
-      `<td>${p.cache_read == null ? "—" : p.cache_read}</td>` +
-      `<td>${p.output}</td>` +
-      `<td>${p.cache_write == null ? "—" : p.cache_write}</td>` +
-      `<td>${escapeHtml(p.as_of || "—")}</td>` +
-      `<td><button class="btn-sm" data-del-price="${escapeHtml(p.model_id)}">删除</button></td></tr>`).join("") +
+  // 表头与取值**成对定义**：上一版表头和数据分两处写、改了一处漏了另一处，
+  // 结果「输出」列显示的是缓存命中价、「缓存读」列显示的是输出价——**标签与数字错位**，
+  // 而这正是整套用量台账要消灭的那种"安静的错"。成对写死，物理上不可能再错开。
+  const hasWrite = rows.some((p) => p.cache_write != null);
+  const COLS = [
+    ["模型", (p) => escapeHtml(p.model_id)],
+    ["币种", (p) => escapeHtml(p.currency)],
+    ["输入·缓存未命中", (p) => p.input],
+    ["输入·缓存命中", (p) => (p.cache_read == null ? "—" : p.cache_read)],
+    ["输出", (p) => p.output],
+    ...(hasWrite ? [["缓存写入", (p) => (p.cache_write == null ? "—" : p.cache_write)]] : []),
+    ["生效日期", (p) => escapeHtml(p.as_of || "—")],
+    ["", (p) => `<button class="btn-sm" data-del-price="${escapeHtml(p.model_id)}">删除</button>`],
+  ];
+  box.innerHTML =
+    `<table class="usage-table"><thead><tr>` +
+    COLS.map(([h]) => `<th>${escapeHtml(h)}</th>`).join("") +
+    `</tr></thead><tbody>` +
+    rows.map((p) => `<tr>` + COLS.map(([, get]) => `<td>${get(p)}</td>`).join("") + `</tr>`).join("") +
     `</tbody></table>`;
 }
 

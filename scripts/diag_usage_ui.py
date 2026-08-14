@@ -191,6 +191,45 @@ async def run_theme(page, theme: str):
     check(f"{tag} 候选里给出有用量的 model_id（免得手打错）",
           set(opts) == {"deepseek-v4-flash", "claude-opus-5"}, str(opts))
 
+    # ⑧ **表头与数字必须对得上**（真机反馈：「输出」列显示的其实是缓存命中价）。
+    # 病根是表头与取值分两处写、改了一处漏了另一处。现在成对定义，这条自检钉住它。
+    async def cell(sel_table, header, row_idx=0):
+        return await page.evaluate("""([sel, header, ri]) => {
+          const t = document.querySelector(sel);
+          if (!t) return null;
+          const hs = [...t.querySelectorAll('thead th')].map(e => e.textContent.trim());
+          const i = hs.indexOf(header);
+          if (i < 0) return null;
+          const tds = t.querySelectorAll('tbody tr')[ri].querySelectorAll('td');
+          return tds[i] ? tds[i].textContent.trim() : null;
+        }""", [sel_table, header, row_idx])
+
+    # 汇总表第一行是 deepseek-v4-flash：未命中 174 / 命中 17,152 / 输出 91 / 缓存写入 0
+    t1 = "#usage-tables .usage-table"
+    checks_map = [("输入·缓存未命中", "174"), ("输入·缓存命中", "17,152"), ("输出", "91")]
+    for head, want in checks_map:
+        got = await cell(t1, head)
+        check(f"{tag} 汇总表「{head}」列的数字对得上", got == want, f"读到 {got!r}，应为 {want!r}")
+
+    # 价目表：输入·未命中 2 / 输入·命中 0.2 / 输出 8 / 生效日期 2026-08-14
+    await page.evaluate("() => { document.querySelector('.usage-prices').open = true; }")
+    await page.wait_for_timeout(120)
+    t2 = "#usage-price-list .usage-table"
+    for head, want in (("输入·缓存未命中", "2"), ("输入·缓存命中", "0.2"), ("输出", "8"),
+                       ("生效日期", "2026-08-14")):
+        got = await cell(t2, head)
+        check(f"{tag} 价目表「{head}」列的数字对得上", got == want, f"读到 {got!r}，应为 {want!r}")
+
+    # ⑨ 两张表**用同一套叫法**：同一个东西换名字，读的人就得在脑子里做映射
+    heads1 = await page.eval_on_selector_all(f"{t1} thead th", "els => els.map(e => e.textContent.trim())")
+    heads2 = await page.eval_on_selector_all(f"{t2} thead th", "els => els.map(e => e.textContent.trim())")
+    shared = {"输入·缓存未命中", "输入·缓存命中", "输出"}
+    check(f"{tag} 汇总表与价目表列名一字不差", shared <= set(heads1) and shared <= set(heads2),
+          f"汇总={set(heads1)} 价目={set(heads2)}")
+    # 缓存写入恒 0 时不该占一列（多数厂商不单独计费、官网也没这个价）
+    check(f"{tag} 无缓存写入数据时不显示该列", "缓存写入" not in heads2,
+          f"价目表头={heads2}")
+
     # 截图要在**关掉之前**拍（初版拍在流程末尾，出来的是空界面）
     shot = f"/tmp/usage-panel-{theme}.png"
     await page.screenshot(path=shot)
