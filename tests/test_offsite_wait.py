@@ -39,7 +39,10 @@ def test_notify_on_exit_fires_with_exit_code_and_tail():
         assert "自动通知你" in out, "要明确告诉模型这一轮可以结束了，否则它还是会回来轮询"
         assert _wait_for(lambda: got), "进程退出后应回投事实"
     body, _ = got[0]
-    assert "已退出" in body and "exit=0" in body
+    # **退出码必须是真的码，不能是 None**：这个通知发生在 stdout EOF 时，而管道关闭 ≠ 进程退出，
+    # 直接 poll() 会拿到 None、把"不知道"说成退出码。CI 在 Windows 上抓到过（Linux 侥幸赢竞争）。
+    assert "已退出" in body and "exit=0" in body, f"退出码没等到真值：{body[:120]}"
+    assert "exit=未知" not in body
     assert "AGENT_DONE" in body, "尾部输出要带上——不然模型只知道结束了、不知道结果"
 
 

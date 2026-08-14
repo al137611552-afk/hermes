@@ -191,10 +191,19 @@ class ProcessManager:
             # 这个 finally 本来只是收尾，加一行就成了"站外任务干完了"的信号源——
             # 以前它只是自己结束、谁也不告诉，于是 agent 永远不知道那件事已经完了。
             if getattr(entry, "notify_on_exit", False) and self.on_event:
-                code = entry.proc.poll()
+                # **管道关闭 ≠ 进程已退出**：这个 finally 是在 stdout EOF 时跑的，此刻
+                # 直接 poll() 可能还拿到 None，通知里就成了 "exit=None"——把"不知道"
+                # 说成了一个退出码。先等它真的收尾（管道已排干，wait 不会卡住），
+                # 加个上限兜底防意外挂死。**CI 在 Windows 上抓到的就是这个**：
+                # Linux 下这场竞争通常侥幸赢了，Windows 下输了。
+                try:
+                    code = entry.proc.wait(timeout=10)
+                except Exception:  # noqa: BLE001 — 超时/异常就如实报未知，别编一个码
+                    code = entry.proc.poll()
                 with self._lock:
                     tail = entry.buffer[-_NOTIFY_TAIL_CHARS:]
-                self._fire(f"后台进程 #{entry.id} 已退出（exit={code}）：{entry.command}",
+                shown = "未知" if code is None else code
+                self._fire(f"后台进程 #{entry.id} 已退出（exit={shown}）：{entry.command}",
                            tail, entry.id)
 
     # ---- 回投事实 / 等待器（ADR 0026 W1）------------------------------------
