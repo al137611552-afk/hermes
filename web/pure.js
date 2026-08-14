@@ -331,7 +331,13 @@
     const notes = [];
     const est = Number((s.total || {}).estimated_rows) || 0;
     if (est > 0) notes.push(`${est} 轮的用量是估算的（端点没回传），不可用于对账`);
-    if (Number(s.unpriced_rows) > 0) notes.push(`${s.unpriced_rows} 个模型没填价格，只统计了 token`);
+    if (Number(s.unpriced_rows) > 0) {
+      // **点名**：只说"N 个模型没填价格"时，用户无法发现自己填的名字与记账用的 model_id 对不上
+      const names = (s.unpriced_models || []).filter(Boolean);
+      notes.push(names.length
+        ? `这些模型没填价格，只统计了 token：${names.join("、")}`
+        : `${s.unpriced_rows} 个模型没填价格，只统计了 token`);
+    }
     if (s.cost_inferred) notes.push("部分缓存单价是按输入价推断的，金额偏高");
     return notes;
   }

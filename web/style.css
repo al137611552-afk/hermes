@@ -1955,3 +1955,5 @@ body.plan-on .composer::before {
 .usage-adv summary { cursor: pointer; font-size: 11.5px; color: var(--muted); }
 .usage-adv summary:hover { color: var(--accent); }
 .usage-adv .upf { display: inline-flex; flex-direction: column; gap: 3px; margin-top: 7px; }
+.usage-fill { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.usage-fill[hidden] { display: none; }

@@ -104,7 +104,27 @@ class UsageStore:
         self._conn.row_factory = sqlite3.Row
         with self._lock:
             self._conn.executescript(_SCHEMA)
+            self._migrate()
             self._conn.commit()
+
+    def _migrate(self) -> None:
+        """老库补列。`CREATE TABLE IF NOT EXISTS` **不会改已存在的表**——早期版本建的
+        usage.db 缺新列时，INSERT 会报 "no such column"，而记账的调用方是 try/except
+        兜底的，于是**整条账静默不落**。宁可这里补上，也别让统计悄悄变空。"""
+        have = {r[1] for r in self._conn.execute("PRAGMA table_info(usage_log)")}
+        want = {
+            "steps": "INTEGER", "model_profile": "TEXT", "provider": "TEXT", "model_id": "TEXT",
+            "input_uncached": "INTEGER NOT NULL DEFAULT 0",
+            "input_cache_write": "INTEGER NOT NULL DEFAULT 0",
+            "input_cache_read": "INTEGER NOT NULL DEFAULT 0",
+            "output": "INTEGER NOT NULL DEFAULT 0", "reasoning": "INTEGER NOT NULL DEFAULT 0",
+            "measured": "INTEGER NOT NULL DEFAULT 1",
+            "agent_role": "TEXT NOT NULL DEFAULT 'main'",
+            "harness_version": "TEXT", "request_id": "TEXT",
+        }
+        for col, decl in want.items():
+            if col not in have:
+                self._conn.execute(f"ALTER TABLE usage_log ADD COLUMN {col} {decl}")
 
     def record(
         self,
@@ -233,6 +253,11 @@ class UsageStore:
         rows = [{**b, "model_id": b["bucket"]} for b in buckets]
         users = self.user_prices()
         summary = summarize_costs(rows, resolve=lambda mid: resolve_price(mid, users))
+        # **把没价的模型点名报出来**：只说"N 个模型没填价格"，用户无从知道自己填的名字
+        # 跟记账用的 model_id 对不上（真机就这么卡住过）。名字摆出来，错立刻看得见。
+        summary["unpriced_models"] = [b["bucket"] for b in buckets
+                                      if resolve_price(b["bucket"], users) is None]
+        summary["models_seen"] = [b["bucket"] for b in buckets if b["bucket"]]
         return {"buckets": buckets, **summary}
 
     def recent(self, limit: int = 50) -> list[dict]:

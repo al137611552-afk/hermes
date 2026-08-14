@@ -41,6 +41,7 @@ window.pywebview = { api: new Proxy({}, { get: (t, name) => (...args) => {
     by_currency: {CNY: {amount: 0.61, rows: 10, inferred: true},
                   USD: {amount: 1.2345, rows: 2, inferred: false}},
     unpriced_rows: 1, cost_inferred: true,
+    unpriced_models: ['claude-opus-5'], models_seen: ['deepseek-v4-flash', 'claude-opus-5'],
   });
   if (name === 'get_model_prices') return Promise.resolve({ok: true, bundled: [], user: [
     {model_id: 'deepseek-v4-flash', currency: 'CNY', input: 2, output: 8,
@@ -94,6 +95,42 @@ async def effective_bg(page, sel):
     }""")
 
 
+async def drive_usage_event(page):
+    """走真实的 `window.__onAgentEvent` 推一条 usage 事件，把顶栏 chip 这条路径**真的跑一遍**。
+
+    **为什么补这段**：首版自检只开面板、没驱动过 usage 事件，于是 `updateUsageChip()` 从未执行——
+    我删 `estimateCostUsd` 时漏掉函数里另一处 `cost` 引用，真机一发消息就
+    `ReferenceError: cost is not defined`，而 24/24 全绿（2026-08-14 真机反馈）。
+    **没被执行的代码等于没被测。** 语法检查也查不出这类分支内的未定义引用。
+    """
+    await page.evaluate("""() => {
+      const v = getView(1); v.sessionId = 1;
+      activeCid = 1; activeSessionId = 1; mountView(1);
+    }""")
+    await page.evaluate("""() => window.__onAgentEvent({ event: 'usage', cid: 1, data: {
+      input: 174, output: 91, cache_read: 17152, cache_write: 0,
+      steps: 2, measured: false, model: 'deepseek-v4-flash', provider: 'openai' } })""")
+    await page.wait_for_timeout(120)
+
+
+async def check_chip(page, errors):
+    """chip 要能渲染出来、带上「含估算」标记，且**整个过程零 JS 报错**。"""
+    before = len(errors)
+    await drive_usage_event(page)
+    check("推 usage 事件后 chip 渲染无 JS 报错", len(errors) == before,
+          "; ".join(errors[before:][:2]))
+    check("chip 看得见", await page.eval_on_selector(
+        "#usage-chip", "e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length)"))
+    txt = await page.eval_on_selector("#usage-chip", "e => e.textContent")
+    check("chip 显示 token 总量", "tok" in txt, txt)
+    check("估算轮次在 chip 上有标记", "估算" in txt, txt)
+    check("chip 不再显示美元金额（金额只在面板、按用户填的人民币价）",
+          "$" not in txt, txt)
+    title = await page.eval_on_selector("#usage-chip", "e => e.title")
+    check("chip 悬浮说明按四类拆开", all(k in title for k in ("未命中输入", "缓存读", "缓存写", "输出")),
+          title.replace("\n", " | "))
+
+
 async def run_theme(page, theme: str):
     await page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     await page.evaluate("() => openUsagePanel()")
@@ -143,6 +180,17 @@ async def run_theme(page, theme: str):
     check(f"{tag} 多币种各占一行、未相加", len(cur) == 2 and any("CNY" in c for c in cur)
           and any("USD" in c for c in cur), f"{cur}")
 
+    # ⑦ 价格填错名字是真机卡住过的一步：没价的模型必须**点名**，且能一点即填
+    cav = await page.eval_on_selector("#usage-caveats", "e => e.textContent")
+    check(f"{tag} 没价的模型被点名（不是只说「1 个模型」）", "claude-opus-5" in cav, cav.strip()[:60])
+    await page.eval_on_selector("[data-fill-price]", "e => e.click()")
+    await page.wait_for_timeout(120)
+    filled = await page.eval_on_selector("#up-model", "e => e.value")
+    check(f"{tag} 点「填…的价格」后模型名自动填入", filled == "claude-opus-5", filled)
+    opts = await page.eval_on_selector_all("#up-model-list option", "els => els.map(e => e.value)")
+    check(f"{tag} 候选里给出有用量的 model_id（免得手打错）",
+          set(opts) == {"deepseek-v4-flash", "claude-opus-5"}, str(opts))
+
     # 截图要在**关掉之前**拍（初版拍在流程末尾，出来的是空界面）
     shot = f"/tmp/usage-panel-{theme}.png"
     await page.screenshot(path=shot)
@@ -165,6 +213,7 @@ async def main() -> int:
         await page.add_init_script(STUB)
         await page.goto((WEB / "index.html").as_uri())
         await page.wait_for_timeout(400)
+        await check_chip(page, errors)
         for theme in ("dark", "light"):
             await run_theme(page, theme)
         check("渲染期间无 JS 报错", not errors, "; ".join(errors[:2]))

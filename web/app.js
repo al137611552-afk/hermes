@@ -1100,25 +1100,26 @@ function updateUsageChip() {
   if (!u || !u.turns) { chip.hidden = true; return; }
   chip.hidden = false;
   const total = u.input + u.output + u.cacheRead + (u.cacheWrite || 0);
-  // **chip 不再显示金额**：它写死过美元、又只有内置粗估价，而真实单价（人民币）在面板里。
-  // 金额只在用量面板出现——那里用的是用户自己填的价目（ADR 0025 决策 2/3）。
-  const costTxt = "";
-  // 有任何一轮的用量是估出来的就标出来，别让它冒充实测（ADR 0025 决策 3）
+  // **chip 不显示金额**：它曾写死美元 + 内置粗估价，而真实单价（人民币）由用户填在面板里。
+  // 金额只在用量面板出现（ADR 0025 决策 2/3）。
+  // 有任何一轮的用量是估出来的就标出来，别让它冒充实测（决策 3）
   const estTxt = u.estimated ? "　（含估算）" : "";
   if (tokenBudget > 0) {
     const pct = (total / tokenBudget) * 100;
     const pctTxt = pct < 10 ? pct.toFixed(1) : Math.round(pct);
-    chip.textContent = `已用 ${pctTxt}% · ${fmtK(total)}/${fmtK(tokenBudget)}${costTxt}${estTxt}`;
+    chip.textContent = `已用 ${pctTxt}% · ${fmtK(total)}/${fmtK(tokenBudget)}${estTxt}`;
   } else {
-    chip.textContent = `Σ ${fmtK(total)} tok${costTxt}${estTxt}`;
+    chip.textContent = `Σ ${fmtK(total)} tok${estTxt}`;
   }
   const budgetLine = tokenBudget > 0
     ? `\n预算 ${tokenBudget} tokens，剩 ${Math.max(0, tokenBudget - total)}（${(total / tokenBudget * 100).toFixed(1)}% 已用）`
     : "";
   chip.title =
     `本会话累计（本次打开以来，共 ${u.turns} 轮）\n` +
-    `输入 ${u.input} / 输出 ${u.output} / 缓存 ${u.cacheRead} tokens` + budgetLine +
-    (cost != null ? `\n成本 ≈ $${cost.toFixed(4)}（按公开列表价粗估，仅供参考）` : "\n（当前模型无价目，仅统计 token）");
+    `未命中输入 ${u.input} / 缓存读 ${u.cacheRead} / 缓存写 ${u.cacheWrite || 0} / 输出 ${u.output} tokens` +
+    budgetLine +
+    (u.estimated ? "\n⚠ 含估算轮次（端点没回传用量）" : "") +
+    "\n点击查看跨会话用量与成本";
 }
 
 // 数字缩写：1234 -> 1.2k，1200000 -> 1.2M（累计芯片用，省地方）
@@ -2832,11 +2833,24 @@ async function refreshUsagePanel() {
       renderUsageTable("按 agent 角色", s.by_role, "角色") +
       renderUsageTable("按天", s.by_day, "日期");
   }
+  // 价格填错名字是这块最容易踩的坑：把**实际有用量的 model_id** 灌进候选，让人选而不是打
+  const dl = document.getElementById("up-model-list");
+  if (dl) {
+    dl.innerHTML = (s.models_seen || []).map(
+      (m) => `<option value="${escapeHtml(m)}"></option>`).join("");
+  }
   // 把不确定性明说，而不是给一个干净的假数
   const notes = usageCaveats(s);
   if (caveats) {
     caveats.hidden = notes.length === 0;
     caveats.innerHTML = notes.map((n) => `<div>⚠ ${escapeHtml(n)}</div>`).join("");
+    // 没价的模型名做成一点即填——用户不必再手抄一遍（抄错就又对不上了）
+    const unpriced = (s.unpriced_models || []).filter(Boolean);
+    if (unpriced.length) {
+      caveats.innerHTML += `<div class="usage-fill">` + unpriced.map(
+        (m) => `<button class="btn-sm" data-fill-price="${escapeHtml(m)}">填 ${escapeHtml(m)} 的价格</button>`
+      ).join(" ") + `</div>`;
+    }
   }
   renderPriceList();
 }
@@ -2889,6 +2903,15 @@ if (shortcutsClose) shortcutsClose.addEventListener("click", closeShortcuts);
       document.getElementById(id).value = "";
     }
     refreshUsagePanel();   // 价目变了，金额要跟着重算
+  });
+  const cav = document.getElementById("usage-caveats");
+  if (cav) cav.addEventListener("click", (e) => {
+    const mid = e.target && e.target.getAttribute && e.target.getAttribute("data-fill-price");
+    if (!mid) return;
+    const box = document.getElementById("up-model");
+    if (box) { box.value = mid; box.focus(); }
+    const det = document.querySelector(".usage-prices");
+    if (det) det.open = true;      // 折叠着的话顺手展开，否则点了像没反应
   });
   const list = document.getElementById("usage-price-list");
   if (list) list.addEventListener("click", async (e) => {

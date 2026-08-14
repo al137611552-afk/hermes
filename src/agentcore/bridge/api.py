@@ -472,6 +472,8 @@ class Api:
                 "by_day": store.totals(group_by="day", since=since),
                 "by_currency": cost["by_currency"],
                 "unpriced_rows": cost["unpriced_rows"],
+                "unpriced_models": cost.get("unpriced_models", []),
+                "models_seen": cost.get("models_seen", []),
                 "cost_inferred": cost["inferred"],
             }
         except Exception as e:  # noqa: BLE001
