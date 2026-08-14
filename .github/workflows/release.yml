@@ -112,7 +112,11 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.version }}"
-          Copy-Item docs\dist-readme.txt -Destination "dist\hermes-dev\首次运行必读.txt"
+          # **写成 UTF-8 带 BOM + CRLF**，别直接 Copy-Item：仓库里存的是 UTF-8 无 BOM + LF，
+          # 老版本记事本会把中文显示成乱码——而这份文件恰恰是给"程序打不开、正在发懵"的用户看的，
+          # 它自己乱码就等于没有。（同源教训见 CLAUDE.md 里 Windows .env 的编码坑。）
+          $txt = (Get-Content docs\dist-readme.txt -Raw -Encoding utf8) -replace "`r`n", "`n" -replace "`n", "`r`n"
+          Set-Content -Path "dist\hermes-dev\首次运行必读.txt" -Value $txt -Encoding utf8BOM -NoNewline
           Compress-Archive -Path dist\hermes-dev -DestinationPath "hermes-dev-$v-win64.zip" -Force
           Write-Host "产物：hermes-dev-$v-win64.zip"
 
