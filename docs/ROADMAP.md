@@ -455,24 +455,75 @@ Golden +4 条 `evaluate` 语料（57→**61**），**既有期望一条未改**�
   否则每跑一次都在赌搜索引擎当天返回什么。**故意排在 V3 之后。**
 - **批 3 — L3 复合长任务**（~10 个：多阶段、需委派、需 crazy 跑完；判分只看终局可程序化事实）。
 
-## 块 V3 — 录制/回放：让评测进 CI
+## 块 V3 — 录制/回放：让评测进 CI ✅ 已实现并本地验收（2026-08-19）
 
-**本阶段的技术核心**，也是唯一能让评测在开发机（2 核 4G）上自测的办法。
+**本阶段的技术核心**，也是唯一能让评测在开发机（2 核 4G）与 CI 上跑的办法。
 
-- V3.1 在 `build_provider()` 外包一层，**不动任何 provider 实现**（`BaseProvider.stream_chat` 已是统一接口）：
-  `RecordingProvider`（真跑 + 落 cassette）/ `ReplayProvider`（离线回放）。
-- V3.2 cassette key = `sha1(model_id + system + messages_json + tools_json)`；图片用 blob hash 代替内容。
-  存 `data/cassettes/{task}/{key}.jsonl`，一行一个 `StreamEvent`。
-- V3.3 **miss 必须硬报错并指出第几步 miss，绝不静默回落真跑**——静默回落同时犯两个错：
-  偷偷烧 key，以及把"我的改动让轨迹发散了"这个**最有价值的信号**当噪声吞掉。
-- V3.4 L1+L2 的 replay 跑进 CI（现在 `.github/workflows/` 只有 tag 触发的 release.yml）。
+### 交付物
 
-**角色划分，别混用**：
+- **`src/agentcore/providers/cassette.py`（新）**：在 `build_provider()` **外面**包一层，
+  **不动任何 provider 实现**。纯逻辑（`request_key` / 事件序列化 / `fold_workspace`）
+  与 IO（`CassetteStore`）分离。
+  - `record`：真跑 + 落 `(请求指纹 → StreamEvent 序列)`；
+  - `replay`：**完全不构造真 provider、不取 key、不连网**——`build_provider` 在
+    `resolve_api_key` **之前**就返回（有测试钉住这个顺序）。
+  - miss = 硬错误 `CassetteMiss`，指出**第几步**并给出重录命令。绝不静默回落真跑。
+- `run_eval.py` 加 `--record` / `--replay` / `--cassette-dir` / `--accumulate`。
+- **录音入库**：`tests/cassettes/`（不是 ADR 原文的 `data/cassettes/`——`data/` 在
+  `.gitignore` 里，CI 拿不到就谈不上"进 CI"）。当前 352K。
+  同目录committed 一份 `model.yaml`：cassette 的指纹里**嵌了 model id**，
+  录音与档案是绑定的，分开放两处迟早对不上。**不含任何密钥**。
+- **`.github/workflows/ci.yml`（新）**：push / PR 触发，跑 Python 全回归 + 前端 +
+  Golden 门 + **离线回放评测**。**不需要任何 secret。**
+  这补上了第一次横向对比时点出的最大工程缺口——此前只有推 tag 才触发的 release.yml，
+  等于「发版是流水线的第一次运行」。
+- 自检 `tests/test_cassette.py` **17 测**，全离线。
 
-| | replay | 真跑 × N |
-|---|---|---|
-| 用途 | **回归门** | **A/B 效果验证** |
-| 能验证 | 判分器、UI、非提示词路径的改动 | 提示词、detector 阈值、换模型 |
+### 本地验收
+
+三个 L2 反例**离线回放全部复现**（把 `.env` 移走、`DEEPSEEK_API_KEY` 也清掉）：
+结果一致（PASS）、工具数一致（7 / 3 / 16），耗时 **13s→1s、7s→0s、30s→3s**。
+另按 CI 的确切步骤（换成入库的 `model.yaml`、无 key）复跑一遍，全通过。
+
+### 揪出的三个问题（都不是猜的，是被回放逼出来的）
+
+**① 录音写在 for 之后，一条都录不上。** `AgentLoop.run` 收到 `done` 事件就 `break`，
+生成器被丢弃、`for` 之后的语句永远不执行。必须放 `finally`（`GeneratorExit` 也走它）。
+且**只在看到 `done` 时才写**——半截录音比没有更坏，回放时它会假装那轮正常结束、
+把"当时其实炸了"抹掉。
+
+**② 工作区路径污染请求指纹。** 工具输出会**回灌进消息历史**（pytest 的
+`rootdir: /tmp/tmpXXXX/ws`），临时工作区每跑都不同 → key 每跑都变 → 全 miss。
+与块 V0 的死路指纹**同病同药**：折成 `<ws>`。
+
+**③ 死路提示文案里嵌着跨会话累计次数——这条最要命。**
+`[系统观察] 这条路已累计 **N** 次以「logic」失败` 里的 N 来自 `FailureMemory`，
+共用一个库时它**每跑都在涨**。后果有两个：
+
+- cassette 的指纹每跑都变，**回放永远 miss**（就是靠 dump 两侧规范化请求逐字 diff
+  才定位到的：第 4 步只差一个字符，`8` vs `9`）；
+- 反例任务会**随语料增长逐渐开始误报**——新一跑的第一次失败就撞上"已知死路"，基线一路漂。
+
+修法：评测**默认每跑一个独立的失败记忆库**（随临时工作区销毁）；要为块 V4 攒语料
+显式加 `--accumulate`。
+
+> **⚠ 一条中途的误判，记下来免得重犯**：录音期间 `neg_plain_fix` 连着三次报出
+> `deadend_hint` 误报，当时判断为"反例门抓到了 detector 的真问题"。**那个判断是错的**——
+> 它是上面 ③ 的跨跑语料污染。隔离之后 `neg_plain_fix` 稳定 PASS。
+> 反例门确实抓到了东西，只是抓到的是**评测设施自己的病，不是被测对象的病**。
+> 教训与换手真跑那次同源：**"测试红了"要先分清是被测对象错了还是测试设定错了。**
+
+### 已知限制（ADR 决策 4 原文所述，实测确认）
+
+改 system prompt 或任何 nudge 注入文案 → 轨迹发散 → cassette 全 miss，必须重录。
+**replay 是回归门，不是 A/B 工具**；提示词类改动的效果只能靠真跑 × N 次重复验证。
+③ 正是这条限制的一个极端实例——连"注入文案里的一个数字"都足以让录音全部失效。
+
+### 未做
+
+L1 与两个 pos_* 任务的录音（`pos_browse_many_modules` 单跑 64 次工具调用、
+`pos_deadend_missing_tool` 偏慢）暂未录；CI 目前只回放三个反例——它们是硬断言门，
+优先级最高。补录是纯机械活，随时可加。
 
 ## 块 V4 — 喂饱 Learning
 
@@ -503,7 +554,7 @@ Golden +4 条 `evaluate` 语料（57→**61**），**既有期望一条未改**�
 | V0 | — | ~1 天 | ✅ **已完成并本地验收** |
 | V1 | V0 | 1~2 天 | ✅ **已完成并本地验收** |
 | V2 | V1 | 3~5 天，可分批 | ⏳ **批 1/3 已完成**（写 ✅ / 真跑验 ❌）|
-| V3 | V1 | 2~3 天 | 录 ❌ / 放 ✅ |
+| V3 | V1 | 2~3 天 | ✅ **已完成**（录 ❌ / 放 ✅，且已进 CI）|
 | V4 | V0,V2,V3 | ~2 天 | ✅（回放） |
 | V5 | V4 | 持续 | ✅（回放） |
 
