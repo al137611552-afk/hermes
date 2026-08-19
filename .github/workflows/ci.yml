@@ -64,5 +64,7 @@ jobs:
       - name: 端到端评测（离线回放，与录制基线逐项比对）
         run: |
           cp tests/cassettes/model.yaml user_models.yaml
+          python scripts/eval/run_eval.py --tier L1 --offline --replay --no-record \
+            --model dsv4 --quiet
           python scripts/eval/run_eval.py --tier L2 --offline --replay --no-record \
             --model dsv4 --quiet

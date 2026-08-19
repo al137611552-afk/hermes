@@ -360,10 +360,6 @@ TASKS: dict[str, Task] = {
         "这个项目的测试挂了。请运行测试脚本 test_calc.py（用合适的 python 命令）看失败原因，"
         "修复 calc.py 里的问题（不要改测试文件），然后重新跑测试确认全部通过。",
         _setup_bugfix, _check_bugfix, tier="L1",
-        # 与 neg_plain_fix **共用 `_setup_bugfix` 夹具**，两者都偶发漂移——
-        # 问题在夹具/工具输出层，不在任务本身。见 neg_plain_fix 的注释。
-        replayable=False,
-        unreplayable_why="与 neg_plain_fix 共用夹具，回放偶发漂移（未定位）",
     ),
     "feature_git": Task(
         "feature_git", "开分支加功能 + 补测试 + 提交",
@@ -427,11 +423,6 @@ TASKS: dict[str, Task] = {
         "test_calc.py 挂了。看失败原因，修 calc.py（不要改测试文件），再跑一次确认通过。",
         _setup_bugfix, _check_bugfix,
         tier="L2", expect_nudges={"*": False},
-        # 回放**偶发**漂移（实测 3/4），诊断指向某条工具结果（msg8）里有每跑都变的东西，
-        # 关掉 auto_affected_test 后仍在。**flaky 的门比没有门更糟**，先挡在回放门外；
-        # 真跑仍照常用它。待定位到确定性来源再放回来。
-        replayable=False,
-        unreplayable_why="回放偶发漂移（3/4），未定位到确定性来源；诊断指向某条工具结果",
     ),
     # 正例（软观测：只记触发率，不判 FAIL）——漏报逼不出来，硬判会把"模型表现好"误记成"detector 坏了"。
     "pos_stuck_unfixable": Task(

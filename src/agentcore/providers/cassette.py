@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 from .base import BaseProvider, StreamEvent, ToolCall
@@ -74,8 +75,39 @@ def request_key(model: str, system, messages, tools) -> str:
         "tools": tools or [],
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    raw = fold_workspace(raw)
+    raw = normalize_noise(fold_workspace(raw))
     return hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:32]
+
+
+# 堆地址（`<function foo at 0x7c258c2e0360>`）。pytest 的断言自省会把它打进输出，
+# 而工具输出会回灌进消息历史 → cassette 指纹每跑都变。
+#
+# **为什么归一化它不算 ADR 决策 4 禁止的"模糊匹配"**：那条禁的是把**不同的请求**
+# 匹配到同一份录音。堆地址是**零信息**——同一情形下它每个进程都不同，且不同的它
+# 也不代表任何语义差别；抹掉它之后，两个请求是**真的相同**，不是"差不多"。
+# 已在做的工作区路径折叠同理（路径至少还标识一个位置，地址连这个都没有）。
+#
+# **边界写死，别扩**：只归一化「机器生成的、标识临时运行态的、零语义的」记号。
+# 时间戳**不归一化**（"某时刻的日志"可能是有意义的内容）；
+# git SHA **不归一化**（它标识内容本身）。这两类任务改走 `replayable=False`。
+_HEAP_ADDR_RE = re.compile(r"0x[0-9a-f]{6,}")
+# 测试框架摘要行里的**执行耗时**（pytest：`1 error in 0.09s`、`3 passed in 0.42s`）。
+# 它度量的是**本机当时的调度快慢，不是被测代码的行为**——同一份代码跑两次必然不同，
+# 而且我们**不希望**模型的行为取决于测试跑了 80ms 还是 90ms。与堆地址同类。
+#
+# 模式刻意收窄到 `in <小数>s` 这一个搭配：光写 `\d+\.\d+s` 会误伤正文里有意义的数字
+# （"超时设成 1.5s"）。宁可漏掉别的框架的写法，也不能扩到会改变语义的地步。
+_DURATION_RE = re.compile(r"\bin \d+\.\d+s\b")
+
+
+def normalize_noise(text: str) -> str:
+    """抹掉零信息的**运行时噪声**：堆地址、测试耗时。**纯函数**，边界见上方注释。
+
+    > 这是第二次放宽（V3 收尾时）。每放宽一次都在侵蚀"不做模糊匹配"那条线，
+    > **再要加新模式必须是显式决策**：得能论证该记号「机器生成、标识临时运行态、
+    > 且同一情形下必然变化」——时间戳与 git SHA 都不满足，它们走 `replayable=False`。
+    """
+    return _DURATION_RE.sub("in Ns", _HEAP_ADDR_RE.sub("0xADDR", text))
 
 
 def fold_workspace(text: str, ws: "str | None" = None) -> str:
@@ -104,8 +136,8 @@ def request_digests(model: str, system, messages, tools) -> list:
     与 `request_key` 走同一套归一化（含工作区折叠），否则诊断结论会与真实判定不符。
     """
     def h(obj) -> str:
-        raw = fold_workspace(json.dumps(obj, sort_keys=True, ensure_ascii=False,
-                                        separators=(",", ":")))
+        raw = normalize_noise(fold_workspace(json.dumps(
+            obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))))
         return hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:10]
     out = [f"model:{h(model or '')}", f"system:{h(system or '')}",
            f"tools:{h(tools or [])}"]

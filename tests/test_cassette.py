@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from agentcore.providers.base import Message, StreamEvent, ToolCall  # noqa: E402
 from agentcore.providers.cassette import (  # noqa: E402
     CassetteMiss, CassetteStore, event_from_dict, event_to_dict, fold_workspace,
-    make_replay, request_key, wrap_recording,
+    make_replay, normalize_noise, request_key, wrap_recording,
 )
 from agentcore.store.usage import provider_kind  # noqa: E402
 
@@ -94,6 +94,51 @@ def test_fold_workspace_is_a_pure_function():
     assert fold_workspace("a /w/p/x.py b", "/w/p") == "a <ws>/x.py b"
     assert fold_workspace("无路径", "/w/p") == "无路径"
     assert fold_workspace("原样", "") == "原样"
+
+
+# ---- 噪声归一化：边界必须写死 -----------------------------------------------
+
+def test_heap_addresses_are_normalized():
+    """pytest 的断言自省会打出 `<function f at 0x7c258c2e0360>`，工具输出又会回灌进
+    消息历史 → cassette 指纹每跑都变。这是块 V3 那个"每三四轮红一次"的确切根因。"""
+    a = normalize_noise("<function moving_average at 0x7c258c2e0360>([1,2],2)")
+    b = normalize_noise("<function moving_average at 0x75c9686d8360>([1,2],2)")
+    assert a == b == "<function moving_average at 0xADDR>([1,2],2)"
+
+
+def test_test_durations_are_normalized():
+    """pytest 摘要行的耗时（`1 error in 0.09s`）度量的是本机调度快慢、不是被测代码行为。
+    录制时机器忙（正在等模型），回放时空闲——于是**稳定地**差那么几毫秒。"""
+    assert normalize_noise("1 error in 0.09s") == normalize_noise("1 error in 0.08s")
+    assert normalize_noise("3 passed in 0.42s") == "3 passed in Ns"
+
+
+def test_duration_pattern_stays_narrow():
+    """**模式必须窄**：光写 `\\d+\\.\\d+s` 会误伤正文里有意义的数字。
+    只认 `in <小数>s` 这一个搭配。"""
+    assert normalize_noise("超时设成 1.5s") == "超时设成 1.5s"
+    assert normalize_noise("耗时 0.42s") == "耗时 0.42s"
+    assert normalize_noise("in 3s") == "in 3s", "整数秒不认（那多半是配置值）"
+
+
+def test_timestamps_and_shas_are_NOT_normalized():
+    """**边界写死，别扩。** 只抹「机器生成的、标识临时运行态的、零语义」记号。
+
+    时间戳不抹——"某时刻的日志"可能是有意义的内容；git SHA 不抹——它标识内容本身。
+    这两类任务改走 `replayable=False`，而不是把它们也归一化掉：
+    那就滑向 ADR 决策 4 禁止的"更聪明的模糊匹配"了。
+    """
+    ts = "2026-08-19T07_14_25_080Z-debug-0.log"
+    sha = "commit d24226f849a779665aa17e110439a26aca7646bc"
+    assert normalize_noise(ts) == ts
+    assert normalize_noise(sha) == sha
+
+
+def test_addresses_make_two_requests_equal_in_the_key():
+    """归一化要真的作用在指纹上，不能只是个没人调的纯函数。"""
+    m1 = [Message("user", "<function f at 0xaaaaaaaaaaaa>")]
+    m2 = [Message("user", "<function f at 0xbbbbbbbbbbbb>")]
+    assert request_key("m", None, m1, None) == request_key("m", None, m2, None)
 
 
 # ---- 事件序列化 -------------------------------------------------------------
