@@ -173,7 +173,7 @@ def _latest_user_text(messages) -> str:
 
 
 def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps, threshold=2,
-                            on_failure=None):
+                            on_failure=None, workspace=None):
     """块E：同一条路（指纹）反复**非瞬时**失败 → 注入"此路已 N 次不通"事实，促模型换思路。
 
     瞬时 IO 失败**不计**（那是 block D 自动重试的活，不是死路）。每条失败记入 WorldState
@@ -189,7 +189,9 @@ def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps,
                         if getattr(x, "value", x) != transient]
         if not nontransient:
             continue  # 成功 / 纯瞬时 → 不是死路
-        fp = fingerprint(c.name, getattr(c, "input", None))
+        # workspace 传下去做路径归一：不归一则同一条路在不同工作区/不同评测跑里指纹不同，
+        # 跨会话记忆与块G 聚合双双失真（ADR 0027 决策 2）。
+        fp = fingerprint(c.name, getattr(c, "input", None), workspace)
         n = world.record_failure(fp, nontransient, detail=text[:200])
         cross = None
         if failure_memory is not None:
@@ -434,6 +436,7 @@ class AgentLoop:
         research_max_rounds: int = 3,
         research_judge=None,
         tool_budget=None,
+        workspace=None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -457,6 +460,8 @@ class AgentLoop:
         # 会话级工具预算（ToolBudget 实例）：**主 Agent 与所有子 Agent 共用同一个**，否则上限形同虚设。
         # None=不限次（存量调用方与测试零行为变化）。
         self.tool_budget = tool_budget
+        # 工作区根：只用于死路指纹的路径归一（ADR 0027 V0）。None=不归一，存量行为不变。
+        self.workspace = workspace
         import time as _t
         self._sleep = _t.sleep                  # 退避用；测试可替换为 no-op
 
@@ -672,7 +677,8 @@ class AgentLoop:
                     df = detect_repeated_failure(
                         calls, out_by_id, world, self.failure_memory,
                         deadend_fps, self.deadend_threshold,
-                        on_failure=lambda _fp, classes, _label: seen_classes.extend(classes))
+                        on_failure=lambda _fp, classes, _label: seen_classes.extend(classes),
+                        workspace=self.workspace)
                     if df:
                         inject_blocks.append({"type": "text", "text": df})
                         emit("deadend_hint", {"text": df})
