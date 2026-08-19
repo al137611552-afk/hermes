@@ -1,0 +1,70 @@
+# 每次 push / PR 都跑的门（块 V3，ADR 0027）。
+#
+# **为什么要有它**：此前 `.github/workflows/` 只有 `release.yml`，且只在**推 tag** 时触发——
+# 等于「发版是流水线的第一次运行」。日常改动没有任何自动门，全靠人记得在本地跑全回归。
+#
+# 关键前提是块 V3 的**回放**：评测原本要真模型 + 网络 + key，进不了 CI；
+# 录音落在 `tests/cassettes/` 之后，`--replay` 完全离线、不需要凭据，才谈得上进 CI。
+# 故本 workflow **不需要任何 secret**。
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]        # 推 tag 走 release.yml，别跑两遍
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # 与 release.yml 同一条纪律：别让**输出装饰**决定构建成败（中文/✓ 在非 UTF-8 locale 下会炸）
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest      # 回放不需要 Windows；平台相关的那部分仍由 release.yml 在 windows 上守
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      # 跟 release/build 用**同一份约束**：测的依赖组合必须就是发出去的那一套
+      - name: 装依赖
+        run: pip install -e . -c build-constraints.txt
+
+      - name: Python 全回归（每个文件是独立 runner，非 pytest）
+        run: |
+          set -u
+          failed=()
+          for t in tests/test_*.py; do
+            echo "---- $t"
+            # </dev/null：有测试会在 stdin 上等输入，CI 的 stdin 不是 tty，
+            # 不接空输入会**永久阻塞**直到 job 超时（2026-08-19 踩过，见 test_cli 那条修复）
+            if ! timeout 600 python "$t" </dev/null; then failed+=("$t"); fi
+          done
+          if [ ${#failed[@]} -ne 0 ]; then
+            printf '失败：%s\n' "${failed[@]}"; exit 1
+          fi
+
+      - name: 前端纯逻辑测试
+        run: node --test tests/web/*.test.js
+
+      - name: 决策内核回归门（Golden）
+        run: python tests/golden/runner.py
+
+      # 块 V3：离线回放评测。**不需要 key**——回放路径在取凭据之前就返回。
+      # 录音失效（改了 system prompt / 注入文案）会以 CassetteMiss 明确报错，
+      # 并在报错里给出重录命令——这是刻意的，别改成静默跳过。
+      - name: 端到端评测（离线回放）
+        run: |
+          cp tests/cassettes/model.yaml user_models.yaml
+          python scripts/eval/run_eval.py --tier L2 --replay --no-record \
+            --model dsv4 --quiet --task neg_plain_fix
+          python scripts/eval/run_eval.py --tier L2 --replay --no-record \
+            --model dsv4 --quiet --task neg_small_repo_survey
+          python scripts/eval/run_eval.py --tier L2 --replay --no-record \
+            --model dsv4 --quiet --task neg_edit_same_file_progressing

@@ -1,0 +1,38 @@
+{"_meta": true, "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "项目"}
+{"type": "thinking", "text": "很小"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "只有"}
+{"type": "thinking", "text": "两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "lib"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " test"}
+{"type": "thinking", "text": "_l"}
+{"type": "thinking", "text": "ib"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "直接"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "这两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "项目"}
+{"type": "text", "text": "很"}
+{"type": "text", "text": "简洁"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "就"}
+{"type": "text", "text": "两个"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "直接"}
+{"type": "text", "text": "读"}
+{"type": "text", "text": "一下"}
+{"type": "text", "text": "内容"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_4v6A3Ac2swnAt9ZuFTHu1796", "name": "read_file", "input": {"path": "lib.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_Hwioduej0sEsfsigPwSD1605", "name": "read_file", "input": {"path": "test_lib.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 69, "output": 111, "cache_read": 8960, "cache_write": 0}}}

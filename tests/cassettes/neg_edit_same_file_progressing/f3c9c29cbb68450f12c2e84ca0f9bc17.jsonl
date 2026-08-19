@@ -1,0 +1,111 @@
+{"_meta": true, "model": "deepseek-v4-flash", "n_messages": 15, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "没"}
+{"type": "thinking", "text": "坏"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "补"}
+{"type": "thinking", "text": " trunc"}
+{"type": "thinking", "text": "ate"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "断言"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "注意"}
+{"type": "thinking", "text": " n"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "小于"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的情况"}
+{"type": "thinking", "text": "？"}
+{"type": "thinking", "text": "text"}
+{"type": "thinking", "text": "[:"}
+{"type": "thinking", "text": "n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "]"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "当"}
+{"type": "thinking", "text": " n"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "时"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": " text"}
+{"type": "thinking", "text": "[:-"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "]，"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "去掉"}
+{"type": "thinking", "text": "最后"}
+{"type": "thinking", "text": "两个"}
+{"type": "thinking", "text": "字符"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "会"}
+{"type": "thinking", "text": "有点"}
+{"type": "thinking", "text": "怪"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "一般"}
+{"type": "thinking", "text": "约定"}
+{"type": "thinking", "text": " n"}
+{"type": "thinking", "text": " >="}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "才"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": "省略"}
+{"type": "thinking", "text": "号"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "没"}
+{"type": "thinking", "text": "要求"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": "处理"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "就"}
+{"type": "thinking", "text": "测"}
+{"type": "thinking", "text": "正常"}
+{"type": "thinking", "text": "情况"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "不"}
+{"type": "thinking", "text": "超"}
+{"type": "thinking", "text": "长"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "原文"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "超"}
+{"type": "thinking", "text": "长"}
+{"type": "thinking", "text": "截"}
+{"type": "thinking", "text": "断"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "省略"}
+{"type": "thinking", "text": "号"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "没"}
+{"type": "text", "text": "坏"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "补"}
+{"type": "text", "text": "上"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "tr"}
+{"type": "text", "text": "unc"}
+{"type": "text", "text": "ate"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": "断言"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "覆盖"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "超"}
+{"type": "text", "text": "长"}
+{"type": "text", "text": "和"}
+{"type": "text", "text": "超"}
+{"type": "text", "text": "长"}
+{"type": "text", "text": "两种情况"}
+{"type": "text", "text": "）："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_2pKcCJe83mgKW0X69LOt3822", "name": "edit_file", "input": {"new_string": "from lib import slugify, titleize, truncate\n\nassert slugify(\"Hello World\") == \"hello-world\"\nassert titleize(\"hello world\") == \"Hello World\"\nassert truncate(\"hello\", 10) == \"hello\"\nassert truncate(\"hello world\", 8) == \"hello...\"", "old_string": "from lib import slugify, titleize\n\nassert slugify(\"Hello World\") == \"hello-world\"\nassert titleize(\"hello world\") == \"Hello World\"", "path": "test_lib.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 65, "output": 282, "cache_read": 10368, "cache_write": 0}}}

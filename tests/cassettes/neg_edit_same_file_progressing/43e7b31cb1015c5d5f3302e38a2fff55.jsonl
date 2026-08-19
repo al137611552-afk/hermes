@@ -1,0 +1,49 @@
+{"_meta": true, "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "跑"}
+{"type": "thinking", "text": "一次"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "没"}
+{"type": "thinking", "text": "坏"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " python"}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": "m"}
+{"type": "thinking", "text": " pytest"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "直接"}
+{"type": "thinking", "text": " python"}
+{"type": "thinking", "text": " test"}
+{"type": "thinking", "text": "_l"}
+{"type": "thinking", "text": "ib"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "test"}
+{"type": "thinking", "text": "_l"}
+{"type": "thinking", "text": "ib"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "直接"}
+{"type": "thinking", "text": " assert"}
+{"type": "thinking", "text": " +"}
+{"type": "thinking", "text": " print"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "脚本"}
+{"type": "thinking", "text": "风格"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " python"}
+{"type": "thinking", "text": " test"}
+{"type": "thinking", "text": "_l"}
+{"type": "thinking", "text": "ib"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "跑"}
+{"type": "thinking", "text": "即可"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_66cG39Ka9mSXDXi1VJmj0815", "name": "run_bash", "input": {"command": "python test_lib.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 94, "output": 95, "cache_read": 9472, "cache_write": 0}}}

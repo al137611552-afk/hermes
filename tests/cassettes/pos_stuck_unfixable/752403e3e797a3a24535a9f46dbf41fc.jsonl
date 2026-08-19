@@ -1,0 +1,31 @@
+{"_meta": true, "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " start"}
+{"type": "thinking", "text": " by"}
+{"type": "thinking", "text": " reading"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " test"}
+{"type": "thinking", "text": " file"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " source"}
+{"type": "thinking", "text": " file"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " understand"}
+{"type": "thinking", "text": " what"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " going"}
+{"type": "thinking", "text": " on"}
+{"type": "thinking", "text": "."}
+{"type": "text", "text": "我先"}
+{"type": "text", "text": "看看"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "文件和"}
+{"type": "text", "text": "源"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "的内容"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_XvOtgiG5TqRWu0OQzA6X6743", "name": "read_file", "input": {"path": "test_src.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_vR4Qof4KioFoWHAxBmqY2302", "name": "read_file", "input": {"path": "src.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 108, "output": 104, "cache_read": 8832, "cache_write": 0}}}

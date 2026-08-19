@@ -1,0 +1,8 @@
+{"_meta": true, "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "text", "text": "再"}
+{"type": "text", "text": "跑"}
+{"type": "text", "text": "一次"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_94QCEF4m35BlErRH8suT7960", "name": "run_bash", "input": {"command": "python test_calc.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 48, "output": 53, "cache_read": 10752, "cache_write": 0}}}

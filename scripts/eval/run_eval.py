@@ -16,12 +16,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import tempfile
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from harness import run_task  # noqa: E402
 from record import build_record, git_sha, new_run_id, runs_root, write_record  # noqa: E402
@@ -42,7 +44,21 @@ def main() -> int:
     ap.add_argument("--no-record", action="store_true", help="不落盘（临时试跑用；正式对比别用）")
     ap.add_argument("--tier", choices=TIERS, help="只跑某一层（L1 冒烟 / L2 能力面 / L3 复合）")
     ap.add_argument("--offline", action="store_true", help="跳过需要联网的任务")
+    ap.add_argument("--record", action="store_true",
+                    help="录制模式：真跑并把模型响应落成 cassette（块 V3）")
+    ap.add_argument("--replay", action="store_true",
+                    help="回放模式：离线重放已录的模型响应，**不连网、不需要 key**")
+    ap.add_argument("--accumulate", action="store_true",
+                    help="共用一个死路记忆库累积语料（喂块 V4）。默认每跑独立库——"
+                         "共用会让反例随语料增长逐渐误报、且 cassette 永远 miss")
+    ap.add_argument("--cassette-dir", default=None,
+                    help="录音根目录（默认 tests/cassettes；每个任务一个子目录）")
     args = ap.parse_args()
+    if args.record and args.replay:
+        print("--record 与 --replay 互斥")
+        return 2
+    # 录音放 tests/ 而非 ADR 原文的 data/：data/ 在 .gitignore 里，CI 拿不到就谈不上"进 CI"。
+    cassette_root = Path(args.cassette_dir) if args.cassette_dir else (ROOT / "tests" / "cassettes")
 
     names = [args.task] if args.task else list(TASKS)
     if args.tier:
@@ -63,7 +79,8 @@ def main() -> int:
     tiers = ", ".join(sorted({TASKS[n].tier for n in names}))
     print(f"run_id = {run_id}   sha = {git.get('sha') or '?'}"
           f"{' (工作树有未提交改动)' if git.get('dirty') else ''}"
-          f"   任务 {len(names)} × {repeat} 次   层 [{tiers}]")
+          f"   任务 {len(names)} × {repeat} 次   层 [{tiers}]"
+          f"{'   [录制]' if args.record else '   [回放·离线]' if args.replay else ''}")
 
     rows = []
     for name in names:
@@ -72,11 +89,23 @@ def main() -> int:
             suffix = f"  [{i + 1}/{repeat}]" if repeat > 1 else ""
             print(f"\n=== {name}: {task.title}{suffix} ===", flush=True)
             started = time.time()
+            # 每个任务一个录音目录：某个任务的录音失效时可单独重录，不牵连别的
+            if args.record or args.replay:
+                os.environ["HERMES_CASSETTE_MODE"] = "record" if args.record else "replay"
+                os.environ["HERMES_CASSETTE_DIR"] = str(cassette_root / name)
+            else:
+                os.environ.pop("HERMES_CASSETTE_MODE", None)
+                os.environ.pop("HERMES_CASSETTE_DIR", None)
             with tempfile.TemporaryDirectory(prefix=f"heval_{name}_") as d:
                 ws = Path(d) / "ws"
                 ws.mkdir()
+                # 工具输出里的工作区路径每跑都不同，会污染 cassette 的请求指纹——告诉它折掉
+                if args.record or args.replay:
+                    os.environ["HERMES_CASSETTE_WS"] = str(ws)
                 task.setup(ws)
-                result = run_task(str(ws), task.prompt, model=args.model, verbose=not args.quiet)
+                fdb = str(ROOT / "data" / "failures.eval.db") if args.accumulate else None
+                result = run_task(str(ws), task.prompt, model=args.model,
+                                  verbose=not args.quiet, failure_db=fdb)
                 if result.error:
                     passed, why = False, f"运行出错：{result.error[:200]}"
                 else:
@@ -112,6 +141,10 @@ def main() -> int:
         print(f"{name:<14}{'PASS' if passed else 'FAIL':<8}{r.elapsed:>5.0f}s"
               f"{r.tool_calls:>5}{r.subagents:>5}  {why[:48]}")
     print(f"\n总分：{n_pass}/{len(rows)}")
+    if args.record:
+        from agentcore.providers.cassette import CassetteStore
+        tot = sum(CassetteStore(cassette_root / n).count() for n in set(names))
+        print(f"录音 → {cassette_root}（共 {tot} 条）。回放：加 --replay（不需要 key）")
     if not args.no_record:
         print(f"Run Record → {out_dir}")
         print(f"对比：python scripts/eval/report.py <另一个 run_id> {run_id}")

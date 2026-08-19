@@ -39,8 +39,18 @@ class EvalResult:
 
 
 def run_task(workspace: str, prompt: str, *, model: "str | None" = None,
-             verbose: bool = True, db_path: "str | None" = None) -> EvalResult:
-    """在指定工作区无头跑一轮任务，返回 EvalResult。"""
+             verbose: bool = True, db_path: "str | None" = None,
+             failure_db: "str | None" = None) -> EvalResult:
+    """在指定工作区无头跑一轮任务，返回 EvalResult。
+
+    `failure_db`：死路记忆库路径。**默认每跑一个独立库**（落在临时工作区旁，随之销毁）。
+
+    这一条是块 V3 录制回放时揪出来的：死路提示的文案里嵌着**跨会话累计次数**
+    （「这条路已累计 N 次失败」），它会进消息历史。共用一个库时 N 每跑都在涨，于是
+    ①cassette 的请求指纹每跑都变、回放永远 miss；②反例任务会随语料增长**逐渐开始误报**
+    （新一跑的第一次失败就撞上"已知死路"），基线一路漂。
+    要为块 V4 攒语料就显式传共享库（`run_eval.py --accumulate`）。
+    """
     from agentcore.bridge.api import Api
     from agentcore.config import load_config
 
@@ -59,7 +69,8 @@ def run_task(workspace: str, prompt: str, *, model: "str | None" = None,
     cfg.storage.db_path = db_path or str(Path(workspace).parent / "eval.db")
     # 死路语料入**独立库**（ADR 0027 决策 2）：评测要能清空重跑，
     # 绝不能碰真实使用积累的 data/failures.db（那是跨会话资产）。source 一并标为 eval。
-    cfg.agent.failure_memory_db = str(ROOT / "data" / "failures.eval.db")
+    cfg.agent.failure_memory_db = failure_db or str(
+        Path(workspace).parent / "failures.eval.db")
     if model:
         cfg.active_model = model
 
