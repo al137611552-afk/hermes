@@ -29,6 +29,10 @@ class EvalResult:
     tool_calls: int = 0
     subagents: int = 0
     error: str = ""
+    # 本次**实际生效**的配置对象（harness 会关掉 memory/mcp/截屏等）。
+    # 落 Run Record 时必须用它做快照——外面重新 load_config() 拿到的是没被改过的那份，
+    # 记下来就是**说谎**（ADR 0027 决策 3 的可比性三件套之一）。
+    cfg: object = None
 
     def count(self, event: str) -> int:
         return sum(1 for e, _ in self.events if e == event)
@@ -53,10 +57,14 @@ def run_task(workspace: str, prompt: str, *, model: "str | None" = None,
     cfg.memory.enabled = False
     cfg.mcp.enabled = False
     cfg.storage.db_path = db_path or str(Path(workspace).parent / "eval.db")
+    # 死路语料入**独立库**（ADR 0027 决策 2）：评测要能清空重跑，
+    # 绝不能碰真实使用积累的 data/failures.db（那是跨会话资产）。source 一并标为 eval。
+    cfg.agent.failure_memory_db = str(ROOT / "data" / "failures.eval.db")
     if model:
         cfg.active_model = model
 
     res = EvalResult()
+    res.cfg = cfg          # 供 record.build_record 取真实生效配置
     chunks: list[str] = []
 
     def fake_emit(self, event, data, cid=None):  # noqa: ANN001 — 替代 Api._emit

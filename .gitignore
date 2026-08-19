@@ -11,3 +11,8 @@ data/
 *.db
 .playwright-mcp/
 *.zip
+
+# 用户本地模型/Provider 档案（设置面板生成，APP_DIR=仓库根时会落在这里）。
+# 不入库：它是每台机器各自的配置，且项目立场是「开箱不预设任何 provider」。
+user_models.yaml
+providers.yaml
