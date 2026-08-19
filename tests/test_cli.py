@@ -110,12 +110,14 @@ def test_run_error_exit_code():
 
 
 def test_run_empty_prompt():
-    code, out, err, _ = _run_capture(_args(prompt=[]), [], {"ok": True})
-    # 空 prompt 且非管道：返回 2（参数错）。注意测试环境 stdin 可能非 tty，这里直接验证逻辑分支
-    # 通过给空 prompt 且 stdin 为空字符串模拟
+    # **必须先把 stdin 换掉再调 run()**：空 prompt + stdin 非 tty 时，`_read_prompt` 会去
+    # `sys.stdin.read()`；真实 stdin 若是个不给 EOF 的管道（CI、被脚本驱动的 runner），
+    # 这里会**永久挂住**——不是断言失败，是整个测试文件卡死、外层只看到超时。
+    # 原先第一次 `_run_capture` 跑在替换之前，就是这个洞（2026-08-19 修）。
     old = sys.stdin
     sys.stdin = io.StringIO("")
     try:
+        code, out, err, _ = _run_capture(_args(prompt=[]), [], {"ok": True})
         import agentcore.bridge.api as apimod
         FakeApi, _ = _install_fake_api([], {"ok": True})
         orig = apimod.Api; apimod.Api = FakeApi
