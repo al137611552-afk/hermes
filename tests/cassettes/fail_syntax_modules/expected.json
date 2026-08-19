@@ -1,0 +1,10 @@
+{
+ "passed": true,
+ "tool_calls": 11,
+ "steps": 6,
+ "subagents": 0,
+ "nudges": {
+  "learning_shadow": 1
+ },
+ "why": "两处语法错都修好、测试全绿、没误伤好文件（nudge 观测：deadend_hint×0）"
+}

@@ -261,6 +261,42 @@ def test_reading_a_failing_test_file_is_not_a_failure():
     _ev, classes = AgentLoop._assess("run_bash", body, True, None)
     assert classes, "执行类的同样文本仍必须判成失败，别修过头"
 
+
+def test_shell_echoed_exit_code_is_not_swallowed():
+    """`cmd 2>&1; echo "exit=$?"` —— 整条命令的退出码变成 echo 的 0，真实失败被掩盖。
+
+    这类写法极常见（真跑里连撞三次：找不到命令、语法错、私有包缺失），而它让
+    "命令根本没跑起来"这一整类失败对评估内核完全隐形：不进 issues、不分类、不进失败语料。
+    与块 V1a 修的"CodingEvaluator 吞退出码"同一家族——**退出码是硬事实，丢了就什么都判不了**。
+    """
+    from agentcore.agent.evaluators import evaluate
+    from agentcore.agent.taxonomy import ErrorClass, classify
+
+    out = ("[exit code] 0\n[stdout]\n"
+           "bash: line 1: acme-build: command not found\nexit=127\n")
+    ev = evaluate("run_bash", out, {"command": 'acme-build --release 2>&1; echo "exit=$?"'})
+    assert ev.issues and "127" in ev.issues[0], ev.issues
+    assert ErrorClass.NOT_FOUND in classify(ev, out)
+
+
+def test_shell_echoed_exit_code_zero_is_still_success():
+    from agentcore.agent.evaluators import evaluate
+
+    out = "[exit code] 0\n[stdout]\nhello\nexit=0\n"
+    assert not evaluate("run_bash", out, {"command": 'echo hello; echo "exit=$?"'}).issues
+
+
+def test_shell_does_not_invent_failures_from_log_text():
+    """判据刻意收得很窄（要求命令里确实写了 `$?`）：宽一点就会把 `cat error.log`、
+    grep 到 Error 的正常输出全判成失败——那正是块 V4a 刚清理掉的语料污染，不能反手又造一批。"""
+    from agentcore.agent.evaluators import evaluate
+
+    out = "[exit code] 0\n[stdout]\n2026-01-01 Error: something happened\nexit=1 是日志正文\n"
+    assert not evaluate("run_bash", out, {"command": "cat error.log"}).issues
+    # 连 `$?` 都没写的串联命令：**已知不覆盖**，这里钉住这条边界，免得日后误以为已经处理了
+    assert not evaluate("run_bash", "[exit code] 0\n[stdout]\nboom: command not found\n",
+                        {"command": "boom; true"}).issues
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

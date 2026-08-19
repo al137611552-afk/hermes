@@ -159,6 +159,22 @@ CASES = [
               {"fp": "p3", "class": "transient_io"}],
      "expect": {"classes": []}},              # 瞬时 IO 永不成策略
 
+    # ---- 块 V4 补齐：命令串联把退出码 echo 掉，失败不许因此隐形（同 V1a 的"吞退出码"家族）----
+    {"id": "eval-shell-echoed-exit-code-nonzero", "kind": "evaluate", "tool": "run_bash",
+     "params": {"command": "acme-build --release 2>&1; echo \"exit=$?\""},
+     "output": ("[exit code] 0\n[stdout]\n"
+                "bash: line 1: acme-build: command not found\nexit=127\n"),
+     "expect": {"has_issues": True, "metric": ["echoed_exit_code", 127.0]}},
+    {"id": "eval-shell-echoed-exit-code-zero", "kind": "evaluate", "tool": "run_bash",
+     "params": {"command": "echo hi; echo \"exit=$?\""},
+     "output": "[exit code] 0\n[stdout]\nhi\nexit=0\n",
+     "expect": {"has_issues": False}},
+    # 反向闸：没写 `$?` 就不许从日志正文里臆造失败（判据收窄的理由）
+    {"id": "eval-shell-log-text-is-not-a-failure", "kind": "evaluate", "tool": "run_bash",
+     "params": {"command": "cat error.log"},
+     "output": "[exit code] 0\n[stdout]\nError: 昨天那次的记录\nexit=1 是日志正文\n",
+     "expect": {"has_issues": False}},
+
     # ---- 块 V4a：观察类工具的输出里有失败字样 ≠ 一次失败（ADR 0027 决策 11）----
     # 补盲区，非改行为：既有 evaluate 语料用的都是执行类工具（run_bash/run_powershell），
     # 从没覆盖"读到一个失败的测试文件"这条路，于是它一直被判成 blocker 并写进失败语料。

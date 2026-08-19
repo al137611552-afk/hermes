@@ -21,6 +21,19 @@ _SHELL_TOOLS = frozenset({"run_shell", "run_powershell", "run_bash"})
 EXIT_CODE_RE = re.compile(r"\[exit code\]\s*(-?\d+)")
 _STDERR = re.compile(r"\[stderr\]\n(.*)\Z", re.S)
 
+# 模型**自己打出来的**退出码：`cmd 2>&1; echo "exit=$?"`。
+# 这类写法极常见（真跑里连撞三次），而它会让 shell 的退出码变成 **echo 的 0**——
+# 于是"命令根本没跑起来/找不到命令"这一整类失败对评估内核完全隐形：
+# 不进 issues、不分类、不进失败语料，块E/块G 永远学不到（块 V4 补齐时照出）。
+# 与块 V1a 修的"CodingEvaluator 吞退出码"是同一家族：**退出码是硬事实，丢了就什么都判不了。**
+#
+# 判据刻意收得很窄，只认「命令里确实写了 `$?`」+「输出里解析得出这个数」两条同时成立：
+# 宽一点（比如"输出里有 Error 就算失败"）会把 `cat error.log`、grep 到 Error 的正常输出
+# 全判成失败——那正是块 V4a 刚清理掉的那类语料污染，不能反手又造一批。
+# **已知不覆盖**：模型串联命令但不打印 `$?`（如 `a; b`）时失败仍隐形。要覆盖那种只能靠
+# 更宽的文本启发式，风险明显更高，留作显式决策（同 ADR 0027 决策 4 的自我约束）。
+_ECHOED_EXIT_RE = re.compile(r"exit(?:\s*code)?\s*[=:]\s*(-?\d+)", re.I)
+
 
 class ShellEvaluator:
     def applies(self, tool_name: str, output: str) -> bool:
@@ -55,6 +68,16 @@ class ShellEvaluator:
                 issues.append("退出码非零=失败")   # 默认策略，可被 Policy 覆盖
         else:
             confidence = 0.5   # 没有标准退出码行，吃不准
+
+        # 退出码 0，但模型自己 `echo "$?"` 打出来的是非零 → 真实失败被命令串联掩盖了
+        cmd = str((tool_input or {}).get("command") or "") if isinstance(tool_input, dict) else ""
+        if not issues and "$?" in cmd:
+            echoed = [int(x) for x in _ECHOED_EXIT_RE.findall(text)]
+            bad = [c for c in echoed if c != 0]
+            if bad:
+                metrics["echoed_exit_code"] = float(bad[0])
+                signals.append(f"命令自报退出码 {bad[0]}")
+                issues.append(f"命令自报退出码 {bad[0]}=失败（整条命令的退出码被 echo 掩盖）")
 
         se = _STDERR.search(text)
         if se and se.group(1).strip():

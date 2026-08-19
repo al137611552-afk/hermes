@@ -1,0 +1,10 @@
+{
+ "passed": true,
+ "tool_calls": 9,
+ "steps": 5,
+ "subagents": 0,
+ "nudges": {
+  "learning_shadow": 1
+ },
+ "why": "两个脚本都在原内存上限下跑完且结果正确（nudge 观测：deadend_hint×0）"
+}
