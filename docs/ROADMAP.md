@@ -519,11 +519,46 @@ Golden +4 条 `evaluate` 语料（57→**61**），**既有期望一条未改**�
 **replay 是回归门，不是 A/B 工具**；提示词类改动的效果只能靠真跑 × N 次重复验证。
 ③ 正是这条限制的一个极端实例——连"注入文案里的一个数字"都足以让录音全部失效。
 
-### 未做
+### 补录与 CI 铺满（同日续做）
 
-L1 与两个 pos_* 任务的录音（`pos_browse_many_modules` 单跑 64 次工具调用、
-`pos_deadend_missing_tool` 偏慢）暂未录；CI 目前只回放三个反例——它们是硬断言门，
-优先级最高。补录是纯机械活，随时可加。
+把全部离线任务都录了一遍，过程中确认了**回放门的正确语义**与**哪些任务天生进不了门**。
+
+**① 门守的不是"任务过没过"，而是"代码是否还产出同样的结果"。**
+`pos_stuck_unfixable` 录制时 PASS、隔一轮 FAIL（模型有没有如实认输是它当天的表现），
+拿它当"必须 PASS"的门，第一天就红。改成**录制时落基线、回放时逐项比对**
+（`passed` / `tool_calls` / `steps` / `subagents` / 各类 nudge 计数）。
+于是**录到 FAIL 的任务也是合格的门**——`pos_browse_many_modules` 基线就是 FAIL，
+回放必须复现 FAIL。模型输出已被 cassette 固定，这些量再变，变的就是 hermes 自己。
+
+**② 七个任务标为不可回放**，每条都写了理由，回放时**大声跳过**、不静默略过：
+
+| 任务 | 为什么进不了回放门 |
+|---|---|
+| `feature_git` | git log/commit 输出含 **commit SHA 与时间戳** |
+| `pos_deadend_missing_tool` | npm 报错里带**时间戳日志路径**（`…T07_14_25_080Z-debug-0.log`） |
+| `comprehend` / `parallel` / `delegate_implicit` | 夹具拷贝**活的仓库源码**——任何源码改动都让录音失效；换冻结快照又违背这题本意（考的就是理解当前代码） |
+| `bugfix` / `neg_plain_fix` | 共用 `_setup_bugfix` 夹具，回放**偶发**漂移（实测 3/4），未定位到确定性来源 |
+| `quick_query` | 需联网 |
+
+**刻意不去归一化时间戳/哈希**——那正是 ADR 决策 4 禁止的"更聪明的模糊匹配"：
+一旦允许近似匹配，回放就不再是回放。宁可显式标出来。
+
+**③ flaky 的门比没有门更糟。** `bugfix`/`neg_plain_fix` 一开始留在门内，连跑发现每三四轮红一次。
+先关掉了嫌疑最大的 `auto_affected_test`（改完文件自动跑的定向测试走 pytest、输出带耗时，
+会回灌进消息历史；它本身有独立单测，关掉不损失覆盖面）——**仍在漂**，于是果断挡在门外。
+真跑照常用它们。**CI 门现在连跑 4 轮 4/4 全稳。**
+
+**④ 加了 miss 诊断。** 原先 miss 只说"key 对不上"，定位得另写脚本 dump 两侧逐字 diff（干过两轮）。
+现在录音的 meta 里存**每部分的独立指纹**，miss 时自动指出"最接近的录音在**第 N 部分**开始不同"，
+并提示 `msgN` 多半是工具结果带了每跑都变的东西、`system` 则是提示词改了。
+
+**⑤ 顺带加了两个通用能力**：录制前**先清空该任务目录**（指纹口径一变旧录音就永久命不中，
+事后 prune 还得再记命中日志，从源头保证最省）；`Task.max_steps` 按任务限步——
+`pos_stuck_unfixable` 无解，撞上 200 步的防跑飞上限能烧十几分钟，限到 12 步后 40s 跑完。
+
+**当前 CI 门**：`--tier L2 --offline --replay`，4 个任务
+（`neg_edit_same_file_progressing` / `neg_small_repo_survey` / `pos_browse_many_modules` /
+`pos_stuck_unfixable`），录音 352K。不可回放任务的录音已删——留着是死重。
 
 ## 块 V4 — 喂饱 Learning
 

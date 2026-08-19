@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -30,6 +32,40 @@ from record import build_record, git_sha, new_run_id, runs_root, write_record  #
 from tasks import TASKS, TIERS, verify_nudges  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+_EXPECTED = "expected.json"
+
+
+def _baseline(passed, result) -> dict:
+    """基线里只放**由我们的代码决定**的东西：模型输出已被 cassette 固定，
+    这些量再变，变的就是 hermes 自己（工具调度、判分、detector）。"""
+    from record import summarize_events
+    m = summarize_events(result.events or [])
+    return {"passed": bool(passed),
+            "tool_calls": m["tool_calls"], "steps": m["steps"],
+            "subagents": m["subagents"],
+            "nudges": {k: v for k, v in m["nudges"].items() if v}}
+
+
+def _write_expected(task_dir: Path, passed, why, result) -> None:
+    task_dir.mkdir(parents=True, exist_ok=True)
+    payload = {**_baseline(passed, result), "why": why}
+    (task_dir / _EXPECTED).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _match_expected(task_dir: Path, passed, result) -> "tuple[bool, str]":
+    """回放结果与录制基线逐项比对。**没有基线就算失败**——静默放过等于没有门。"""
+    f = task_dir / _EXPECTED
+    if not f.is_file():
+        return False, f"没有录制基线（缺 {f}），先跑 --record"
+    exp = json.loads(f.read_text(encoding="utf-8"))
+    got = _baseline(passed, result)
+    diffs = [f"{k}: 基线={exp.get(k)!r} 回放={got[k]!r}"
+             for k in ("passed", "tool_calls", "steps", "subagents", "nudges")
+             if exp.get(k) != got[k]]
+    return (not diffs), ("与基线不符 —— " + "；".join(diffs) if diffs else "")
 
 
 def main() -> int:
@@ -63,6 +99,12 @@ def main() -> int:
     names = [args.task] if args.task else list(TASKS)
     if args.tier:
         names = [n for n in names if TASKS[n].tier == args.tier]
+    if args.replay:
+        # **大声跳过、不静默**：哪些任务进不了回放门、为什么，必须当场说清楚
+        skip = [n for n in names if not TASKS[n].replayable]
+        names = [n for n in names if TASKS[n].replayable]
+        for n in skip:
+            print(f"（跳过不可回放任务 {n}：{TASKS[n].unreplayable_why}）")
     if args.offline:
         skipped = [n for n in names if TASKS[n].network]
         names = [n for n in names if not TASKS[n].network]
@@ -85,6 +127,13 @@ def main() -> int:
     rows = []
     for name in names:
         task = TASKS[name]
+        if args.record:
+            # **每个任务录制前先清空它的目录**：指纹口径一变（改了 system prompt、
+            # 换了模型、动了归一逻辑），旧录音就永远命不中，只会越积越多。
+            # 事后 prune 要先知道"哪些被命中过"，还得再记一份命中日志——
+            # 从源头保证"目录里只有本次录的"最省。注意只在该任务的**第一遍**清，
+            # 否则 --repeat 的后几遍会把前几遍抹掉。
+            shutil.rmtree(cassette_root / name, ignore_errors=True)
         for i in range(repeat):
             suffix = f"  [{i + 1}/{repeat}]" if repeat > 1 else ""
             print(f"\n=== {name}: {task.title}{suffix} ===", flush=True)
@@ -105,7 +154,8 @@ def main() -> int:
                 task.setup(ws)
                 fdb = str(ROOT / "data" / "failures.eval.db") if args.accumulate else None
                 result = run_task(str(ws), task.prompt, model=args.model,
-                                  verbose=not args.quiet, failure_db=fdb)
+                                  verbose=not args.quiet, failure_db=fdb,
+                                  max_steps=task.max_steps)
                 if result.error:
                     passed, why = False, f"运行出错：{result.error[:200]}"
                 else:
@@ -118,10 +168,27 @@ def main() -> int:
                 passed, why = False, (f"{why}；但{n_why}" if why else n_why)
             elif n_why:
                 why = f"{why}（{n_why}）" if why else n_why
+
+            if args.replay:
+                # 回放模式下改判"是否与基线一致"——这才是回归门。
+                same, diff = _match_expected(cassette_root / name, passed, result)
+                if same:
+                    passed, why = True, f"与录制基线一致（{why}）"
+                else:
+                    # **别把原因盖掉**：多数不一致其实源于 cassette miss，
+                    # 而 miss 的诊断（哪条消息变了）远比"指标对不上"有用。
+                    passed = False
+                    why = f"{diff}\n      原始结果：{why}"
             rows.append((name, passed, why, result))
             print(f"  -> {'✅ PASS' if passed else '❌ FAIL'}  {why}"
                   f"（{result.elapsed:.0f}s / 工具 {result.tool_calls} / 子任务 {result.subagents}）",
                   flush=True)
+
+            if args.record:
+                # **回放门守的不是"任务过没过"**（那取决于模型当天的表现），
+                # 而是"给定同样的模型输出，我们的代码是否还产出同样的结果"。
+                # 故录制时把结果连同关键指标存成基线，回放时逐项比对。
+                _write_expected(cassette_root / name, passed, why, result)
 
             if not args.no_record and result.cfg is not None:
                 try:

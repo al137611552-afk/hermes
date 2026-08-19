@@ -57,14 +57,12 @@ jobs:
         run: python tests/golden/runner.py
 
       # 块 V3：离线回放评测。**不需要 key**——回放路径在取凭据之前就返回。
-      # 录音失效（改了 system prompt / 注入文案）会以 CassetteMiss 明确报错，
-      # 并在报错里给出重录命令——这是刻意的，别改成静默跳过。
-      - name: 端到端评测（离线回放）
+      # 门守的不是"任务过没过"（那取决于模型当天表现），而是
+      # **"给定同样的模型输出，代码是否还产出同样的结果"**——逐项比对录制基线。
+      # 不可回放的任务会**大声跳过并说明理由**（工具输出含时间戳/哈希、夹具拷活源码…），
+      # 不是静默略过。录音失效会以 CassetteMiss 报错并指出哪条消息变了 + 给出重录命令。
+      - name: 端到端评测（离线回放，与录制基线逐项比对）
         run: |
           cp tests/cassettes/model.yaml user_models.yaml
-          python scripts/eval/run_eval.py --tier L2 --replay --no-record \
-            --model dsv4 --quiet --task neg_plain_fix
-          python scripts/eval/run_eval.py --tier L2 --replay --no-record \
-            --model dsv4 --quiet --task neg_small_repo_survey
-          python scripts/eval/run_eval.py --tier L2 --replay --no-record \
-            --model dsv4 --quiet --task neg_edit_same_file_progressing
+          python scripts/eval/run_eval.py --tier L2 --offline --replay --no-record \
+            --model dsv4 --quiet

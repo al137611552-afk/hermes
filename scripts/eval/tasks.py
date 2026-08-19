@@ -241,6 +241,16 @@ class Task:
     # {"*": False} = 除显式标 True 的以外，其余一律不许响
     expect_nudges: dict = field(default_factory=dict)
     network: bool = False      # 需联网/真实检索；离线自检与 CI 要能整层跳过
+    # 本任务的步数上限（0=跟随 config 的 max_steps=200）。
+    # **无解/开放式任务必须限步**：200 步的防跑飞上限是给真实长任务留的余量，
+    # evaluation 里一个无解任务能靠它烧掉十几分钟，拖垮整批（V3 补录时踩到）。
+    max_steps: int = 0
+    # 能否离线回放（块 V3）。False = 该任务的**工具输出含不可消除的非确定性**，
+    # 会回灌进消息历史、让 cassette 的请求指纹每跑都变。
+    # **不去归一化时间戳/哈希**：那正是 ADR 0027 决策 4 禁止的"更聪明的模糊匹配"——
+    # 一旦允许近似匹配，回放就不再是回放。宁可显式标出来、把它挡在 CI 门外。
+    replayable: bool = True
+    unreplayable_why: str = ""
 
 
 def _setup_bugfix(ws: Path) -> None:
@@ -350,18 +360,26 @@ TASKS: dict[str, Task] = {
         "这个项目的测试挂了。请运行测试脚本 test_calc.py（用合适的 python 命令）看失败原因，"
         "修复 calc.py 里的问题（不要改测试文件），然后重新跑测试确认全部通过。",
         _setup_bugfix, _check_bugfix, tier="L1",
+        # 与 neg_plain_fix **共用 `_setup_bugfix` 夹具**，两者都偶发漂移——
+        # 问题在夹具/工具输出层，不在任务本身。见 neg_plain_fix 的注释。
+        replayable=False,
+        unreplayable_why="与 neg_plain_fix 共用夹具，回放偶发漂移（未定位）",
     ),
     "feature_git": Task(
         "feature_git", "开分支加功能 + 补测试 + 提交",
         "给 TodoList 加一个 clear() 方法（清空所有待办并返回清掉的条数），在 test_todo.py 里"
         "补对应断言。请开一个 feature/clear 分支做，测试通过后提交（Conventional Commits）。",
         _setup_feature_git, _check_feature_git, tier="L1",
+        replayable=False,
+        unreplayable_why="git log/commit 输出含 commit SHA 与时间戳，每跑都不同",
     ),
     "comprehend": Task(
         "comprehend", "代码库理解（给出文件:行号）",
         "这个项目里'上下文压缩'机制是怎么实现的？我要：①从哪里触发；②具体裁剪策略（分几层）；"
         "③涉及哪些文件和函数（给出 文件:行号）。不要修改任何文件。",
         _setup_corpus, _check_comprehend, tier="L1",
+        replayable=False,
+        unreplayable_why="夹具拷贝**活的**仓库源码，任何源码改动都会让录音失效；而换成冻结快照又违背这题的本意（考的就是理解当前代码）",
     ),
     "parallel": Task(
         "parallel", "并行委派调研 + 汇总（显式要求）",
@@ -369,6 +387,8 @@ TASKS: dict[str, Task] = {
         "B=src/agentcore/providers 的模型适配层（统一接口与两个实现的差异）。两个互不依赖，"
         "请同一轮一起委派，最后给我一份两者如何协作的对比汇总。",
         _setup_corpus, _check_parallel, tier="L1",
+        replayable=False,
+        unreplayable_why="夹具拷贝**活的**仓库源码，任何源码改动都会让录音失效；而换成冻结快照又违背这题的本意（考的就是理解当前代码）",
     ),
     # 隐式委派：不提"用子任务"，只"逐一分析很多单元"——防委派退化（精简 prompt 曾在此翻车）
     "delegate_implicit": Task(
@@ -376,6 +396,8 @@ TASKS: dict[str, Task] = {
         "逐一分析 src/agentcore/tools 目录下的每一个工具文件，对每个工具列出：名称、是否危险操作、"
         "主要参数、一句话用途，最后汇总成一张表格给我。",
         _setup_corpus, _check_delegate_implicit, tier="L1",
+        replayable=False,
+        unreplayable_why="夹具拷贝**活的**仓库源码，任何源码改动都会让录音失效；而换成冻结快照又违背这题的本意（考的就是理解当前代码）",
     ),
     # 简单咨询：应快速答、不委派、不堆步数（需联网）
     "quick_query": Task(
@@ -405,6 +427,11 @@ TASKS: dict[str, Task] = {
         "test_calc.py 挂了。看失败原因，修 calc.py（不要改测试文件），再跑一次确认通过。",
         _setup_bugfix, _check_bugfix,
         tier="L2", expect_nudges={"*": False},
+        # 回放**偶发**漂移（实测 3/4），诊断指向某条工具结果（msg8）里有每跑都变的东西，
+        # 关掉 auto_affected_test 后仍在。**flaky 的门比没有门更糟**，先挡在回放门外；
+        # 真跑仍照常用它。待定位到确定性来源再放回来。
+        replayable=False,
+        unreplayable_why="回放偶发漂移（3/4），未定位到确定性来源；诊断指向某条工具结果",
     ),
     # 正例（软观测：只记触发率，不判 FAIL）——漏报逼不出来，硬判会把"模型表现好"误记成"detector 坏了"。
     "pos_stuck_unfixable": Task(
@@ -413,6 +440,8 @@ TASKS: dict[str, Task] = {
         "如果确实做不到，说明原因。",
         _setup_unfixable, _check_unfixable,
         tier="L2", expect_nudges={"stuck_hint": True, "*": False},
+        # 任务无解，模型会一直试——限步，否则单它就能跑十几分钟
+        max_steps=12,
     ),
     "pos_browse_many_modules": Task(
         "pos_browse_many_modules", "60 个模块里逐个浏览 → 观测 search_code 提示",
@@ -425,5 +454,7 @@ TASKS: dict[str, Task] = {
         "按 README 说的方式把这个项目构建一下，构建完告诉我结果。",
         _setup_missing_tool, _check_missing_tool,
         tier="L2", expect_nudges={"deadend_hint": True, "*": False},
+        replayable=False,
+        unreplayable_why="npm 报错里带时间戳日志路径（…T07_14_25_080Z-debug-0.log）",
     ),
 }

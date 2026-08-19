@@ -97,6 +97,51 @@ def fold_workspace(text: str, ws: "str | None" = None) -> str:
     return text
 
 
+def request_digests(model: str, system, messages, tools) -> list:
+    """请求各部分的独立指纹。**只为诊断存在**：miss 时能指出"第几条消息变了"，
+    而不是只说"key 对不上"——后者得另写脚本 dump 两侧再逐字 diff（V3 实现时干过两轮）。
+
+    与 `request_key` 走同一套归一化（含工作区折叠），否则诊断结论会与真实判定不符。
+    """
+    def h(obj) -> str:
+        raw = fold_workspace(json.dumps(obj, sort_keys=True, ensure_ascii=False,
+                                        separators=(",", ":")))
+        return hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:10]
+    out = [f"model:{h(model or '')}", f"system:{h(system or '')}",
+           f"tools:{h(tools or [])}"]
+    for i, m in enumerate(messages or []):
+        out.append(f"msg{i}:{h({'role': getattr(m, 'role', None),
+                                'content': _canon_content(getattr(m, 'content', None))})}")
+    return out
+
+
+def explain_miss(store, digests: list) -> str:
+    """在已有录音里找最接近的一条，指出**第一处**不同——把"对不上"变成"哪儿对不上"。"""
+    best, best_n = None, -1
+    for f in sorted(store.root.glob("*.jsonl")) if store.root.is_dir() else []:
+        try:
+            head = json.loads(f.read_text(encoding="utf-8").splitlines()[0])
+        except Exception:  # noqa: BLE001
+            continue
+        old = head.get("digests") or []
+        n = 0
+        for a, b in zip(old, digests):
+            if a != b:
+                break
+            n += 1
+        if n > best_n:
+            best, best_n = old, n
+    if best is None:
+        return "该目录下还没有任何录音。"
+    if best_n >= len(digests):
+        return "各部分指纹一致但整体 key 不同（不该发生，请报 bug）。"
+    part = digests[best_n].split(":", 1)[0]
+    was = best[best_n].split(":", 1)[0] if best_n < len(best) else "（录音更短）"
+    return (f"最接近的录音在**第 {best_n + 1} 部分**开始不同：本次是 `{part}`、录音是 `{was}`。"
+            f"若差在 `msgN`，多半是那条工具结果里带了每跑都变的东西"
+            f"（时间戳/哈希/耗时）；若差在 `system`，是提示词改了。")
+
+
 # ---- 纯逻辑：事件序列化 ------------------------------------------------------
 
 def event_to_dict(ev) -> dict:
@@ -200,10 +245,12 @@ class _Recording(BaseProvider):
             # 只在**看到 done** 时写：半截录音比没有录音更坏——回放时它会假装那一轮
             # 正常结束，把"当时其实炸了"这个事实抹掉。
             if any(e.type == "done" for e in buf):
-                store.write(key, buf, meta={"model": inner.model,
-                                            "provider_class": type(inner).__name__,
-                                            "n_messages": len(messages or []),
-                                            "n_tools": len(tools or [])})
+                store.write(key, buf, meta={
+                    "model": inner.model,
+                    "provider_class": type(inner).__name__,
+                    "n_messages": len(messages or []),
+                    "n_tools": len(tools or []),
+                    "digests": request_digests(inner.model, system, messages, tools)})
 
 
 class _Replay(BaseProvider):
@@ -221,9 +268,11 @@ class _Replay(BaseProvider):
         key = request_key(self.model, system, messages, tools)
         events = self._store.read(key)
         if events is None:
+            why = explain_miss(self._store,
+                               request_digests(self.model, system, messages, tools))
             raise CassetteMiss(
                 f"第 {self._step} 次模型请求没有对应录音（key={key[:12]}…，"
-                f"目录 {self._store.root}）。\n"
+                f"目录 {self._store.root}）。\n{why}\n"
                 f"最常见的原因是**改了 system prompt 或某条注入文案**，对话轨迹就此发散——"
                 f"这不是 bug，是 replay 的定义域（ADR 0027 已知限制 1）。重录即可：\n"
                 f"  python scripts/eval/run_eval.py --record --task <任务名> --model <档名>")

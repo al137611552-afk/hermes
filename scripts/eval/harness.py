@@ -40,7 +40,8 @@ class EvalResult:
 
 def run_task(workspace: str, prompt: str, *, model: "str | None" = None,
              verbose: bool = True, db_path: "str | None" = None,
-             failure_db: "str | None" = None) -> EvalResult:
+             failure_db: "str | None" = None,
+             max_steps: int = 0) -> EvalResult:
     """在指定工作区无头跑一轮任务，返回 EvalResult。
 
     `failure_db`：死路记忆库路径。**默认每跑一个独立库**（落在临时工作区旁，随之销毁）。
@@ -63,7 +64,13 @@ def run_task(workspace: str, prompt: str, *, model: "str | None" = None,
     cfg.agent.workspace = str(workspace)      # 固定工作区（关闭按会话隔离）
     cfg.agent.shell = "powershell" if os.name == "nt" else "bash"
     cfg.agent.auto_conventions = False        # 评测不要后台生成规范（省一次模型调用）
+    # 改完文件自动跑的定向测试走 pytest，输出带**耗时**（`in 0.03s`）——它会回灌进
+    # 消息历史，让 cassette 的请求指纹偶发漂移、回放门变成 flaky（块 V3 踩到）。
+    # 该功能本身有独立单测（tests/test_affected_tests.py），关掉不损失覆盖面。
+    cfg.agent.auto_affected_test = False
     cfg.agent.screenshot = False
+    if max_steps > 0:
+        cfg.agent.max_steps = max_steps
     cfg.memory.enabled = False
     cfg.mcp.enabled = False
     cfg.storage.db_path = db_path or str(Path(workspace).parent / "eval.db")

@@ -1,0 +1,35 @@
+{"_meta": true, "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "第一个"}
+{"type": "thinking", "text": "函数"}
+{"type": "thinking", "text": "完成"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": " trunc"}
+{"type": "thinking", "text": "ate"}
+{"type": "thinking", "text": "(text"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " n"}
+{"type": "thinking", "text": ")。"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "title"}
+{"type": "text", "text": "ize"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "完成"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "通过"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "加"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "tr"}
+{"type": "text", "text": "unc"}
+{"type": "text", "text": "ate"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_g1sWivlL3NFwPu8kW96Z4097", "name": "edit_file", "input": {"new_string": "def titleize(text):\n    return \" \".join(word.capitalize() for word in text.split())\n\n\ndef truncate(text, n):\n    if len(text) <= n:\n        return text\n    return text[: n - 3] + \"...\"", "old_string": "def titleize(text):\n    return \" \".join(word.capitalize() for word in text.split())", "path": "lib.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 44, "output": 182, "cache_read": 9600, "cache_write": 0}}}
