@@ -1,8 +1,9 @@
 # Hermes 开发路线图
 
-> **现状：v3.67.0（2026-08-13，已定版推 main+tag）**。本文件分三部分：
+> **现状：v3.70.1（2026-08-14，已定版推 main+tag）**。本文件分四部分：
 > **第一阶段** 评估/策略内核 A–H（✅ 收官，定版 3.46.0–3.48.0）→
-> **第二阶段** 能力面铺开 v3.49–v3.64（✅ 已交付，按线索归并）→
+> **第二阶段** 能力面铺开 v3.49–v3.70（✅ 已交付，按线索归并）→
+> **第三阶段** 喂饱评估内核 V0–V5（⏳ 提议中，ADR 0027）→
 > **待办** 当前未做项（分三档）。
 > 节奏纪律（见 CLAUDE.md）：每块 = 实现 → 全回归全绿 → 用户 Windows 验 → 通过后定版 → 下一块。
 
@@ -230,6 +231,297 @@ A 是地基，必须先过。B/C 可并行起步但 C 依赖 B 的 signals。D �
 
 ---
 
+# 第三阶段 — 喂饱评估内核（块 V0–V5）⏳ 提议中
+
+> 配套 ADR：[`docs/adr/0027-eval-corpus-and-replay.md`](adr/0027-eval-corpus-and-replay.md)
+> 承第一阶段：块 A–H 把**评估内核**建起来了，这一阶段解决它的**输入**。
+> **命名**：用 V（Verification 验证闭环）不用 E——第一阶段「块 E」的子项已经叫 E1/E2/E3
+> （E1=WorldState、E2=FailureMemory），再用 E 会指代不清。
+
+## 为什么是现在
+
+与 deepseek-harness 横向对比（2026-08-19）的结论：**hermes 的评估/策略内核比对方完整——
+对方的 `guard/` 只有 repeat-tool-reminder 和 timeout-policy 两个包，A–H 那套它完全没有——
+但我们这套在空转。**
+
+读码查证到，问题不是"没有语料"，而是**语料在产生、却落不了盘，且指纹是脏的**：
+
+- ✅ **遥测已经齐了**：`loop.py` 已 emit 八种 nudge 事件（`login_hint`/`stuck_hint`/`search_hint`/
+  `deadend_hint`/`research_hint`/`truncation_hint`/`learning_shadow`/`learning_advice`），
+  `_emit_result` 还附 `eval`（含 `error_classes`）。每一跑都在流过，**只是没人接**。
+- ❌ **落不了盘**：`EvalResult` 只活在内存，`run_eval.py` 只打印 + 退出码 → 两次跑无法对比。
+- ❌ **指纹脏**：`fingerprint()` 的 `_KEY_PARAMS` 含 `path`/`file_path`/`command`，评测在 `tempfile`
+  建工作区 → 同一失败每跑生成不同指纹 → `propose(min_count=3, min_paths=2)` 的**双门两个方向同时错**
+  （`paths` 虚高放假信号、每指纹 `total` 恒 1 漏真信号）。
+- ❌ **量级不足**：`tasks.py` 只有 6 个任务（Golden 51 条 / 13 类是健康的，端到端层不是）。
+
+**"6 个任务测不出几个百分点的变化"**——这意味着近几十版的每一次改动，其"提升"实际上
+**从未被验证过**，只有"真机跑一次感觉可以"。这是本阶段真正要解决的问题。
+
+## 三层语料，不可互相冒充（ADR 0027 决策 1）
+
+| 层 | 是什么 | 成本 | 进 CI | 守什么 |
+|---|---|---|---|---|
+| **L-Golden**（V0 前 51 条 / 13 类） | 决策函数 `输入→期望`，离线确定性、不调模型 | 毫秒 | ✅ 每次 | 决策内核不回归 |
+| **L-Cassette**（新） | 录好的模型输出重放，跑完整 loop | 秒级、离线 | ✅ 每次 | **端到端行为**不回归 |
+| **L-Live**（扩量） | 真模型真网络跑任务集 | 分钟级、烧 key | ❌ 按需 | **解题率**绝对水平与 A/B |
+
+## 块 V0 — 地基修正（指纹归一 + 语料分库）✅ 已实现并本地验收（2026-08-19）
+
+**目标**：让攒下来的语料是干净、可分离、可重置的。**不新增任何能力**（同块 A 的定位）。
+
+- V0.1 `world_state.py:fingerprint()` 加 `workspace` 参数：`path`/`file_path` 转工作区相对路径、
+  `command` 内嵌绝对路径同样归一，再取 sha1。纯逻辑不变、无 IO。
+- V0.2 `FailureMemory` 路径可注入（现 `conversation.py:2279` 硬编码 `ROOT/data/failures.db`）。
+  真实使用 `failures.db` / 评测 `failures.eval.db`。**分库是为了能重置**——评测要能清空重跑，
+  而真实死路记忆是跨会话资产、绝不能被评测误删（同 ADR 0025 决策 7 的理由）。
+- V0.3 SQLite schema 加 `source` 列（真实/评测/自检），库内细分用；**隔离靠分库、细分靠列**。
+- V0.4 `harness.py` 显式指定评测语料库（现在是默认继承 `agent.failure_memory=True`，闷声写进生产库）。
+
+**实现中发现并修正的一处设计缺口**：最初把工作区绝对路径折成 `<ws>/a.py`，但模型对同一个文件
+**绝对与相对两种写法都会用**（`read_file("/tmp/ws/a.py")` 与 `read_file("a.py")`），折成 `<ws>/` 仍是两个指纹。
+改为折成**工作区相对路径**（裸根记 `<ws>`），两种写法才真正同指纹。是新加的 golden 语料把它逼出来的。
+
+**交付物**：
+- `world_state.py`：`fingerprint(tool, params, workspace=None)` + `_ws_prefixes` / `_fold_workspace`
+  两个纯函数；`FailureMemory(db_path, *, source=)` + `_migrate()` 补 `source` 列（**不重建表、旧行不丢**）。
+- `loop.py`：`AgentLoop(workspace=)` → `detect_repeated_failure(workspace=)` → `fingerprint` 全程透传。
+- `config.py` `agent.failure_memory_db`（空=默认库）；`conversation.py` 主/子 Agent 两路同口径；
+  `harness.py` 指向 `data/failures.eval.db` 且标 `source=eval`。
+- 自检：`tests/test_world_state.py` +10 测（25/25）、Golden +6 条 `fingerprint` 语料（51→**57**）。
+
+**验收**：✅ 两次不同 tempdir 跑同一失败 → `rows()` 是**一行 count=2**
+（`test_same_failure_across_runs_aggregates_to_one_row`）；配一条**反证**测试钉住"不归一会分裂成两行"。
+✅ 本地全回归绿（Python 73/73 文件、前端 133/133 测）。
+
+**本地验收结果（2026-08-19，13 项过 / 0 挂 / 1 项 Windows 专属跳过）**：
+
+| # | 项 | 结果 |
+|---|---|---|
+| 1 | 反斜杠 / 正斜杠两种写法 → 同指纹（含命令里混写） | ✅ 纯字符串逻辑，Linux 可证 |
+| 2 | 盘符绝对路径 → 与工作区相对写法同指纹；不同盘符工作区下同一相对路径同指纹 | ✅ 同上；并验证 Linux 上对 Windows 路径 `resolve()` 产生的垃圾前缀**不误伤** |
+| 3 | 工作区**双形态**（原样 / `resolve()`）都能折上 | ✅ **用软链把这条路径真正压出来了**——与 8.3 短名、macOS `/private/var` 是同一条机制 |
+| 3b | 8.3 短名 `RUNNER~1` → 长名展开本身 | ⊘ **Windows 专属，Linux 无法复现**。机制已由 3 证明，只剩这个触发条件没压 |
+| 4 | 旧库迁移不丢数据 | ✅ **在一份真实用过的 `data/failures.db` 上真实发生**：9 行 2026-08-10 的历史数据完整保留、全部落 `source='real'`，补列成功 |
+| 5 | 评测分库、真实库不被触碰 | ✅ 走真实 `_get_failure_memory` 通路：评测库独立建成、`source=eval`；真实库**行数与 mtime 均未变** |
+
+> **仍需 Windows 真机看一眼的只剩 3b 一条**（在 `%TEMP%` 下建工作区、确认 8.3 短名也折得上）。
+> 其余各项要么是纯字符串逻辑、要么已在真实库上发生过，Linux 自检即等价证明。
+> 另注：跑回归时真实 `failures.db` 的 mtime 会变一次——那是 `ALTER TABLE` 补列、**不是写入行**
+> （已核对：近 6 小时零新增行）。
+
+> **已知一次性影响**：指纹口径变了，旧 `failures.db` 里的历史指纹**不再与新指纹匹配**
+> （旧行仍在、不删，只是不再被命中）。死路记忆是可再生资产、量也不大，故**不写迁移脚本**——
+> 留着比删了安全，代价只是短期内跨会话死路提示会冷启动一段。
+> **这是实现时按「不删数据」默认原则自行拍的，用户未就此表态**——若要写迁移脚本（按旧行反查工具名+入参重算指纹）随时可补，代价是得先给 `failures` 表补存原始入参。
+
+> 吸收待办第二档原「失败语料无来源标记」一条：**来源标记解决"混"，指纹归一解决"碎"，缺一不可**。
+
+## 块 V1 — Run Record：让每次评测留下痕迹 ✅ 已实现并本地验收（2026-08-19）
+
+**目标**：一次评测跑 = 一份可复查、可对比的记录。**这是后面每一块"是否真的提升"的唯一验证手段。**
+
+**交付物**：
+- **`scripts/eval/record.py`（新）** —— 纯逻辑 `summarize_events` / `config_snapshot` /
+  `model_identity` / `build_record`，受控 IO `git_sha` / `write_record` / `load_run`。
+  指标全部从**现有事件流**直接算，`loop.py` 一行未改。
+- **`scripts/eval/report.py`（新）** —— `aggregate` / `compare` / `render` 全纯函数；
+  CLI 三态：无参列出全部跑、一个参数出汇总、两个参数出差异表。
+- `run_eval.py` 加 `--repeat N` / `--tag` / `--out` / `--no-record`，**默认落盘**
+  （ADR 说"必须落"，那就不该是可选项；`--no-record` 只留给临时试跑）。
+- `harness.py`：`EvalResult.cfg` 带出**实际生效**的配置——外面重新 `load_config()` 拿到的是
+  没被 harness 改过的那份（memory/mcp/截屏都还开着），记下来就是**说谎**。
+- 自检 `tests/test_eval_record.py` **19 测**，全离线、不调模型不联网。
+
+**对比表的列**（全部来自现有事件流）：
+pass@1 比率 ｜ 步数 ｜ 工具调用 ｜ 重试 ｜ 子任务/失败数 ｜ **八类 nudge 各自次数** ｜
+**错误分类分布** ｜ 耗时 ｜ token。nudge 与错误分类**按类拆开**（`nudge.stuck_hint` / `err.logic`），
+合成一个总数就没法归因。**无差异的指标不列**，否则一屏 0 淹没真变化。
+
+**可比性防呆**（对比时主动喊话，不然差异会被误读成"改动的效果"）：
+工作树 dirty ｜ 配置快照不同 ｜ **换了模型**（这条最响：那种对比只能看模型差异）｜
+记录里没有真实 `model_id` ｜ 两次是同一 commit（差异只可能来自配置/环境/模型随机性）。
+
+**本地验收结果**：
+| 项 | 结果 |
+|---|---|
+| 八种 nudge 一个不漏、未触发的记 0 而非缺键 | ✅ 缺键会让对比表漏行 |
+| token/步数跨 agent 合计（usage 每个 loop 发一次） | ✅ `usage_events` 记合计了几份，避免把"子任务多"误读成"主线步数多" |
+| 估算用量不冒充实测 | ✅ 任一段 `measured=False` → 整条标 False |
+| 配置快照剔掉每跑必变的临时路径 | ✅ 否则两份记录**永远**判为不同、掩盖真差异 |
+| `--repeat` 同名任务不互相覆盖 | ✅ 覆盖了就没法算 pass@N |
+| **报表活性**：故意让某 detector 多触发 → 对应列必须报出来 | ✅ `test_compare_surfaces_a_changed_detector`（ADR 0027 V1 验收判据） |
+| 端到端链路（跑 → 提炼 → 三件套 → 落盘 → 读回） | ✅ **用桩 provider 压过真实 `run_eval.main()`**：git sha/配置快照/指标全部落齐，不联网不用 key |
+
+> **未做真跑**：本机 `active_model` 为空、无模型档案（v3.56.0 起开箱不预设 provider），
+> 真跑需先配档案 + 烧 key。ADR 里"同一 commit 连跑两次 `--repeat 3`"这一半留到有档案时补；
+> 报表本身的活性已由单测与桩链路证明。
+
+## 块 V1a — 评估内核缺口修复（V1 揪出的两个 bug）✅ 已实现（2026-08-19）
+
+V1 跑通链路时，评测设施**立刻照出评估内核自己的两个 bug**——这条路走对了的第一个旁证。
+
+**bug 1：CodingEvaluator 吞退出码。** 它优先级高于 Shell，只要输出含 "pytest" 等特征词就接管；
+但**接管了却解析不出计数时，会把 shell 的退出码一起吞掉**，判成"无 issues"。于是
+`pytest 不存在的文件`（exit 4，测试根本没跑起来）这一整类"测试命令本身写错了"的失败，
+对评估内核完全隐形——`error_classes` 为空、不进 Failure Memory、块G 永远学不到。
+
+**bug 2（既有，更隐蔽）：计数正则跨行匹配，凭空造出幻影计数。**
+`_ERRORS = (\d+)\s+errors?` 里的 `\s` 跨行，把 `pytest-9.1.**0**\n**ERROR**: file not found`
+读成"0 errors" → `total=0` → `has_counts` 为真 → 判成"用例全过"。
+**bug 1 的表象其实由 bug 2 制造**，只修 1 会得到一个"看着修好了、实则走错分支"的结果。
+
+**修法**：
+- 计数正则限定**同一行**（`[ \t]+` 而非 `\s+`）+ 结尾 `\b`；`has_counts` 要求 `total > 0`
+  （`0 passed` 是"一个用例都没数到"，不叫有计数）。
+- 退出码升为**共享词汇** `EXIT_CODE_RE`（shell.py 单一来源，Coding 导入）——
+  同一格式抄两份正则迟早漂移，本项目已因"两处写"吃过亏。
+- 三条新判定：无计数 + 非零退出 → `测试未跑成=blocker`（confidence 提到 1.0，退出码是硬事实）；
+  有计数全过 + 非零退出 → `退出码非零=失败`；两种措辞**刻意分开**，块C 归类时
+  "没跑成"多半是 NOT_FOUND/SYNTAX、"收尾炸了"更接近 LOGIC/RESOURCE，不该混进同一个干草堆。
+
+**自检**：`tests/test_evaluators.py` +6 测（30/30，含幻影计数回归门）；
+Golden +4 条 `evaluate` 语料（57→**61**），**既有期望一条未改**（是补盲区，不是改行为）。
+
+## 块 V2 — 任务集扩量 ⏳ 批 1/3 已完成（2026-08-19，6 → 12 个任务）
+
+工作量最大的一块，按"每次加几个、搭别的版本一起发"推进。**批 1 = 分层基建 + 可离线构造的 L2**。
+
+### 批 1 交付（✅ 已实现并本地自检）
+
+- **任务分层**：`Task` 加 `tier`（L1/L2/L3）、`expect_nudges`、`network`；
+  `run_eval.py` 加 `--tier` / `--offline`——ADR 已知限制 4 要求 L1/L2/L3 能分别跑，
+  全量 `--repeat 3` 按小时算，只给一个"全跑"入口没法用。
+- **`verify_nudges`（纯函数）**：核验 nudge 期望，接进 `run_eval` 判定。
+- **6 个 L2 任务**（3 反例硬断言 + 3 正例软观测），覆盖三个**可离线构造**的 detector：
+
+| 任务 | 类型 | 观测/禁止 |
+|---|---|---|
+| `neg_edit_same_file_progressing` | 反例 | 同一文件连改三次但一直在推进 → 专测 `stuck_hint` 误报 |
+| `neg_small_repo_survey` | 反例 | 小项目逐个读文件 → 专测 `search_hint` 误报 |
+| `neg_plain_fix` | 反例 | 一处明显 bug 改完即绿 → 全程不该有任何 nudge |
+| `pos_stuck_unfixable` | 正例 | 自相矛盾的测试 → 观测 `stuck_hint` |
+| `pos_browse_many_modules` | 正例 | 60 个模块逐个浏览 → 观测 `search_hint` |
+| `pos_deadend_missing_tool` | 正例 | 构建工具本机不存在 → 观测 `deadend_hint` |
+
+- **误报升为一等指标**：`report.py` 的 `nudge_violation` 列——某次改动一旦开始让 detector
+  在正常路径上乱插话，diff 表直接报出来。
+- 自检 `tests/test_eval_tasks.py` **17 测**（全离线）。
+
+### 实现中确认的三条设计（已回写 ADR 0027 决策 6）
+
+1. **正反例判据不对称**：反例是**硬断言门**（误报即 FAIL，确定性），正例是**仪表**
+   （只记触发率，漏报逼不出来、硬判会把"模型表现好"误记成"detector 坏了"）。
+2. **反例用 `{"*": False}` 通配**，不拆成八个任务——覆盖更全、少跑七次模型。
+3. **夹具必须先过启用门**：`search_nudge_files`(40)、`stuck_edit_threshold`、`trace_run` 可用性。
+   越不过门的正例是**哑弹**。自检里为此钉了两条（正例必须越门、反例必须低于门）。
+4. **只有"会插话"的事件才谈得上误报**（端到端压测时踩到）：八种事件里 `learning_shadow`
+   **不注入模型**（`loop.py` 只把 `learning_advice` append 进 `inject_blocks`，shadow 纯观测）。
+   把纯观测事件也当误报，会让**任何一次正常失败**都被误判成"detector 乱插话"。
+   故 `record.py` 分出 `INJECTING_NUDGES`（7 种），通配只禁这几种；shadow 照常计数、不背锅。
+
+### 夹具本身也是未验代码
+
+沿用换手真跑那次的教训，任务自检直接**跑夹具**证明：自相矛盾的测试真的失败、
+反例任务的起点真的是绿的、模块数真的越过/低于门槛、判分器拒绝篡改测试文件与糊弄式回答。
+
+### 真跑验收（2026-08-19，DeepSeek anthropic 端点 / deepseek-v4-flash）
+
+| | 结果 |
+|---|---|
+| 三个**反例** | **3/3 PASS，零误报**。`neg_edit_same_file_progressing` 用了 15 次工具、同一文件改了多次，`stuck_hint` 正确没响（每步都在推进、无失败信号）——这是 detector **精度**的第一份实证 |
+| 三个**正例** | 任务本身 3/3 PASS，但**触发率全为 0** |
+| V0 分库隔离 | ✅ 真跑下成立：`failures.db` mtime 停在补列那一刻、9 行历史数据一次没被碰；6 条评测语料全进 `failures.eval.db` |
+| Run Record | ✅ 三件套齐（真实 `model_id`、实测 token、53 字段配置快照），`error_classes` 也抓到了 |
+
+**正例触发率全 0 = 本批最重要的发现**，而且它有两种解释，**现在还分不清**：
+
+- 解释 A：**夹具压力不够**。模型每次都高效解掉了——`pos_stuck_unfixable` 读完测试就看出矛盾、
+  压根没编辑 3 次；`pos_browse_many_modules` 只用了 4 次工具就答完 60 个模块；
+  `pos_deadend_missing_tool` 试一次 npm 失败即如实报告，没重复走同一条路。
+- 解释 B：**这些 detector 在称职模型下本来就很少触发**——那它们的实际价值就要重估。
+
+两种解释的区分办法是**换更弱的模型 / 加大任务难度再测触发率**，这是 V5 的活。
+但无论哪种，一个结论现在就成立：**这三个正例目前是哑仪表，读数为 0 说明不了 detector 好坏。**
+批 2 设计时要把"如何真正施加压力"当成头等约束，别再造出跑得很顺的正例。
+
+> 附带印证了正反例非对称设计是对的：若按 ADR 原文把正例也当硬断言，
+> 这六个任务会报"3 个 detector 全坏了"——而实际上它们一个都没坏。
+
+### 批 2 / 批 3（未做）
+
+- **批 2 — 联网侧 L2**（`login_hint` / `research_hint` / `truncation_hint` 的正反例）。
+  这批**天生不稳定**：要真实检索、结果随时变。ADR 决策 4 的 cassette（块 V3）落地后再做，
+  否则每跑一次都在赌搜索引擎当天返回什么。**故意排在 V3 之后。**
+- **批 3 — L3 复合长任务**（~10 个：多阶段、需委派、需 crazy 跑完；判分只看终局可程序化事实）。
+
+## 块 V3 — 录制/回放：让评测进 CI
+
+**本阶段的技术核心**，也是唯一能让评测在开发机（2 核 4G）上自测的办法。
+
+- V3.1 在 `build_provider()` 外包一层，**不动任何 provider 实现**（`BaseProvider.stream_chat` 已是统一接口）：
+  `RecordingProvider`（真跑 + 落 cassette）/ `ReplayProvider`（离线回放）。
+- V3.2 cassette key = `sha1(model_id + system + messages_json + tools_json)`；图片用 blob hash 代替内容。
+  存 `data/cassettes/{task}/{key}.jsonl`，一行一个 `StreamEvent`。
+- V3.3 **miss 必须硬报错并指出第几步 miss，绝不静默回落真跑**——静默回落同时犯两个错：
+  偷偷烧 key，以及把"我的改动让轨迹发散了"这个**最有价值的信号**当噪声吞掉。
+- V3.4 L1+L2 的 replay 跑进 CI（现在 `.github/workflows/` 只有 tag 触发的 release.yml）。
+
+**角色划分，别混用**：
+
+| | replay | 真跑 × N |
+|---|---|---|
+| 用途 | **回归门** | **A/B 效果验证** |
+| 能验证 | 判分器、UI、非提示词路径的改动 | 提示词、detector 阈值、换模型 |
+
+## 块 V4 — 喂饱 Learning
+
+前四块做完才有料可吃。新增 `scripts/eval/harvest.py`：批跑 L2+L3（`--repeat 3`）→ 写满
+`failures.eval.db` → `aggregate()` → `propose()` → 候选策略报告（含证据指纹 + 样例 detail）。
+
+然后走已设计好的生命周期：**人审 → Golden 追加语料 → approve（强制 `golden_passed=True`）→ active**。
+`learning_shadow` 事件说明影子模式已有——V1 落盘后，**影子建议的采纳率与效果第一次变成可统计的**。
+
+**验收**：`propose()` 产出 **≥2 条有真实证据**的候选。一条都产不出 = 任务集失败面不够宽 → 回 V2 补任务。
+
+## 块 V5 — detector 阈值调优（持续）
+
+到这一步才有资格动那些拍脑袋的数字（`threshold=2` / `max_nudges=1` / 研究催重搜全局预算 / `_PARALLEL_CAP`）。
+
+每个 detector 出三列表：**触发率**（L2 正例中触发几个）｜**误报率**（L2 反例中误触发几个）｜
+**触发后是否改善**（nudge 后那轮 `Evaluation.issues` 是否减少 / Need 是否前进——判据现成，`eval` 事件里就有）。
+
+第三列最容易被忽略：**触发得准 ≠ 有用**。
+调参方式：replay 固定模型输出 → 只改阈值 → 对比 Run Record。**这是唯一能把模型随机性
+从改动效果里剥离的方法**，也是 V3 最大的回报。**任何阈值改动必须附 report.py 前后对比，
+不接受"感觉更好了"。**
+
+## 分期与成本
+
+| 块 | 依赖 | 粗估 | 开发机可做 |
+|---|---|---|---|
+| V0 | — | ~1 天 | ✅ **已完成并本地验收** |
+| V1 | V0 | 1~2 天 | ✅ **已完成并本地验收** |
+| V2 | V1 | 3~5 天，可分批 | ⏳ **批 1/3 已完成**（写 ✅ / 真跑验 ❌）|
+| V3 | V1 | 2~3 天 | 录 ❌ / 放 ✅ |
+| V4 | V0,V2,V3 | ~2 天 | ✅（回放） |
+| V5 | V4 | 持续 | ✅（回放） |
+
+**V0 必须最先**——唯一一块"不做就全白做"的。V3 之后 V4/V5 全程可在开发机用回放做，
+只有录 cassette 与 A/B 要搬 Windows（符合既定重活分工）。
+
+## 明确不做（记录理由，防重复讨论）
+
+- **不做完整事件溯源架构**：Run Record + cassette 已覆盖评测所需的回放能力。等真要做分叉/时间旅行
+  再上，别为架构漂亮提前付账。
+- **不自动采纳 Learning 候选**：理由 ADR 0014/0017 已立，`trajectory.py` 论证过同一件事
+  （"保守则永不触发，激进则批量生成垃圾"）。`approve` 的 `golden_passed=True` 硬门不变。
+  **喂饱的定义是"让 propose() 产出有证据的候选"，不是"让候选自动上线"。**
+- **不让模型判分当主判据**：只在纯程序化判不了时用，且必须多数投票。
+- **不追 dsh 的插件化**：本阶段没有一项需要它。
+
+---
+
 # 待办
 
 > 三档：**第一档挡着定版**（不是新开发）→ **第二档是明确写过"没做"的遗留**（小而确定）→ **第三档需要拍板**（工作量大）。
@@ -273,8 +565,11 @@ A 是地基，必须先过。B/C 可并行起步但 C 依赖 B 的 signals。D �
 
 
 - **FR-16 T2 完整形态**：长时间无打点时的轻提示。
-- **失败语料无来源标记**：评测/测试失败混进 FailureMemory → 要改 SQLite schema。（挡着 Learning 出干净候选）
-- **Learning 策略无 GUI 审批入口**：`proposed → active` 目前只能命令行。
+- ~~**失败语料无来源标记**~~ → **2026-08-19 并入第三阶段块 V0**（ADR 0027 决策 2）。原描述只看到"混"
+  这一半；读码又发现另一半更隐蔽——**指纹吃了临时工作区的绝对路径**，同一失败每跑生成不同指纹，
+  使 `propose()` 的双门两个方向同时失真。**来源标记解决"混"、指纹归一解决"碎"，必须一起做**，故合并。
+- **Learning 策略无 GUI 审批入口**：`proposed → active` 目前只能命令行。（下游依赖块 V4——
+  `propose()` 先要能产出有证据的候选，审批入口才有东西可审）
 - **技能化收尾**：生成的技能只落项目级 `.hermes/skills/`，无一键装全局；无"从已有技能反向生成命令"。
 - **斜杠命令 P1 缺口**：`$1 $2` 位置参数 / 子目录命名空间 / 交互式命令。
 - **设置面板未做三项**（v3.57.0 时用户圈掉的）：设置内搜索、记住上次 tab / 深链接、迁原生 `<dialog>`。
