@@ -11,6 +11,8 @@
 - "grounding" : 答案接地/时效闸（块H3c detect_ungrounded_answer：时效敏感+搜过+无引用无声明→催）
 - "switch"    : 换源策略阶梯（块H switch_strategy_nudge：NO_PROGRESS 逐级 site→browser→ask_user）
 - "novelty"   : 搜索结果 → 域名集（块H extract_domains：确定性去重/归一，Novelty 信号源）
+- "fingerprint": 两次工具调用 → 同/异指纹（ADR 0027 V0：死路指纹的路径归一口径。
+                 语料写**等价关系**不写哈希值——哈希不可读，且有意变更时全表重算无从审阅）
 - "consensus_gate": 开工 gate（ADR 0019 gate_status：未决阻塞==0 且签字→open，否则 locked；门理由禁含百分比）
 - "review_stop"   : 评审停止条件（ADR 0019 should_stop：max_rounds / no_new_blocking / wording_only / continue）
 
@@ -18,7 +20,44 @@
 新增能力时**追加**语料、不改既有期望（除非确是有意的行为变更，需同步说明）。
 """
 
+# 块 V0 语料用的固定假工作区（不需真实存在；写死才确定性可复现）。
+_WS = "/ws/proj"
+
 CASES = [
+    # ---- 块V0：死路指纹的路径归一（ADR 0027 决策 2）------------------------
+    # 同一个文件的绝对写法与相对写法必须同指纹——模型两种都会用。
+    {"id": "fp-abs-equals-rel", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": _WS + "/calc.py"}, "workspace": _WS},
+     "b": {"tool": "read_file", "params": {"path": "calc.py"}, "workspace": _WS},
+     "expect": "same"},
+    # 同一相对路径在两个不同工作区 → 同指纹（这是跨评测跑聚合的前提）。
+    {"id": "fp-cross-workspace", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": "/tmp/run1/calc.py"}, "workspace": "/tmp/run1"},
+     "b": {"tool": "read_file", "params": {"path": "/tmp/run2/calc.py"}, "workspace": "/tmp/run2"},
+     "expect": "same"},
+    # command 里嵌着的绝对路径同样要折（路径在命令行中间，切不出来）。
+    {"id": "fp-command-embedded-path", "kind": "fingerprint",
+     "a": {"tool": "run_bash", "params": {"command": "pytest /tmp/run1/test_calc.py -q"},
+           "workspace": "/tmp/run1"},
+     "b": {"tool": "run_bash", "params": {"command": "pytest /tmp/run2/test_calc.py -q"},
+           "workspace": "/tmp/run2"},
+     "expect": "same"},
+    # 反斜杠/正斜杠是同一个文件的两种写法。
+    {"id": "fp-separator-normalized", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": "src" + chr(92) + "a.py"}},
+     "b": {"tool": "read_file", "params": {"path": "src/a.py"}},
+     "expect": "same"},
+    # **防归一过头**：工作区内不同文件仍须分得开，否则所有路合成一条、死路记忆失效。
+    {"id": "fp-different-files-still-differ", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": _WS + "/calc.py"}, "workspace": _WS},
+     "b": {"tool": "read_file", "params": {"path": _WS + "/other.py"}, "workspace": _WS},
+     "expect": "diff"},
+    # 不传 workspace 时不折——存量调用方与旧库口径不变。
+    {"id": "fp-no-workspace-not-folded", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": "/tmp/run1/calc.py"}},
+     "b": {"tool": "read_file", "params": {"path": "/tmp/run2/calc.py"}},
+     "expect": "diff"},
+
     # ---- 块A：crazy verdict → Need -----------------------------------------
     {"id": "need-done", "kind": "need", "verdict": "done", "expect": "goal_satisfied"},
     {"id": "need-phase", "kind": "need", "verdict": "phase_done", "expect": "goal_satisfied"},
@@ -39,6 +78,23 @@ CASES = [
     {"id": "eval-shell-exit-zero", "kind": "evaluate", "tool": "run_powershell",
      "output": "[exit code] 0\n[stdout]\nok",
      "expect": {"has_issues": False, "metric": ["exit_code", 0.0]}},
+    # 退出码兜底（2026-08-19 新增，V1 揪出的缺口）：**新增语料，既有期望一条未改**。
+    # 测试没跑起来 / 收集到 0 个用例 / 全过但收尾非零——三种都必须判失败。
+    {"id": "eval-pytest-not-run-exit4", "kind": "evaluate", "tool": "run_bash",
+     "output": ("[exit code] 4\n[stdout]\n=== test session starts ===\n"
+                "platform linux -- Python 3.12.3, pytest-9.1.0\n"
+                "ERROR: file or directory not found: nonexistent_xyz.py\n"),
+     "expect": {"has_issues": True, "metric": ["exit_code", 4.0]}},
+    {"id": "eval-pytest-collected-zero", "kind": "evaluate", "tool": "run_bash",
+     "output": "[exit code] 5\n[stdout]\ncollected 0 items\n\n0 passed in 0.01s\n",
+     "expect": {"has_issues": True}},
+    {"id": "eval-pytest-passed-but-nonzero-exit", "kind": "evaluate", "tool": "run_bash",
+     "output": "[exit code] 1\n[stdout]\n==== 3 passed in 0.1s ====",
+     "expect": {"has_issues": True, "metric": ["passed", 3]}},
+    # 幻影计数回归门：跨行匹配曾把 `9.1.0\nERROR` 读成"0 errors"。total 必须**不存在**。
+    {"id": "eval-no-phantom-count-across-lines", "kind": "evaluate", "tool": "run_bash",
+     "output": "版本 pytest-9.1.0\nERROR: file not found",
+     "expect": {"has_issues": False, "metric": ["total", None]}},
     {"id": "eval-search-empty-not-failure", "kind": "evaluate", "tool": "grep_search",
      "output": "无命中。",
      "expect": {"has_issues": False}},

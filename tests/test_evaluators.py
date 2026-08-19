@@ -59,6 +59,59 @@ def test_coding_verify_marker_pass():
     assert e.issues == []
 
 
+# ---- CodingEvaluator：退出码兜底（2026-08-19 补，V1 揪出的缺口）----------------
+
+def test_coding_nonzero_exit_without_counts_is_not_run():
+    """`pytest 不存在的文件` → exit 4、无任何用例计数：测试**根本没跑起来**，必须是 blocker。
+
+    原先 CodingEvaluator 接管了（输出含 "pytest"）却解析不出计数，把退出码一起吞掉判成"无 issues"，
+    于是"测试命令本身写错了"这一整类失败对评估内核完全隐形。
+    """
+    out = ("[exit code] 4\n[stdout]\n=== test session starts ===\n"
+           "platform linux -- Python 3.12.3, pytest-9.1.0\n"
+           "ERROR: file or directory not found: nonexistent_xyz.py\n")
+    e = CodingEvaluator().evaluate("run_bash", out)
+    assert e.issues == ["测试未跑成=blocker"], e.issues
+    assert e.metrics["exit_code"] == 4.0
+    assert e.confidence == 1.0, "退出码是硬事实，不该还是 0.6 的启发式猜测"
+
+
+def test_coding_collected_zero_items_is_not_run():
+    """pytest 收集到 0 个用例（exit 5）：`0 passed` 不算"有计数"，同样是没跑成。"""
+    out = "[exit code] 5\n[stdout]\ncollected 0 items\n\n0 passed in 0.01s\n"
+    e = CodingEvaluator().evaluate("run_bash", out)
+    assert e.issues == ["测试未跑成=blocker"], (e.issues, e.metrics)
+
+
+def test_coding_all_passed_but_nonzero_exit_is_blocker():
+    """用例全过、命令却非零退出（收集/插件/收尾阶段出错）——也是真问题，不能报"全过"。"""
+    e = CodingEvaluator().evaluate("run_bash", "[exit code] 1\n[stdout]\n==== 3 passed in 0.1s ====")
+    assert e.issues == ["退出码非零=失败"], e.issues
+    assert e.metrics["passed"] == 3 and e.metrics["exit_code"] == 1.0
+
+
+def test_coding_count_regex_does_not_match_across_lines():
+    """**幻影计数回归门**：`pytest-9.1.0\nERROR:` 曾被 `(\\d+)\\s+errors?` 跨行读成"0 errors"，
+    凭空造出 total=0，于是"没跑成"被判成"用例全过"。计数正则必须限定同一行。"""
+    out = "版本 pytest-9.1.0\nERROR: file not found"
+    e = CodingEvaluator().evaluate("run_bash", out)
+    assert "total" not in e.metrics, e.metrics
+    assert "errors" not in e.metrics, e.metrics
+
+
+def test_coding_records_exit_code_even_with_counts():
+    """退出码无论有没有计数都记为事实——它是 shell 包装层给的硬信息。"""
+    e = CodingEvaluator().evaluate("run_bash", "[exit code] 0\n[stdout]\n==== 2 passed ====")
+    assert e.metrics["exit_code"] == 0.0 and e.metrics["passed"] == 2
+    assert e.issues == []
+
+
+def test_coding_without_exit_code_line_unchanged():
+    """没有 `[exit code]` 行的输入（verify.py 定向校验）行为不变——只加兜底、不改既有判定。"""
+    e = CodingEvaluator().evaluate("edit_file", "🧪 受影响测试（FR-13.C）：全部通过")
+    assert e.issues == [] and "exit_code" not in e.metrics
+
+
 # ---- SearchEvaluator：检索 ----------------------------------------------------
 
 def test_search_grep_empty():

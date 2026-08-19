@@ -15,7 +15,10 @@ import re
 from ..contract import Evaluation
 
 _SHELL_TOOLS = frozenset({"run_shell", "run_powershell", "run_bash"})
-_EXIT = re.compile(r"\[exit code\]\s*(-?\d+)")
+# 退出码是 shell 输出格式的一部分，但 **CodingEvaluator 也要读**（它会接管 shell 跑出来的
+# 测试输出，接管了就有责任别把退出码弄丢）。故升为共享词汇、只此一份——
+# 同一个格式抄两份正则，迟早一处改了另一处没改（本项目已因"两处写"吃过亏）。
+EXIT_CODE_RE = re.compile(r"\[exit code\]\s*(-?\d+)")
 _STDERR = re.compile(r"\[stderr\]\n(.*)\Z", re.S)
 
 
@@ -41,7 +44,7 @@ class ShellEvaluator:
             return Evaluation(signals=["shell 可执行程序缺失"],
                               issues=["环境缺 shell=无法执行"], confidence=1.0)
 
-        m = _EXIT.search(text)
+        m = EXIT_CODE_RE.search(text)
         if m:
             code = int(m.group(1))
             metrics["exit_code"] = float(code)

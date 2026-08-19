@@ -171,13 +171,23 @@ def _check_escalate(c):
     return got == c["expect"], got
 
 
+def _check_fingerprint(c):
+    """块V0：比对两次调用的指纹是同是异。语料写等价关系，不写哈希值。"""
+    from agentcore.agent.world_state import fingerprint
+    a, b = c["a"], c["b"]
+    fa = fingerprint(a["tool"], a.get("params"), a.get("workspace"))
+    fb = fingerprint(b["tool"], b.get("params"), b.get("workspace"))
+    got = "same" if fa == fb else "diff"
+    return got == c["expect"], got
+
+
 _DISPATCH = {
     "need": _check_need, "evaluate": _check_evaluate, "classify": _check_classify,
     "retry": _check_retry, "deadend": _check_deadend, "learn": _check_learn,
     "research_judge": _check_research_judge, "grounding": _check_grounding,
     "switch": _check_switch, "novelty": _check_novelty,
     "consensus_gate": _check_consensus_gate, "review_stop": _check_review_stop,
-    "escalate": _check_escalate,
+    "escalate": _check_escalate, "fingerprint": _check_fingerprint,
 }
 
 
