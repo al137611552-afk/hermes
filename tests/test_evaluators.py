@@ -225,6 +225,42 @@ def test_emit_result_no_eval_for_unknown_tool():
     assert "eval" not in captured["tool_result"]   # 无适配 Evaluator → 不附
 
 
+
+def test_coding_evaluator_ignores_observation_tools():
+    """**读文件/检索读到失败字样 ≠ 这次动作失败了**（ADR 0027 决策 11，块 V4a）。
+
+    CodingEvaluator 按输出特征词认领（测试结果会搭在各种工具输出里），但观察类工具例外——
+    否则读一个含 assert 的测试文件就被判成 blocker「测试未全过」，进而污染失败语料、
+    让 deadend_hint 在纯只读任务里误报（块 V4 收割语料时实测照出）。
+    """
+    from agentcore.agent.evaluators import evaluate
+    from agentcore.agent.evaluators.base import OBSERVATION_TOOLS
+
+    body = "1\tassert add(1, 2) == 4, \"1+2 应当等于 4\"\n2\tAssertionError"
+    for name in ("read_file", "grep_search", "list_dir", "code_outline", "git_diff"):
+        assert name in OBSERVATION_TOOLS, name
+        assert CodingEvaluator().applies(name, body) is False, name
+    # 检索类仍走 SearchEvaluator（命中数事实照常产出），只是不再被 Coding 抢走
+    ev = evaluate("grep_search", body)
+    assert ev is None or not ev.issues, ev
+
+
+def test_coding_evaluator_still_claims_execution_output():
+    """别修过头：测试结果搭在 shell / edit_file（受影响测试）输出里，仍必须被接管。"""
+    assert CodingEvaluator().applies("run_bash", "1 failed, 2 passed in 0.3s") is True
+    assert CodingEvaluator().applies("edit_file", "🧪 受影响测试（FR-13.C）：1 failed") is True
+
+
+def test_reading_a_failing_test_file_is_not_a_failure():
+    """端到端口径：整条链路（evaluate → classify）对读文件必须一声不响。"""
+    from agentcore.agent.loop import AgentLoop
+
+    body = "1\tdef test_x():\n2\t    assert 1 == 2\n3\tAssertionError: boom"
+    _ev, classes = AgentLoop._assess("read_file", body, True, {"path": "test_x.py"})
+    assert classes == [], classes
+    _ev, classes = AgentLoop._assess("run_bash", body, True, None)
+    assert classes, "执行类的同样文本仍必须判成失败，别修过头"
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

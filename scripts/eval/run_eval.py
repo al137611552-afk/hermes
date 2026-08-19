@@ -55,6 +55,19 @@ def _write_expected(task_dir: Path, passed, why, result) -> None:
         json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def _read_expected(task_dir: Path) -> dict:
+    f = task_dir / _EXPECTED
+    return json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+
+
+def _baseline_diff(old: dict, new: dict) -> str:
+    """逐项列出基线的变化（刷新时打印，不许静默改绿）。"""
+    parts = [f"{k}: {old.get(k)!r} → {new[k]!r}"
+             for k in ("passed", "tool_calls", "steps", "subagents", "nudges")
+             if old.get(k) != new[k]]
+    return "；".join(parts)
+
+
 def _match_expected(task_dir: Path, passed, result) -> "tuple[bool, str]":
     """回放结果与录制基线逐项比对。**没有基线就算失败**——静默放过等于没有门。"""
     f = task_dir / _EXPECTED
@@ -87,11 +100,16 @@ def main() -> int:
     ap.add_argument("--accumulate", action="store_true",
                     help="共用一个死路记忆库累积语料（喂块 V4）。默认每跑独立库——"
                          "共用会让反例随语料增长逐渐误报、且 cassette 永远 miss")
+    ap.add_argument("--refresh-baseline", action="store_true",
+                    help="回放并**改写录制基线**（有意行为变更后用；轨迹 miss 时拒绝刷新）")
     ap.add_argument("--cassette-dir", default=None,
                     help="录音根目录（默认 tests/cassettes；每个任务一个子目录）")
     args = ap.parse_args()
     if args.record and args.replay:
         print("--record 与 --replay 互斥")
+        return 2
+    if args.refresh_baseline and not args.replay:
+        print("--refresh-baseline 只能配 --replay 用")
         return 2
     # 录音放 tests/ 而非 ADR 原文的 data/：data/ 在 .gitignore 里，CI 拿不到就谈不上"进 CI"。
     cassette_root = Path(args.cassette_dir) if args.cassette_dir else (ROOT / "tests" / "cassettes")
@@ -99,12 +117,21 @@ def main() -> int:
     names = [args.task] if args.task else list(TASKS)
     if args.tier:
         names = [n for n in names if TASKS[n].tier == args.tier]
+    unrecorded: list = []
     if args.replay:
         # **大声跳过、不静默**：哪些任务进不了回放门、为什么，必须当场说清楚
         skip = [n for n in names if not TASKS[n].replayable]
         names = [n for n in names if TASKS[n].replayable]
         for n in skip:
             print(f"（跳过不可回放任务 {n}：{TASKS[n].unreplayable_why}）")
+        # **还没录过**的任务（连目录都没有）：跳过并在结尾汇总提醒。
+        # 与"目录在、基线没了"刻意区分开——后者是反常状态，仍按 _match_expected 判 FAIL。
+        # 不这么分，新加一个任务就会让 CI 一路红到录制那天为止；分了，门的强度一点没降。
+        unrecorded = [n for n in names if not (cassette_root / n).is_dir()]
+        names = [n for n in names if (cassette_root / n).is_dir()]
+        for n in unrecorded:
+            print(f"（跳过尚未录制的任务 {n}：录制命令 "
+                  f"python scripts/eval/run_eval.py --task {n} --record）")
     if args.offline:
         skipped = [n for n in names if TASKS[n].network]
         names = [n for n in names if not TASKS[n].network]
@@ -155,7 +182,11 @@ def main() -> int:
                 fdb = str(ROOT / "data" / "failures.eval.db") if args.accumulate else None
                 result = run_task(str(ws), task.prompt, model=args.model,
                                   verbose=not args.quiet, failure_db=fdb,
-                                  max_steps=task.max_steps)
+                                  max_steps=task.max_steps, max_tokens=task.max_tokens,
+                                  world=task.world, deny_tools=task.deny_tools,
+                                  autonomous=task.autonomous,
+                                  crazy_rounds=task.crazy_rounds,
+                                  crazy_seconds=task.crazy_seconds)
                 if result.error:
                     passed, why = False, f"运行出错：{result.error[:200]}"
                 else:
@@ -169,7 +200,22 @@ def main() -> int:
             elif n_why:
                 why = f"{why}（{n_why}）" if why else n_why
 
-            if args.replay:
+            if args.replay and args.refresh_baseline:
+                # **有意行为变更后刷新基线**（块 V4a 加）。为什么需要它、以及为什么它不是作弊：
+                # 重录会把**新的模型轨迹**一起换掉，于是"代码改动的效果"与"模型这次的发挥"
+                # 混在一起、谁也说不清；而回放已经把模型输出焊死，此时刷新基线得到的
+                # 差异**只可能来自我们自己的代码**——这正是块 V5 调阈值时要的那种对照。
+                # 三条纪律：①只能配 --replay；②**miss 时拒绝刷新**（轨迹都没跑通，
+                # 基线就无从谈起，必须重录）；③每一项变化都打印出来，不许静默改绿。
+                if "没有对应录音" in (result.error or ""):
+                    passed, why = False, (f"cassette miss，拒绝刷新基线（该重录）：{result.error[:160]}")
+                else:
+                    old_exp = _read_expected(cassette_root / name)
+                    _write_expected(cassette_root / name, passed, why, result)
+                    changed = _baseline_diff(old_exp, _baseline(passed, result))
+                    why = f"基线已刷新（{changed or '无变化'}）"
+                    passed = True
+            elif args.replay:
                 # 回放模式下改判"是否与基线一致"——这才是回归门。
                 same, diff = _match_expected(cassette_root / name, passed, result)
                 if same:
@@ -202,6 +248,10 @@ def main() -> int:
                     print(f"  ⚠ Run Record 落盘失败：{type(e).__name__}: {e}")
 
     n_pass = sum(1 for _, p, _, _ in rows if p)
+    if unrecorded:
+        # 放在总分**之前**打，免得被一屏 PASS 冲走：没进门的任务就是没被守住的任务
+        print(f"\n⚠ {len(unrecorded)} 个任务尚未录制、未进回放门："
+              f"{', '.join(unrecorded)}")
     print("\n" + "=" * 64)
     print(f"{'任务':<14}{'结果':<8}{'耗时':>6}{'工具':>5}{'子任务':>5}  说明")
     for name, passed, why, r in rows:

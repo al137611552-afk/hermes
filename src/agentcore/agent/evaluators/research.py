@@ -62,12 +62,20 @@ def _prices_in(text: str) -> "list[float]":
 
 
 def split_items(text: str) -> "list[str]":
-    """把搜索结果正文切成每条结果一段（按行首 'N. '）。切不出就整体当一段。"""
+    """把搜索结果正文切成每条结果一段（按行首 'N. '）。切不出就整体当一段。
+
+    **表头不止一行**（v3.54 加块3「读正文」之后）：`[搜索结果·引擎] query` 之后还可能跟
+    `[已读正文] …`、部分来源失败时的 `[注] …`。只剥掉第一行会把余下的表头行当成**一条结果**，
+    `hits` 凭空多 1（幻影条目）。故首行确认是搜索结果表头后，把紧随其后的 `[` 开头行一并剥掉——
+    正文里的结果一律在行首 `N. ` 之后，不会被误伤。
+    """
     body = text or ""
-    # 去掉首行 "[搜索结果·引擎] query"
     lines = body.splitlines()
     if lines and lines[0].lstrip().startswith("[搜索结果"):
-        body = "\n".join(lines[1:])
+        i = 1
+        while i < len(lines) and lines[i].lstrip().startswith("["):
+            i += 1
+        body = "\n".join(lines[i:])
     parts = _ITEM_RE.split(body)
     items = [p.strip() for p in parts if p.strip()]
     return items

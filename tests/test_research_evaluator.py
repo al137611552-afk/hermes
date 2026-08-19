@@ -47,6 +47,41 @@ def test_split_items_counts_results():
 
 
 # ---- 调度：web_search 归 ResearchEvaluator（不是 SearchEvaluator）----
+def test_split_items_strips_the_whole_multi_line_header():
+    """表头不止一行：v3.54 加了「搜完顺带读正文」之后还有 `[已读正文] …`，
+    部分来源失败时还有 `[注] …`。只剥第一行会把余下表头当成**一条结果**，`hits` 凭空多 1。
+
+    这个偏差是 V2 批 2 的桩世界照出来的——Golden 那两条 research 语料建于块3 之前、
+    都是单行表头，所以一直没照出来（同 V1a：评测设施照出评估内核自己的 bug）。
+    """
+    out = ("[搜索结果·bing+duckduckgo] 机械键盘 500元以内（自 12 条候选选 3 条）\n"
+           "[注] 部分来源未用上：duckduckgo: 超时\n"
+           "[已读正文] 前 3 条已抓取正文并按查询摘录（下面 ↳ 的部分）\n"
+           "1. A 键盘\n   http://a\n   ¥899\n   ↳ 页面标价 ¥899\n"
+           "2. B 键盘\n   http://b\n   ¥1299\n"
+           "3. C 键盘\n   http://c\n   ¥2380")
+    items = split_items(out)
+    assert len(items) == 3, items
+    assert all(not it.startswith("[") for it in items), items
+    ev = _ev(out, "机械键盘 500元以内")
+    assert ev.metrics["hits"] == 3.0 and ev.metrics["priced"] == 3.0
+    assert ev.metrics["within_budget"] == 0.0 and ev.issues
+
+
+def test_split_items_keeps_bracketed_text_inside_results():
+    """只剥**表头块**（首行确认是搜索结果表头后紧随的 `[` 行）；正文里的方括号一律不动。"""
+    out = ("[搜索结果·bing] 键盘\n"
+           "1. A 键盘\n   http://a\n   [限时] ¥199\n"
+           "2. B 键盘\n   http://b\n   ¥299")
+    items = split_items(out)
+    assert len(items) == 2 and "[限时]" in items[0], items
+
+
+def test_split_items_without_search_header_is_untouched():
+    """首行不是搜索结果表头就一行都不剥（别的工具输出误入时不该被啃掉）。"""
+    assert split_items("[已读正文] 前 1 条\n1. A\n2. B") == ["[已读正文] 前 1 条", "A", "B"]
+
+
 def test_dispatch_routes_web_search_to_research():
     out = "[搜索结果·bing] x\n1. t\n   http://u\n   ¥99 元好物"
     ev = evaluate("web_search", out, {"query": "x 100元以内"})

@@ -393,6 +393,41 @@ def test_failure_memory_migrates_legacy_db_without_dropping_rows():
     print("✓ 旧库补 source 列不丢数据、可继续累加")
 
 
+
+def test_quality_gap_tools_do_not_enter_failure_memory():
+    """**"返回了但不达标" ≠ "这条路走不通"**（ADR 0027 决策 11，块 V4a）。
+
+    `web_search` 命中预算 blocker 时曾被记成失败语料。方向是反的——它真正的硬失败
+    （超时/无结果）反倒不产 issues；记进来的必然是质量差距，而质量差距已有块H2 专门处置
+    （催重搜/换源阶梯）。后果：同一个 query 被当死路累计、与 research_hint 重复插话，
+    且 taxonomy 没有"质量不达标"这一类，全落进 unknown（块 V4 收割：6 条路里 5 条是它）。
+    """
+    from agentcore.agent.loop import _QUALITY_ONLY_TOOLS, detect_repeated_failure
+
+    class C:
+        def __init__(self, name, params, cid):
+            self.name, self.input, self.id = name, params, cid
+
+    out = ("[搜索结果·bing] 机械键盘 500元以内\n"
+           "1. A 键盘\n   http://a\n   ¥899\n"
+           "2. B 键盘\n   http://b\n   ¥1299")
+    params = {"query": "机械键盘 500元以内"}
+    assert "web_search" in _QUALITY_ONLY_TOOLS
+
+    ws = WorldState()
+    nudge = detect_repeated_failure([C("web_search", params, "c1")], {"c1": out},
+                                    ws, None, set(), threshold=1)
+    assert nudge is None, nudge
+    assert ws.failures_for(fingerprint("web_search", params)) == 0, "质量差距不该进失败记忆"
+
+    # 别修过头：同样一段"失败"文本走执行类工具，照旧记
+    ws2 = WorldState()
+    detect_repeated_failure([C("run_bash", {"command": "pytest"}, "c2")],
+                            {"c2": "[exit code] 1\n1 failed, 2 passed in 0.3s"},
+                            ws2, None, set(), threshold=1)
+    assert ws2.failures_for(fingerprint("run_bash", {"command": "pytest"})) == 1, \
+        "执行类的失败仍必须记"
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

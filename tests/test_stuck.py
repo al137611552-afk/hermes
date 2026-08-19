@@ -20,7 +20,12 @@ def test_login_wall_fires_and_forbids_search_engine():
     calls = [type("C", (), {"id": "n1", "name": "browser__browser_navigate"})()]
     out = {"n1": "知乎 - 请先登录后查看回答内容，扫码登录"}
     msg = detect_login_wall(calls, out, state)
-    assert msg and "ask_user" in msg and ("google" in msg or "搜索引擎" in msg)
+    # **有意行为变更（2026-08-19）**：文案从 ask_user 改成 request_handoff。
+    # 登录要用户**动手**（换手），不是让用户**拍板**（提问）——这是 config.yaml 系统提示词
+    # 写死的分工。此处曾一直停在换手工具（ADR 0023）落地之前的写法，等于最高权限的硬注入
+    # 在教模型用错工具、与系统提示词自相矛盾。V2 批 2 真跑照出：模型自己走了 request_handoff。
+    assert msg and "request_handoff" in msg and ("google" in msg or "搜索引擎" in msg)
+    assert "ask_user" not in msg
     # 每轮只提一次
     assert detect_login_wall(calls, out, state) is None
 

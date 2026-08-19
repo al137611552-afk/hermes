@@ -1,0 +1,50 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:11379c2ce1", "msg1:31c2249e32", "msg2:2675d5c87f", "msg3:f1cb05c7d9", "msg4:95fcfdd8b3", "msg5:39d1d0cb93", "msg6:daf18edaef", "msg7:3a78f284b3", "msg8:5b37eee4b4", "msg9:f07e559ac1", "msg10:559e8863c7", "msg11:bde8a7aa4a", "msg12:71bc6dfbdc", "msg13:2596f8a49e", "msg14:00f67585c2"], "model": "deepseek-v4-flash", "n_messages": 15, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "Con"}
+{"type": "thinking", "text": "ventional"}
+{"type": "thinking", "text": " Comm"}
+{"type": "thinking", "text": "its"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "明确"}
+{"type": "thinking", "text": "要求"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": "后"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "所以"}
+{"type": "thinking", "text": "可以直接"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "分支"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": " feature"}
+{"type": "thinking", "text": "/c"}
+{"type": "thinking", "text": "ou"}
+{"type": "thinking", "text": "pon"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "已经在"}
+{"type": "thinking", "text": "非"}
+{"type": "thinking", "text": "默认"}
+{"type": "thinking", "text": "分支"}
+{"type": "thinking", "text": "上"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "全部"}
+{"type": "text", "text": "通过"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "提交"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "Con"}
+{"type": "text", "text": "ventional"}
+{"type": "text", "text": " Comm"}
+{"type": "text", "text": "its"}
+{"type": "text", "text": "）："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_dUnrVulCkaPBFJpZavUc1871", "name": "git_commit", "input": {"message": "feat(shop): 新增优惠券模块 apply_coupon\n\n支持 SAVE20 立减 20 元（下限 0）、HALF 五折，未知券码抛 ValueError。\nrun_tests.py 补充对应断言。"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 90, "output": 142, "cache_read": 11264, "cache_write": 0}}}

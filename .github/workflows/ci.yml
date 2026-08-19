@@ -68,3 +68,5 @@ jobs:
             --model dsv4 --quiet
           python scripts/eval/run_eval.py --tier L2 --offline --replay --no-record \
             --model dsv4 --quiet
+          python scripts/eval/run_eval.py --tier L3 --offline --replay --no-record \
+            --model dsv4 --quiet

@@ -1,0 +1,8 @@
+{
+ "passed": true,
+ "tool_calls": 16,
+ "steps": 9,
+ "subagents": 0,
+ "nudges": {},
+ "why": "三阶段产物齐、测试全绿（1 轮，停因 goal_reached，重规划 0 次）"
+}

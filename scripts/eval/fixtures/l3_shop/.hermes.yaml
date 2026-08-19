@@ -1,0 +1,2 @@
+# 项目级配置：验收门/自动测试都用这条命令（cwd=项目根）
+test_command: python run_tests.py

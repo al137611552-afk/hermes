@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 
 from ..contract import Evaluation
+from .base import OBSERVATION_TOOLS
 from .shell import EXIT_CODE_RE
 
 # pytest 摘要里的计数（大小写不敏感，单复数都吃）。
@@ -38,6 +39,14 @@ _FAIL_WORDS = ("Traceback", "AssertionError", "FAILED", "未通过", "🧪 受�
 
 class CodingEvaluator:
     def applies(self, tool_name: str, output: str) -> bool:
+        """按**输出特征词**认领——因为测试结果会搭在各种工具的输出里
+        （shell 跑测试、edit_file 后自动跑的受影响测试都算）。
+
+        但**观察类工具除外**：读文件/检索读到的失败字样是"世界里有这段文本"，
+        不是"我这次动作失败了"（ADR 0027 决策 11）。
+        """
+        if tool_name in OBSERVATION_TOOLS:
+            return False
         return any(m in output for m in _TEST_MARKERS)
 
     def evaluate(self, tool_name: str, output: str, tool_input=None) -> Evaluation:

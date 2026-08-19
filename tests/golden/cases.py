@@ -159,6 +159,21 @@ CASES = [
               {"fp": "p3", "class": "transient_io"}],
      "expect": {"classes": []}},              # 瞬时 IO 永不成策略
 
+    # ---- 块 V4a：观察类工具的输出里有失败字样 ≠ 一次失败（ADR 0027 决策 11）----
+    # 补盲区，非改行为：既有 evaluate 语料用的都是执行类工具（run_bash/run_powershell），
+    # 从没覆盖"读到一个失败的测试文件"这条路，于是它一直被判成 blocker 并写进失败语料。
+    {"id": "eval-read-file-with-assertions-not-a-failure", "kind": "evaluate", "tool": "read_file",
+     "params": {"path": "run_tests.py"},
+     "output": ("1\tfrom calc import add\n"
+                "2\tassert add(1, 2) == 4, \"1+2 应当等于 4\"\n"
+                "3\tAssertionError\n"),
+     "expect": {"has_issues": False}},
+    {"id": "eval-grep-hit-with-traceback-not-a-failure", "kind": "evaluate", "tool": "grep_search",
+     "params": {"pattern": "AssertionError"},
+     "output": ("tests/test_x.py:12:    AssertionError: boom\n"
+                "tests/test_y.py:44:Traceback (most recent call last):\n"),
+     "expect": {"has_issues": False}},
+
     # ---- 块H1：搜索/调研结果质量——预算约束满足（小红书 618 睡衣 500 元验收）----
     {"id": "research-budget-miss", "kind": "evaluate", "tool": "web_search",
      "params": {"query": "在小红书搜索618推荐的女士睡衣，500元以内"},
@@ -167,6 +182,15 @@ CASES = [
                 "2. 设计师款睡裙\n   http://b\n   1280元\n"
                 "3. 进口长袖睡衣\n   http://c\n   ￥699"),
      "expect": {"has_issues": True, "metric": ["within_budget", 0.0]}},
+    # 表头**两行**（v3.54 块3「搜完顺带读正文」之后的真实形态）：`hits` 必须仍是结果条数。
+    # 补盲区，非改行为——原有两条语料建于块3 之前、都是单行表头，故一直没覆盖到（V2 批 2 照出）。
+    {"id": "research-budget-miss-multiline-header", "kind": "evaluate", "tool": "web_search",
+     "params": {"query": "机械键盘 500元以内"},
+     "output": ("[搜索结果·bing+duckduckgo] 机械键盘 500元以内\n"
+                "[已读正文] 前 2 条已抓取正文并按查询摘录（下面 ↳ 的部分）\n"
+                "1. A 键盘\n   http://a\n   ¥899\n   ↳ 页面标价 ¥899\n"
+                "2. B 键盘\n   http://b\n   ¥1299"),
+     "expect": {"has_issues": True, "metric": ["hits", 2.0]}},
     {"id": "research-budget-ok", "kind": "evaluate", "tool": "web_search",
      "params": {"query": "女士睡衣 500元以内"},
      "output": ("[搜索结果·bing] 女士睡衣\n"

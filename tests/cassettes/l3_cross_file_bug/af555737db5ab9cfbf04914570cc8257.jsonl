@@ -1,0 +1,9 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:1d746b61f5", "msg1:a3804ac870", "msg2:da41e06c0d", "msg3:bfbd3ae490", "msg4:8ee38655f2", "msg5:c940c12451", "msg6:fa34ec5aa6", "msg7:4d86e2e831", "msg8:2050c51d2a", "msg9:7153faac17", "msg10:c3b50986a5", "msg11:bbdbdd25d3", "msg12:889225c771", "msg13:ba986a3797", "msg14:b69696de0c"], "model": "deepseek-v4-flash", "n_messages": 15, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "text", "text": "跑"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "全"}
+{"type": "text", "text": "绿"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_equvyrroTQz6tnOK9j8f2069", "name": "run_bash", "input": {"command": "python run_tests.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 36, "output": 54, "cache_read": 13056, "cache_write": 0}}}
