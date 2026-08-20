@@ -61,9 +61,23 @@ class _FakeModel:
     model = "deepseek-v4-flash"
 
 
+class _FakeWeb:
+    """检索链路的旋钮（FR-11.1d 起也进快照——A/B 两轮全靠它才分得开）。"""
+
+    def __init__(self):
+        self.enabled = True
+        self.search_engine = "auto"
+        self.read_top_n = 3
+        self.firecrawl = "fallback"
+
+    def model_dump(self):
+        return dict(vars(self))
+
+
 class _FakeCfg:
     def __init__(self):
         self.agent = _FakeAgent()
+        self.web = _FakeWeb()
         self.active_model = "ds"
 
     def get_model(self, name):
@@ -76,6 +90,21 @@ class _FakeResult:
         self.elapsed = elapsed
         self.answer = answer
         self.error = error
+
+
+def test_config_snapshot_keeps_web_knobs():
+    """检索旋钮改变解题过程，却曾整段不在快照里——两轮 A/B 的记录会显示"配置相同"。
+
+    这正是本模块开头那条纪律（可比性三件套）要防的：**两份不可比的记录放一起做对比，
+    产出的就是自信的错数**（ADR 0025 决策 3）。
+    """
+    cfg = _FakeCfg()
+    snap = config_snapshot(cfg)
+    assert snap["web"]["firecrawl"] == "fallback", snap
+    cfg.web.firecrawl = "always"
+    assert config_snapshot(cfg)["web"] != snap["web"], "A/B 两档必须分得开"
+    # agent.* 那份的既有口径不受影响
+    assert "workspace" not in snap["agent"] and snap["agent"]["max_steps"] == 25
 
 
 # ---- summarize_events：指标提炼 ---------------------------------------------

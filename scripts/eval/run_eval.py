@@ -93,6 +93,10 @@ def main() -> int:
     ap.add_argument("--no-record", action="store_true", help="不落盘（临时试跑用；正式对比别用）")
     ap.add_argument("--tier", choices=TIERS, help="只跑某一层（L1 冒烟 / L2 能力面 / L3 复合）")
     ap.add_argument("--offline", action="store_true", help="跳过需要联网的任务")
+    ap.add_argument("--firecrawl", default="", choices=("", "off", "fallback", "always"),
+                    help="覆盖 web.firecrawl 三档（默认跟随 config.yaml）。"
+                         "**只影响真网任务**——桩世界会关掉 web.enabled，那条路上它不参与。"
+                         "两档各跑一轮即 A/B；档位会落进 Run Record 的 web 快照，故两轮可比")
     ap.add_argument("--record", action="store_true",
                     help="录制模式：真跑并把模型响应落成 cassette（块 V3）")
     ap.add_argument("--replay", action="store_true",
@@ -186,7 +190,8 @@ def main() -> int:
                                   world=task.world, deny_tools=task.deny_tools,
                                   autonomous=task.autonomous,
                                   crazy_rounds=task.crazy_rounds,
-                                  crazy_seconds=task.crazy_seconds)
+                                  crazy_seconds=task.crazy_seconds,
+                                  firecrawl=args.firecrawl)
                 if result.error:
                     passed, why = False, f"运行出错：{result.error[:200]}"
                 else:

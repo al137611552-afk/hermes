@@ -94,7 +94,7 @@ def _deny_tools(conv, deny: "tuple | list") -> None:
 def run_task(workspace: str, prompt: str, *, model: "str | None" = None,
              verbose: bool = True, db_path: "str | None" = None,
              failure_db: "str | None" = None,
-             max_steps: int = 0, max_tokens: int = 0, world: str = "",
+             max_steps: int = 0, max_tokens: int = 0, world: str = "", firecrawl: str = "",
              deny_tools: "tuple | list" = (), autonomous: bool = False,
              crazy_rounds: int = 0, crazy_seconds: int = 0) -> EvalResult:
     """在指定工作区无头跑一轮任务，返回 EvalResult。
@@ -136,6 +136,10 @@ def run_task(workspace: str, prompt: str, *, model: "str | None" = None,
     # 该功能本身有独立单测（tests/test_affected_tests.py），关掉不损失覆盖面。
     cfg.agent.auto_affected_test = False
     cfg.agent.screenshot = False
+    if firecrawl:
+        # 托管检索源三档（FR-11.1d）。**只对真网任务有意义**：桩世界会把 web.enabled 关掉，
+        # 那条链路上 Firecrawl 根本不参与。落进 Run Record 的 web 快照，两轮才可比。
+        cfg.web.firecrawl = firecrawl
     if max_steps > 0:
         cfg.agent.max_steps = max_steps
     if max_tokens > 0:

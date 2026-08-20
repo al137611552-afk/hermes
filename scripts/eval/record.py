@@ -107,11 +107,19 @@ def config_snapshot(cfg) -> dict:
 
     整份 `agent.*` 全量落下、不手工列白名单——手工列表必然与新增字段漂移，
     而漂移的后果是"两份记录看着可比、实际不可比"。剔掉的只有每跑必变的临时路径。
+
+    **`web.*` 同样全量落下**（FR-11.1d 起）：检索链路的旋钮（引擎、宽召回、读正文条数、
+    托管源三档）直接改变解题过程，而此前它们一个都不在快照里——拿 `firecrawl=fallback`
+    与 `always` 两轮记录做对比，配置栏会显示"完全相同"，正是本模块开头那条纪律要防的。
     """
-    agent = cfg.agent.model_dump() if hasattr(cfg.agent, "model_dump") else dict(vars(cfg.agent))
+    def _dump(section):
+        return section.model_dump() if hasattr(section, "model_dump") else dict(vars(section))
+
+    agent = _dump(cfg.agent)
     for k in _VOLATILE_CONFIG_KEYS:
         agent.pop(k, None)
-    return {"active_model": getattr(cfg, "active_model", None), "agent": agent}
+    return {"active_model": getattr(cfg, "active_model", None), "agent": agent,
+            "web": _dump(cfg.web)}
 
 
 def model_identity(cfg, model_name=None) -> dict:
