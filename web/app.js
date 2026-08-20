@@ -1155,9 +1155,15 @@ function showToast(text) {
 function renderPermission(v, req) {
   const bar = document.createElement("div");
   bar.className = "perm-bar bubble";
+  // 高影响力工具（agent 型 MCP server）：**参数要看得见**——sandbox 决定它能不能改文件，
+  // cwd 决定它在哪儿改，用默认摘要会被长 prompt 截没。
+  const brief = req.always ? summarizeKeyParams(req.params) : summarize(req.params);
   bar.innerHTML =
     `<div class="perm-text">⚠ 请求执行危险操作：<b>${escapeHtml(req.tool)}</b>` +
-    `<code>${escapeHtml(summarize(req.params))}</code></div>`;
+    `<code>${escapeHtml(brief)}</code>` +
+    (req.always ? '<div class="perm-note">这类工具会自主写文件、跑命令，'
+                + '<b>每次都会询问</b>（不受「本会话全部允许」影响）。</div>' : "") +
+    `</div>`;
 
   const actions = document.createElement("div");
   actions.className = "perm-actions";
@@ -1180,7 +1186,8 @@ function renderPermission(v, req) {
     b.title = "本会话内，匹配此规则的同类操作不再询问";
     actions.appendChild(b);
   }
-  actions.appendChild(mk("本会话全部允许", "allow_all", "perm-all"));
+  // always 的请求不给"以后别问"的出口：给了也不生效，点了反而像 bug
+  if (!req.always) actions.appendChild(mk("本会话全部允许", "allow_all", "perm-all"));
   bar.appendChild(actions);
   appendRow(v, bar);
 }
@@ -3888,7 +3895,7 @@ async function renderMcpPane() {
         ? `<div class="mcp-err">连接失败：${esc(errors[name])}</div>` : "";
       return `<div class="mcp-row" data-name="${esc(name)}">
         <div class="mcp-main">
-          <div class="mcp-name">${esc(name)}${s.trust ? ' <span class="mcp-trust">免确认</span>' : ''} ${status}</div>
+          <div class="mcp-name">${esc(name)}${s.trust ? ' <span class="mcp-trust">免确认</span>' : ''}${s.always_confirm ? ' <span class="mcp-always">每次都问</span>' : ''} ${status}</div>
           <div class="mcp-cmd">${esc(s.command || "")} ${esc((s.args || []).join(" "))}</div>
           ${err}
         </div>
@@ -3918,6 +3925,7 @@ async function renderMcpPane() {
       '<input class="feat-input" id="mcp-f-cwd" placeholder="工作目录（可选，留空=hermes 自己的目录）">' +
       '<input class="feat-input" id="mcp-f-timeout" placeholder="单次调用超时秒（可选，留空=跟随全局 60s）">' +
       '<label class="feat-row"><input type="checkbox" id="mcp-f-trust"><span class="feat-text"><span class="feat-title">免确认（trust）</span><span class="feat-desc">该 server 的工具免逐次权限确认——只对你信任的 server 开。</span></span></label>' +
+      '<label class="feat-row"><input type="checkbox" id="mcp-f-always"><span class="feat-text"><span class="feat-title">每次都问（agent 型 server）</span><span class="feat-desc">一次调用＝一个自主 agent 跑几分钟、可能改一堆文件。开了之后不受「本会话全部允许」影响，每次都确认并显示 sandbox / cwd。</span></span></label>' +
       '<button class="prov-save" id="mcp-save" type="button">保存并连接</button>' +
     '</div>';
 
@@ -3934,7 +3942,7 @@ async function renderMcpPane() {
     // cwd 与 callTimeout 对 codex **不是可选项**：它一次调用＝跑完一整个 agent 会话
     // （分钟级，全局 60s 必超时），且不钉住目录它就在 hermes 自己的安装目录里干活。
     codex: { name: "codex", cmd: "codex", args: ["mcp-server"], trust: false,
-             cwd: true, callTimeout: 900 },
+             cwd: true, callTimeout: 900, alwaysConfirm: true },
   };
   provDetailEl.querySelectorAll(".mcp-preset").forEach((b) => {
     b.addEventListener("click", () => {
@@ -3953,6 +3961,7 @@ async function renderMcpPane() {
       // p.cwd===true 表示"该填当前工作区"（模板不写死路径）
       provDetailEl.querySelector("#mcp-f-cwd").value = p.cwd === true ? (wsRoot || "") : "";
       provDetailEl.querySelector("#mcp-f-timeout").value = p.callTimeout || "";
+      provDetailEl.querySelector("#mcp-f-always").checked = !!p.alwaysConfirm;
       provDetailEl.querySelector("#mcp-f-args").focus();
       if (b.dataset.p === "codex") {
         showToast(wsRoot
@@ -4000,6 +4009,7 @@ async function renderMcpPane() {
       provDetailEl.querySelector("#mcp-f-trust").checked = !!s.trust;
       provDetailEl.querySelector("#mcp-f-cwd").value = s.cwd || "";
       provDetailEl.querySelector("#mcp-f-timeout").value = s.call_timeout || "";
+      provDetailEl.querySelector("#mcp-f-always").checked = !!s.always_confirm;
     });
   });
 
@@ -4015,12 +4025,14 @@ async function renderMcpPane() {
       if (i > 0) env[line.slice(0, i).trim()] = line.slice(i + 1).trim();
     });
     const trust = provDetailEl.querySelector("#mcp-f-trust").checked;
+    const alwaysConfirm = provDetailEl.querySelector("#mcp-f-always").checked;
     // 留空＝跟随默认（后端不落盘），别在这里替成 ""/0——那是两种完全不同的语义
     const cwd = provDetailEl.querySelector("#mcp-f-cwd").value.trim();
     const callTimeout = provDetailEl.querySelector("#mcp-f-timeout").value.trim();
     showToast("连接中…（首次会下载 server 包，可能要等十几秒，请稍候）");
     const res = await window.pywebview.api.save_mcp_server(name, {
-      command, args, env, trust, enabled: true, cwd, call_timeout: callTimeout });
+      command, args, env, trust, enabled: true, cwd, call_timeout: callTimeout,
+      always_confirm: alwaysConfirm });
     if (res && res.ok) {
       showToast(res.connect_error ? `已保存，但「${name}」未连上：${res.connect_error}` : `已保存，连上 ${res.tools} 个工具`);
       renderMcpPane();

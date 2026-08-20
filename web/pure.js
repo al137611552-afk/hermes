@@ -14,6 +14,22 @@
   }
 })(typeof self !== "undefined" ? self : this, function () {
   // 把任意值压成一行简短预览（工具入参摘要等），超 80 字省略
+  // 高影响力工具确认条用的参数摘要：**先把短标量列出来**（sandbox / cwd 这种决定影响范围的），
+  // 长文本（prompt）截短放最后。默认的 summarize 是 JSON 截 80 字，
+  // 而 codex 的 prompt 一长，sandbox 和 cwd 就被截没了——**恰恰是最该看见的两个**。
+  function summarizeKeyParams(input, cap = 200) {
+    if (!input || typeof input !== "object") return summarize(input);
+    const shorts = [], longs = [];
+    for (const [k, v] of Object.entries(input)) {
+      if (v === null || v === undefined || v === "") continue;
+      if (typeof v === "object") { longs.push(`${k}=…`); continue; }
+      const s = String(v);
+      (s.length <= 40 ? shorts : longs).push(`${k}=${s.length <= 40 ? s : s.slice(0, 40) + "…"}`);
+    }
+    const out = shorts.concat(longs).join("  ");
+    return out.length > cap ? out.slice(0, cap) + "…" : out;
+  }
+
   function summarize(input) {
     try {
       const s = JSON.stringify(input);
@@ -1018,6 +1034,7 @@
     usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
     accumulateUsage,
+    summarizeKeyParams,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval, extractArtifacts, extractWaitingProcess, debateHeader,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,

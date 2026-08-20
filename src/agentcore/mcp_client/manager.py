@@ -201,6 +201,7 @@ class McpManager:
                             description=t.description or "",
                             input_schema=tool_input_schema(t),
                             caller=self.call, trusted=sc.trust,   # call(server, tool, params, stream)
+                            always_confirm=getattr(sc, "always_confirm", False),
                         )
                         for t in listed.tools
                     ]

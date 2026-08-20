@@ -125,6 +125,18 @@ def test_mcptool_run_text():
     assert calls == [("fs", "read_file", {"path": "a.txt"})]  # 用原始名调用
 
 
+def test_always_confirm_flag_and_trust_are_mutually_exclusive():
+    """agent 型 server 每次都问；trust=True 时本来就不过 gate，两者同时开只会自相矛盾——
+    以 trust 为准（不过 gate），always_confirm 归 False，别让配置矛盾变成运行期悬念。"""
+    t = McpTool("codex", "codex", "d", {}, caller=lambda *a, **k: None, always_confirm=True)
+    assert t.dangerous is True and t.always_confirm is True
+    t2 = McpTool("codex", "codex", "d", {}, caller=lambda *a, **k: None,
+                 trusted=True, always_confirm=True)
+    assert t2.dangerous is False and t2.always_confirm is False
+    t3 = McpTool("fs", "ls", "d", {}, caller=lambda *a, **k: None)
+    assert t3.always_confirm is False        # 默认不打扰
+
+
 def test_mcptool_forwards_stream_callback():
     """agent 型 server（codex）一次调用要跑几分钟——没有过程推送就是**黑箱**。
 

@@ -253,6 +253,10 @@ class McpServerConfig(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     cwd: str | None = None                    # 子进程工作目录
     trust: bool = False                       # true -> 该 server 工具免权限 gate（默认逐次确认）
+    always_confirm: bool = False              # true -> **每次调用都问**，且不吃「本会话全部允许」。
+                                              # 给 agent 型 server（codex mcp-server）用：一次调用
+                                              # 就是一个自主 agent 跑几分钟、可能改一堆文件，
+                                              # 不该和 read_file 共用同一档权限。
     call_timeout: float | None = None         # 覆盖全局 `mcp.call_timeout`（秒）；None = 跟随全局。
                                               # **为 agent 型 server 而加**：codex mcp-server 那类
                                               # 一次调用要跑完一整个 agent 会话（分钟级），而全局
@@ -893,6 +897,7 @@ def set_user_mcp_server(name: str, spec: dict, path: "Path | None" = None) -> di
             "args": [str(a) for a in (spec.get("args") or [])],
             "env": {str(k): str(v) for k, v in (spec.get("env") or {}).items()},
             "trust": bool(spec.get("trust", False)),
+            "always_confirm": bool(spec.get("always_confirm", False)),
             "enabled": bool(spec.get("enabled", True)),
         }
         cwd = str(spec.get("cwd") or "").strip()
@@ -971,7 +976,8 @@ def _apply_user_mcp(data: dict, user: dict) -> dict:
         if os.name == "nt" and command in _WIN_SHIM_CMDS:
             command, args = "cmd", ["/c", spec["command"], *args]
         one = {"command": command, "args": args,
-               "env": dict(spec.get("env") or {}), "trust": bool(spec.get("trust", False))}
+               "env": dict(spec.get("env") or {}), "trust": bool(spec.get("trust", False)),
+               "always_confirm": bool(spec.get("always_confirm", False))}
         # cwd / call_timeout 也要带过来——**写入侧存了、这里不合并等于白存**
         # （2026-08-20 自查发现：面板存进 user_mcp.json 了，加载时被这里丢掉，
         #  于是 codex 仍然拿全局 60s、且在 hermes 自己的目录里干活）。

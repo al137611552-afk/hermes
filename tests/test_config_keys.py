@@ -45,6 +45,9 @@ def test_user_mcp_keeps_cwd_and_call_timeout():
                                   "cwd": "D:/proj", "call_timeout": 900}, path=p)
     got = read_user_mcp(p)["codex"]
     assert got["cwd"] == "D:/proj" and got["call_timeout"] == 900.0
+    # always_confirm 同样要往返（面板存了、合并侧丢了＝白存，这条踩过一次）
+    set_user_mcp_server("codex2", {"command": "codex", "always_confirm": True}, path=p)
+    assert read_user_mcp(p)["codex2"]["always_confirm"] is True
 
 
 def test_user_mcp_omits_empty_cwd_and_timeout():
@@ -65,9 +68,11 @@ def test_apply_user_mcp_carries_cwd_and_timeout():
     漏了的后果不报错、只是静默失效：codex 仍拿全局 60s 超时、且在 hermes 自己的目录里干活。
     """
     data = _apply_user_mcp({}, {"codex": {"command": "codex", "args": ["mcp-server"],
-                                          "cwd": "D:/proj", "call_timeout": 900}})
+                                          "cwd": "D:/proj", "call_timeout": 900,
+                                          "always_confirm": True}})
     one = data["mcp"]["servers"]["codex"]
     assert one["cwd"] == "D:/proj" and one["call_timeout"] == 900.0
+    assert one["always_confirm"] is True
     # 没配的 server 不该凭空长出这两个键（None/0 与"没有"是不同语义）
     plain = _apply_user_mcp({}, {"fs": {"command": "npx"}})["mcp"]["servers"]["fs"]
     assert "cwd" not in plain and "call_timeout" not in plain

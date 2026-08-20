@@ -959,7 +959,9 @@ class AgentLoop:
                 return (msg or "操作被 PreToolUse hook 拦截。"), False, []
             pre_warn = msg
 
-        if tool.dangerous and not self.gate.confirm(name, params):
+        # always_confirm：agent 型 MCP server（codex 那类）每次都问，不吃「全部允许」
+        if tool.dangerous and not self.gate.confirm(
+                name, params, always_ask=bool(getattr(tool, "always_confirm", False))):
             return _DENIED, False, []
 
         try:

@@ -149,6 +149,13 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   2026-08-20 真机：DeepSeek V4-FLASH 打开已有项目续开发，长考中
   `RemoteProtocolError: incomplete chunked read`，一断就整轮作废。
   封锁重试的只有 `text`/`tool_use`/`done`（重来会重复输出给用户），thinking 重复一段无所谓。
+- **agent 型 MCP server 要开 `always_confirm`**（config 或面板「每次都问」）。它**不吃 allow 规则、
+  也不吃「本会话全部允许」**——那个开关的心智模型是"这些零碎命令我都认"，为单点、可逆、
+  几秒钟的操作设计；用它顺带放开一个能改一堆文件的自主 agent，粒度不对
+  （2026-08-20 真机：用户点过全部允许后 Codex 全程零确认跑完一轮）。
+  **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
+  同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
+  **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
 - **MCP 工具会实时推过程**（`McpTool.wants_stream=True` → `manager.call(stream=)` →
   `session.call_tool(progress_callback=)`）。**agent 型 server 没有它就是黑箱**：codex 一次调用
   跑几分钟，中途什么都看不到、错了也只能等到最后。走的是 hermes 早有的 `tool_stream` 管子

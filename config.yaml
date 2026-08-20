@@ -269,6 +269,8 @@ mcp:
     #   cwd: "C:\\Users\\你\\项目目录"
     #   call_timeout: 900     # 15 分钟；agent 型 server 必须单独放宽
     #   trust: false          # 它会自己执行命令——保持逐次确认更稳妥
+    #   always_confirm: true  # **每次调用都问**，且不吃「本会话全部允许」——
+    #                         # 那个开关是为"零碎命令"设计的，顺带放开一个自主 agent 粒度不对
     # 示例：官方 filesystem server（需先装 Node）。把下面解注释并改成你的目录：
     # filesystem:
     #   command: npx

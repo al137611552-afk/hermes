@@ -65,6 +65,7 @@ class McpTool(Tool):
         caller: Callable[[str, str, dict], object],
         *,
         trusted: bool = False,
+        always_confirm: bool = False,
     ) -> None:
         # 不调用 super().__init__：MCP 工具无工作区、不用路径解析
         self.server = server
@@ -73,6 +74,9 @@ class McpTool(Tool):
         self.description = f"[MCP:{server}] {(description or '').strip()}".strip()
         self.input_schema = input_schema or {"type": "object", "properties": {}}
         self.dangerous = not trusted  # trust 的 server 免 gate
+        # 高影响力（agent 型 server）：即便本会话点过「全部允许」也每次都问。
+        # trust=True 时本来就不过 gate，二者互斥——由配置侧保证别同时开。
+        self.always_confirm = bool(always_confirm) and not trusted
         self._caller = caller
 
     # 要实时流（loop 会给 stream 回调，前端把增量追加到运行中的工具块）。
