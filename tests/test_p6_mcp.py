@@ -135,6 +135,42 @@ class _ResultSC(_Result):
         self.structuredContent = structured
 
 
+def test_sdk_camel_and_snake_field_names_are_both_accepted():
+    """mcp SDK **1.x 驼峰 / 2.x 蛇形**并存。CLAUDE.md 记过同类坑（inputSchema），
+    但当时只改了那一个——2026-08-20 端到端真跑才发现还漏着两处，后果都是**静默的**：
+
+      `isError` 没读到 → MCP 工具报错**从来没被识别成错误**，错误文本被当正常结果回灌；
+      `structuredContent` 没读到 → 续话 id 一直取不到，自动接续形同虚设。
+    """
+    from agentcore.mcp_client.tool import convert_result, extract_thread_id
+
+    class _Snake:      # mcp 2.x
+        content = [_Text("出错了")]
+        is_error = True
+        structured_content = {"threadId": "T-9"}
+
+    class _Camel:      # mcp 1.x
+        content = [_Text("出错了")]
+        isError = True
+        structuredContent = {"threadId": "T-9"}
+
+    for r in (_Snake(), _Camel()):
+        text, _blocks, ok = convert_result(r)
+        assert ok is False, r          # 错就是错，别当成功
+        assert extract_thread_id(r) == "T-9", r
+
+    # 图片的 mimeType / mime_type 同理
+    class _ImgSnake:
+        type = "image"
+        data = "IMG"
+        mime_type = "image/jpeg"
+
+    class _R:
+        content = [_ImgSnake()]
+    _t, blocks, _ok = convert_result(_R())
+    assert blocks[0]["source"]["media_type"] == "image/jpeg"
+
+
 def test_extract_thread_id_only_trusts_structured_content():
     """只认 structuredContent。**不去正文里正则捞**——正文是自然语言、形状随模型变，
     靠它接续迟早接到别的会话上，比接不上更糟。"""
@@ -172,6 +208,49 @@ def test_reply_tool_auto_resumes_last_thread():
     out2 = reply.run({"prompt": "继续"})
     assert seen[-1]["threadId"] == "T-1", seen[-1]
     assert out2.startswith("[已自动接续 threadId=T-1]"), out2[:60]
+
+
+def test_cwd_follows_the_session_workspace():
+    """agent 型 server 的 cwd 是**按调用**给的参数：不补的话它就在 hermes 自己的
+    安装目录里干活（真机踩过），而且**不报错**。"""
+    seen = []
+    t = McpTool("codex", "codex", "d", {"properties": {"prompt": {}, "cwd": {}}},
+                caller=lambda s, n, p, st=None: seen.append(p) or _Result([_Text("ok")]))
+    bound = t.bind_workspace("D:/proj")
+    bound.run({"prompt": "做事"})
+    assert seen[-1]["cwd"] == "D:/proj"
+    # 模型显式给了就不覆盖
+    bound.run({"prompt": "做事", "cwd": "D:/other"})
+    assert seen[-1]["cwd"] == "D:/other"
+    # 原实例不受影响（同一批工具被所有会话共用，改自己会串台）
+    assert t.workspace is None
+    t.run({"prompt": "做事"})
+    assert "cwd" not in seen[-1]
+
+
+def test_prepare_runs_before_the_gate_so_the_bar_shows_real_params():
+    """确认条上要显示**真正会执行的参数**——cwd 决定它在哪儿干活，看不到就等于没确认。
+    所以 loop 必须在 gate 之前调 prepare。"""
+    import inspect
+
+    from agentcore.agent import loop as loop_mod
+    src = inspect.getsource(loop_mod.AgentLoop._run_tool) if hasattr(loop_mod.AgentLoop, "_run_tool") \
+        else inspect.getsource(loop_mod)
+    i_prep, i_gate = src.find("tool.prepare("), src.find("self.gate.confirm(")
+    assert 0 < i_prep < i_gate, "prepare 必须排在 gate.confirm 之前"
+
+
+def test_prepare_is_idempotent_and_cheap():
+    """run() 内部还会再调一次 prepare（存量调用方可能直接 run）——重复调用不能出岔。"""
+    from agentcore.mcp_client.tool import RESUMED_KEY, ThreadMemory
+
+    mem = ThreadMemory(); mem.set("codex", "T-1")
+    t = McpTool("codex", "codex-reply", "d", {"properties": {"threadId": {}, "cwd": {}}},
+                caller=lambda *a, **k: _Result([_Text("ok")]), threads=mem).bind_workspace("/w")
+    once = t.prepare({"prompt": "x"})
+    twice = t.prepare(dict(once))
+    assert twice["threadId"] == "T-1" and twice["cwd"] == "/w"
+    assert RESUMED_KEY not in twice          # 第二次不该再标"自动接续"
 
 
 def test_explicit_thread_id_is_never_overwritten():

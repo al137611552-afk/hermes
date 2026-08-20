@@ -959,6 +959,13 @@ class AgentLoop:
                 return (msg or "操作被 PreToolUse hook 拦截。"), False, []
             pre_warn = msg
 
+        # 调用前补参（MCP 的 cwd / 续话 id）。**必须在 gate 之前**：确认条上要显示的是
+        # 真正会执行的参数——cwd 决定它在哪儿干活，看不到就等于没确认。
+        if hasattr(tool, "prepare"):
+            try:
+                params = tool.prepare(params)
+            except Exception:  # noqa: BLE001 — 补参失败就按原样走，别把调用带崩
+                pass
         # always_confirm：agent 型 MCP server（codex 那类）每次都问，不吃「全部允许」
         if tool.dangerous and not self.gate.confirm(
                 name, params, always_ask=bool(getattr(tool, "always_confirm", False))):

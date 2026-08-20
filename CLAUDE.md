@@ -156,6 +156,14 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
   同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
   **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
+- **MCP 工具的补参走 `prepare()`，且 loop 在 `gate.confirm` 之前调它**。确认条上要显示的是
+  **真正会执行的参数**——`cwd` 决定 agent 型 server 在哪儿干活，看不到就等于没确认。
+  补两样：续话 id（模型没给才补）、`cwd`（跟随**当前会话工作区**，`bind_workspace` 绑成副本——
+  同一批工具实例被所有会话共用，直接改字段会串台）。内部标记以 `_` 开头，前端确认条不显示。
+- **mcp SDK 1.x 驼峰 / 2.x 蛇形要两个都认**（`sdk_field()`）。CLAUDE.md 早记过 `inputSchema`
+  那一个，但当时只改了那一个：2026-08-20 端到端真跑才发现还漏着 `isError`（于是
+  **MCP 工具报错从来没被识别成错误**，错误文本被当正常结果回灌）和 `structuredContent`
+  （续话 id 一直取不到）。**这类漏都是静默的**——加字段时顺手全库搜一遍驼峰名。
 - **MCP 连不上先跑体检**：面板每行有「体检」按钮（保存失败会自动跑一次），命令行是
   `python scripts/diag_mcp.py [server]`，两边**共用 `mcp_client/diag.py` 同一份实现**。
   它把配置、命令解析到哪个可执行文件、PATH 里有没有多份同名、cwd/超时/权限档、

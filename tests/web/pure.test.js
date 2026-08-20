@@ -972,7 +972,9 @@ test("summarizeKeyParams 截断长值但保留键名", () => {
   assert.ok(out.startsWith("prompt=") && out.length < 300, out);
 });
 
-test("summarizeKeyParams 跳过空值、非对象退回 summarize", () => {
+test("summarizeKeyParams 跳过空值与内部标记、非对象退回 summarize", () => {
   assert.equal(summarizeKeyParams({ a: "", b: null, c: "ok" }), "c=ok");
+  // 下划线开头是 hermes 自己塞的标记（如自动接续），不该出现在确认条上
+  assert.equal(summarizeKeyParams({ _hermes_resumed: "T-1", cwd: "/w" }), "cwd=/w");
   assert.equal(summarizeKeyParams("字符串"), summarize("字符串"));
 });

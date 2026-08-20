@@ -18,6 +18,20 @@ def qualified_name(server: str, tool: str) -> str:
     return f"{server}{SEP}{tool}"
 
 
+def sdk_field(obj, *names, default=None):
+    """按多个候选名取字段（SDK **1.x 驼峰 / 2.x 蛇形**并存，两种都要认）。
+
+    CLAUDE.md 里记过同类坑（`Tool.inputSchema` → `input_schema`），但当时只改了那一个。
+    2026-08-20 端到端真跑才发现还漏着两处：`isError`（于是 **MCP 工具报错从来没被识别成错误**，
+    错误文本被当正常结果回灌）和 `structuredContent`（于是续话 id 一直取不到）。
+    """
+    for n in names:
+        v = getattr(obj, n, None)
+        if v is not None:
+            return v
+    return default
+
+
 def convert_result(result) -> tuple[str, list[dict], bool]:
     """把 MCP CallToolResult 转成 (文本, 额外内容块, ok)。
 
@@ -37,7 +51,7 @@ def convert_result(result) -> tuple[str, list[dict], bool]:
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": getattr(item, "mimeType", "image/png"),
+                    "media_type": sdk_field(item, "mimeType", "mime_type", default="image/png"),
                     "data": getattr(item, "data", ""),
                 },
             })
@@ -48,7 +62,7 @@ def convert_result(result) -> tuple[str, list[dict], bool]:
             texts.append(txt if txt else "[资源]")
         else:
             texts.append(f"[{itype or '未知内容'}]")
-    ok = not bool(getattr(result, "isError", False))
+    ok = not bool(sdk_field(result, "isError", "is_error", default=False))
     text = "\n".join(t for t in texts if t) or ("(无输出)" if ok else "工具返回错误")
     return text, blocks, ok
 
@@ -57,6 +71,9 @@ def convert_result(result) -> tuple[str, list[dict], bool]:
 # 事件里还并存 `thread_id` / `session_id`）。按**键名**认，不按 server 名认——
 # 写死 "codex" 就等于给下一个 agent 型 server 再抄一遍。
 THREAD_KEYS = ("threadId", "thread_id", "conversationId", "sessionId")
+# prepare() 用它把"这次是自动接续的"传给 run()。**放在 params 里而不是实例上**：
+# 同一个 McpTool 被所有会话共用，放实例上会在并发调用之间串台。
+RESUMED_KEY = "_hermes_resumed"
 
 
 def extract_thread_id(result) -> str:
@@ -65,7 +82,7 @@ def extract_thread_id(result) -> str:
     只认 `structuredContent`——**不去正文里正则捞**：正文是给人看的自然语言，
     形状随模型输出变，靠它接续迟早接错会话，比接不上更糟。
     """
-    sc = getattr(result, "structuredContent", None)
+    sc = sdk_field(result, "structuredContent", "structured_content")
     if not isinstance(sc, dict):
         return ""
     for k in THREAD_KEYS:
@@ -139,6 +156,8 @@ class McpTool(Tool):
         # 续话记忆（ThreadMemory）：None＝不接续，行为同以前
         self._threads = threads
         self._thread_key = thread_param(self.input_schema)
+        # 当前会话的工作区（由 build_registry 绑）。None＝不补 cwd，行为同以前。
+        self.workspace = None
         self._caller = caller
 
     # 要实时流（loop 会给 stream 回调，前端把增量追加到运行中的工具块）。
@@ -147,8 +166,42 @@ class McpTool(Tool):
     # 之前只是没人接（2026-08-20 真机反馈）。不发进度的 server 不受影响——没通知就没增量。
     wants_stream = True
 
+    def bind_workspace(self, workspace):
+        """绑定**当前会话**的工作区，返回一个轻副本（server 侧进程与续话记忆仍共享）。
+
+        agent 型 server 的 `cwd` 是**按调用**给的参数，不是 server 配置——所以不必为换工作区
+        重启子进程。绑成副本而不是改自己：同一个 McpTool 实例被所有会话共用，
+        直接改字段会在并发会话之间串台。
+        """
+        import copy
+        if not workspace:
+            return self
+        t = copy.copy(self)
+        t.workspace = str(workspace)
+        return t
+
+    def prepare(self, params: dict) -> dict:
+        """调用前补齐参数。**由 loop 在权限确认之前调用**——确认条上要显示的是
+        真正会执行的参数（cwd 决定它在哪儿干活，看不到就等于没确认）。
+        """
+        params = dict(params or {})
+        params.pop(RESUMED_KEY, None)     # 幂等：loop 与 run 会各调一次
+        key = self._thread_key
+        if key and self._threads is not None and not any(params.get(k) for k in THREAD_KEYS):
+            last = self._threads.get(self.server)
+            if last:
+                params[key] = last
+                params[RESUMED_KEY] = last      # run() 取走，用来在结果里标一句
+        # cwd：schema 收这个参数、模型又没给 → 用当前会话的工作区。
+        # 不补的话它就在 hermes 自己的安装目录里干活（真机踩过），而且**不报错**。
+        if "cwd" in ((self.input_schema or {}).get("properties") or {}) \
+                and not params.get("cwd") and self.workspace:
+            params["cwd"] = self.workspace
+        return params
+
     def run(self, params: dict, stream=None):
-        params, resumed = self._resume(dict(params or {}))
+        params = self.prepare(params)
+        resumed = params.pop(RESUMED_KEY, "")
         try:
             result = self._caller(self.server, self.tool_name, params, stream)
         except Exception as e:  # 连接断开 / 超时 / 子进程已退出等
@@ -168,18 +221,3 @@ class McpTool(Tool):
         text = f"{note}{text}{tail}"
         return ToolOutput(text=text, blocks=blocks) if blocks else text
 
-    def _resume(self, params: dict) -> tuple:
-        """缺了续话 id 就用上次的补上（返回 (params, 补的值)）。
-
-        **只在模型没给的时候补**：模型显式给了就以它为准——它可能有意开新会话或换线程。
-        """
-        key = self._thread_key
-        if not key or self._threads is None or params.get(key):
-            return params, ""
-        # 同义键任一已给出，就当模型自己带了（别覆盖它）
-        if any(params.get(k) for k in THREAD_KEYS):
-            return params, ""
-        last = self._threads.get(self.server)
-        if last:
-            params[key] = last
-        return params, last

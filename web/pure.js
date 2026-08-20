@@ -22,6 +22,7 @@
     const shorts = [], longs = [];
     for (const [k, v] of Object.entries(input)) {
       if (v === null || v === undefined || v === "") continue;
+      if (k.startsWith("_")) continue;      // hermes 内部标记，不给人看
       if (typeof v === "object") { longs.push(`${k}=…`); continue; }
       const s = String(v);
       (s.length <= 40 ? shorts : longs).push(`${k}=${s.length <= 40 ? s : s.slice(0, 40) + "…"}`);

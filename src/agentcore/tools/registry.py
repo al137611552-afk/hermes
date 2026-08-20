@@ -164,7 +164,10 @@ def build_registry(
     if skill_binding is not None:
         tools.append(LoadSkillTool(skill_binding))
     if mcp_tools:
-        tools += mcp_tools
+        # agent 型 MCP server 的 cwd 该跟着**当前会话的工作区**走（按调用给参数，
+        # 不必重启子进程）。绑成副本：同一批工具实例被所有会话共用。
+        tools += [t.bind_workspace(workspace) if hasattr(t, "bind_workspace") else t
+                  for t in mcp_tools]
     if extra_dirs is not None:  # 额外授权目录（add-dir）：注入共享引用，add/remove 后所有工具实时生效
         for t in tools:
             t.extra_dirs = extra_dirs
