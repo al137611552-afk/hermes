@@ -33,6 +33,32 @@ def test_browser_mcp_state_roundtrip():
     assert not browser_mcp_enabled(p) and browser_mcp_headed(p)
 
 
+def test_user_mcp_keeps_cwd_and_call_timeout():
+    """面板存的 server 要能带上 `cwd` 与 `call_timeout`——**agent 型 server 靠这两个字段活着**。
+
+    `codex mcp-server` 一次调用＝跑完一整个 agent 会话（分钟级，全局 60s 必超时），
+    且不钉住工作目录它就在 hermes 自己的安装目录里干活。
+    此前这里是白名单式落盘，这两项**填了也会被静默丢掉**（2026-08-20 补）。
+    """
+    p = Path(tempfile.mktemp())
+    set_user_mcp_server("codex", {"command": "codex", "args": ["mcp-server"],
+                                  "cwd": "D:/proj", "call_timeout": 900}, path=p)
+    got = read_user_mcp(p)["codex"]
+    assert got["cwd"] == "D:/proj" and got["call_timeout"] == 900.0
+
+
+def test_user_mcp_omits_empty_cwd_and_timeout():
+    """留空＝跟随默认，**不能写成 ""/0**：空串会让子进程 cwd 变成空路径，
+    0 会被读成"立刻超时"——两个都不是用户的本意。"""
+    p = Path(tempfile.mktemp())
+    set_user_mcp_server("fs", {"command": "npx", "cwd": "  ", "call_timeout": ""}, path=p)
+    got = read_user_mcp(p)["fs"]
+    assert "cwd" not in got and "call_timeout" not in got
+    # 脏值（写了句话进去）同样按"没填"处理，别让保存整个失败
+    set_user_mcp_server("fs2", {"command": "npx", "call_timeout": "九百"}, path=p)
+    assert "call_timeout" not in read_user_mcp(p)["fs2"]
+
+
 def test_collect_dedup_and_group():
     models = {
         "ark-kimi": {"api_key_env": "ARK_API_KEY"},

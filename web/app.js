@@ -3915,6 +3915,8 @@ async function renderMcpPane() {
       '<textarea class="feat-input mcp-ta" id="mcp-f-args" rows="3" placeholder="参数：每行一个（不要带任何说明文字！）&#10;-y&#10;@modelcontextprotocol/server-filesystem&#10;D:\\你的目录"></textarea>' +
       '<button class="ws-btn mcp-pickdir" id="mcp-pickdir" type="button">📁 选择文件夹填入目录</button>' +
       '<textarea class="feat-input mcp-ta" id="mcp-f-env" rows="2" placeholder="环境变量（可选）：每行 KEY=VALUE"></textarea>' +
+      '<input class="feat-input" id="mcp-f-cwd" placeholder="工作目录（可选，留空=hermes 自己的目录）">' +
+      '<input class="feat-input" id="mcp-f-timeout" placeholder="单次调用超时秒（可选，留空=跟随全局 60s）">' +
       '<label class="feat-row"><input type="checkbox" id="mcp-f-trust"><span class="feat-text"><span class="feat-title">免确认（trust）</span><span class="feat-desc">该 server 的工具免逐次权限确认——只对你信任的 server 开。</span></span></label>' +
       '<button class="prov-save" id="mcp-save" type="button">保存并连接</button>' +
     '</div>';
@@ -3929,7 +3931,10 @@ async function renderMcpPane() {
     // Codex CLI 当 MCP server：用 ChatGPT 订阅额度（认证交给 codex 自己，先在终端 `codex login`）。
     // 主模型（kimi/claude）把编码活儿委派给 codex，无需 OpenAI API key。trust 默认关：
     // codex 会自主写文件/跑命令，逐次过权限确认更稳，信任后可在列表里开「免确认」。
-    codex: { name: "codex", cmd: "codex", args: ["mcp-server"], trust: false },
+    // cwd 与 callTimeout 对 codex **不是可选项**：它一次调用＝跑完一整个 agent 会话
+    // （分钟级，全局 60s 必超时），且不钉住目录它就在 hermes 自己的安装目录里干活。
+    codex: { name: "codex", cmd: "codex", args: ["mcp-server"], trust: false,
+             cwd: true, callTimeout: 900 },
   };
   provDetailEl.querySelectorAll(".mcp-preset").forEach((b) => {
     b.addEventListener("click", () => {
@@ -3945,9 +3950,14 @@ async function renderMcpPane() {
       provDetailEl.querySelector("#mcp-f-args").value = args.join("\n");
       provDetailEl.querySelector("#mcp-f-env").value = "";
       provDetailEl.querySelector("#mcp-f-trust").checked = !!p.trust;
+      // p.cwd===true 表示"该填当前工作区"（模板不写死路径）
+      provDetailEl.querySelector("#mcp-f-cwd").value = p.cwd === true ? (wsRoot || "") : "";
+      provDetailEl.querySelector("#mcp-f-timeout").value = p.callTimeout || "";
       provDetailEl.querySelector("#mcp-f-args").focus();
       if (b.dataset.p === "codex") {
-        showToast("已套用 Codex 模板——先在终端跑 codex login 登录 ChatGPT 订阅，再保存即可");
+        showToast(wsRoot
+          ? "已套用 Codex 模板（工作目录=当前工作区，超时 900s）——先在终端跑 codex login 再保存"
+          : "已套用 Codex 模板——**工作目录要填你的项目路径**，并先在终端跑 codex login");
       } else {
         showToast(wsRoot ? "已套用模板（目录=当前工作区），可直接保存" : "已套用模板——把最后一行改成你的真实目录再保存");
       }
@@ -3988,6 +3998,8 @@ async function renderMcpPane() {
       provDetailEl.querySelector("#mcp-f-env").value =
         Object.entries(s.env || {}).map(([k, v]) => `${k}=${v}`).join("\n");
       provDetailEl.querySelector("#mcp-f-trust").checked = !!s.trust;
+      provDetailEl.querySelector("#mcp-f-cwd").value = s.cwd || "";
+      provDetailEl.querySelector("#mcp-f-timeout").value = s.call_timeout || "";
     });
   });
 
@@ -4003,8 +4015,12 @@ async function renderMcpPane() {
       if (i > 0) env[line.slice(0, i).trim()] = line.slice(i + 1).trim();
     });
     const trust = provDetailEl.querySelector("#mcp-f-trust").checked;
+    // 留空＝跟随默认（后端不落盘），别在这里替成 ""/0——那是两种完全不同的语义
+    const cwd = provDetailEl.querySelector("#mcp-f-cwd").value.trim();
+    const callTimeout = provDetailEl.querySelector("#mcp-f-timeout").value.trim();
     showToast("连接中…（首次会下载 server 包，可能要等十几秒，请稍候）");
-    const res = await window.pywebview.api.save_mcp_server(name, { command, args, env, trust, enabled: true });
+    const res = await window.pywebview.api.save_mcp_server(name, {
+      command, args, env, trust, enabled: true, cwd, call_timeout: callTimeout });
     if (res && res.ok) {
       showToast(res.connect_error ? `已保存，但「${name}」未连上：${res.connect_error}` : `已保存，连上 ${res.tools} 个工具`);
       renderMcpPane();

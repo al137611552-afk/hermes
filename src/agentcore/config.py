@@ -876,17 +876,35 @@ def write_user_mcp(servers: dict, path: "Path | None" = None) -> None:
 
 
 def set_user_mcp_server(name: str, spec: dict, path: "Path | None" = None) -> dict:
-    """新增/改一个 MCP server（spec: command/args/env/trust/enabled）。返回全量 servers。"""
+    """新增/改一个 MCP server（spec: command/args/env/trust/enabled/cwd/call_timeout）。
+
+    `cwd` 与 `call_timeout` **空值一律不落盘**（不是写 ""/0）：留空的语义是"跟随默认"，
+    写成空串会让子进程 cwd 变成空路径、写成 0 会被读成"立刻超时"。
+    这两个字段是给 **agent 型 server**（`codex mcp-server`）用的——它一次调用要跑完一整个
+    会话（分钟级，全局 60s 必超时），且必须把工作目录钉在项目上，否则它在 hermes 自己的
+    安装目录里干活。此前面板是白名单式落盘，这两项**填了也会被静默丢掉**。
+    """
     name = (name or "").strip()
     servers = read_user_mcp(path)
     if name:
-        servers[name] = {
-            "command": str((spec or {}).get("command") or "").strip(),
-            "args": [str(a) for a in ((spec or {}).get("args") or [])],
-            "env": {str(k): str(v) for k, v in ((spec or {}).get("env") or {}).items()},
-            "trust": bool((spec or {}).get("trust", False)),
-            "enabled": bool((spec or {}).get("enabled", True)),
+        spec = spec or {}
+        one = {
+            "command": str(spec.get("command") or "").strip(),
+            "args": [str(a) for a in (spec.get("args") or [])],
+            "env": {str(k): str(v) for k, v in (spec.get("env") or {}).items()},
+            "trust": bool(spec.get("trust", False)),
+            "enabled": bool(spec.get("enabled", True)),
         }
+        cwd = str(spec.get("cwd") or "").strip()
+        if cwd:
+            one["cwd"] = cwd
+        try:
+            ct = float(spec.get("call_timeout") or 0)
+        except (TypeError, ValueError):
+            ct = 0.0
+        if ct > 0:
+            one["call_timeout"] = ct
+        servers[name] = one
         write_user_mcp(servers, path)
     return servers
 
