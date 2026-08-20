@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -179,6 +180,12 @@ def probe_connect(spec: dict, timeout: float = 30.0) -> dict:
     except Exception as e:  # noqa: BLE001
         res["error"] = f"{type(e).__name__}: {e}"
         return res
+    # **硬看门狗**：`readline()` 在子进程一个字都不输出时会**永久阻塞**，
+    # 下面那个 deadline 循环根本没机会跑到——真机上表现为「体检中…」再也不动
+    # （2026-08-20）。到点直接杀进程，读端自然 EOF、循环立刻收场。
+    killer = threading.Timer(max(1.0, timeout), p.kill)
+    killer.daemon = True
+    killer.start()
     try:
         for msg in ({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
                         "protocolVersion": "2024-11-05", "capabilities": {},
@@ -187,6 +194,10 @@ def probe_connect(spec: dict, timeout: float = 30.0) -> dict:
                     {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}):
             p.stdin.write(json.dumps(msg) + "\n")
         p.stdin.flush()
+        try:
+            p.stdin.close()      # 让对端读到 EOF 也能收场，别互相等
+        except Exception:  # noqa: BLE001
+            pass
         deadline = time.time() + timeout
         while time.time() < deadline:
             line = p.stdout.readline()
@@ -205,6 +216,7 @@ def probe_connect(spec: dict, timeout: float = 30.0) -> dict:
     except Exception as e:  # noqa: BLE001 — 体检本身绝不能把面板带崩
         res["error"] = f"{type(e).__name__}: {e}"
     finally:
+        killer.cancel()
         p.kill()
         try:
             res["stderr"] = (p.stderr.read() or "").strip()[:600]

@@ -206,6 +206,10 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - **别在 hermes 自己的目录里派活**：面板模板会把"当前工作区"填进 `cwd`，而没打开项目时
   那是 `data/workspaces/_scratch`——agent 会全干在那儿，**不报错、结果也看着正常**。
   调用时会喊一句（`inside_hermes_dir`），体检也报 BAD。
+- **起子进程读输出必须有硬看门狗**：`p.stdout.readline()` 在对端一个字都不吐时会
+  **永久阻塞**，`while time.time() < deadline` 那种循环根本跑不到——体检因此把按钮
+  卡在「体检中…」再也不动（2026-08-20 真机）。用 `threading.Timer(timeout, p.kill)`：
+  到点杀进程、读端自然 EOF。UI 侧再兜一层超时——**界面永远不该无限等**。
 - **Windows 上 `.CMD` 垫片不能直接 spawn**：npm 装的 `codex` 其实是 `codex.CMD`，
   `subprocess.Popen(["codex", …])` 必然 WinError 2（体检因此误报"起不来"，而面板明明连得上）。
   先 `resolve_command()` 拿真实路径，`.cmd/.bat` 要经 `cmd /c` 起。PATH 候选去重也要

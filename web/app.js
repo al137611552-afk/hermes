@@ -3903,6 +3903,18 @@ function renderAppearancePane() {
   });
 }
 
+// 体检**必须有个头**：后端起子进程握手，对端一个字不吐时曾把按钮卡在「体检中…」不动
+// （2026-08-20 真机）。后端已加硬看门狗，这里再兜一层——UI 永远不该无限等。
+async function runDiag(name) {
+  const timeout = new Promise((resolve) => setTimeout(
+    () => resolve({ ok: false, error: "体检超时（超过 60 秒没有返回）——server 可能卡在启动上" }),
+    60000));
+  return Promise.race([
+    window.pywebview.api.diag_mcp_server(name).catch((e) => ({ ok: false, error: String(e) })),
+    timeout,
+  ]);
+}
+
 // 体检结果：按 ok / warn / bad 分级显示在该 server 行下面。
 // **不折叠、不省略**——人打开它就是因为看不出哪儿错了。
 function renderMcpDiag(row, res) {
@@ -4079,9 +4091,8 @@ async function renderMcpPane() {
       const name = row && row.dataset.name;
       if (!name) return;
       b.disabled = true; b.textContent = "体检中…";
-      const res = await window.pywebview.api.diag_mcp_server(name).catch(() => null);
+      renderMcpDiag(row, await runDiag(name));
       b.disabled = false; b.textContent = "体检";
-      renderMcpDiag(row, res);
     });
   });
 
@@ -4113,7 +4124,7 @@ async function renderMcpPane() {
       if (failed) {
         const row = Array.prototype.find.call(
           provDetailEl.querySelectorAll(".mcp-row"), (r) => r.dataset.name === name);
-        const d = await window.pywebview.api.diag_mcp_server(name).catch(() => null);
+        const d = await runDiag(name);
         if (row) renderMcpDiag(row, d);
       }
     } else showToast((res && res.error) || "保存失败");

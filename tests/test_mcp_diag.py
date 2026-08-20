@@ -67,6 +67,29 @@ def test_permission_flags_are_surfaced_both_ways():
     assert any("解析到" in t for t in _levels(tight, OK))
 
 
+def test_probe_never_hangs_on_a_silent_process():
+    """`readline()` 在子进程一个字都不输出时会**永久阻塞**，deadline 循环根本跑不到——
+    真机上表现为按钮卡在「体检中…」再也不动。硬看门狗到点杀进程，读端自然 EOF。"""
+    import subprocess
+    import sys as _sys
+    import time
+
+    from agentcore.mcp_client.diag import probe_connect
+
+    t0 = time.time()
+    r = probe_connect({"command": _sys.executable, "args": ["-c", "import time;time.sleep(60)"]},
+                      timeout=3)
+    took = time.time() - t0
+    assert took < 15, f"哑进程把体检卡了 {took:.0f}s"
+    assert r["ok"] is False and r["error"]
+
+
+def test_probe_reports_launch_failure_instead_of_raising():
+    from agentcore.mcp_client.diag import probe_connect
+    r = probe_connect({"command": "这个命令肯定不存在_xyz", "args": []}, timeout=3)
+    assert r["ok"] is False and "FileNotFoundError" in r["error"] or r["error"]
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()
