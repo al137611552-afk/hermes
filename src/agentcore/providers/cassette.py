@@ -142,8 +142,13 @@ def request_digests(model: str, system, messages, tools) -> list:
     out = [f"model:{h(model or '')}", f"system:{h(system or '')}",
            f"tools:{h(tools or [])}"]
     for i, m in enumerate(messages or []):
-        out.append(f"msg{i}:{h({'role': getattr(m, 'role', None),
-                                'content': _canon_content(getattr(m, 'content', None))})}")
+        # 摊成局部变量再取哈希：**f-string 里的表达式跨行是 3.12 才允许的**（PEP 701），
+        # 而 pyproject 写的是 requires-python >=3.11、CI 又只跑 3.12——于是这行在 3.11 上
+        # 直接 SyntaxError，本机与 CI 全绿、用户 Windows 一启动就崩（2026-08-20 真机踩到）。
+        # 摊开后 h() 的入参一字不变，**digest 不变、已录的 cassette 全部继续有效**。
+        one = {"role": getattr(m, "role", None),
+               "content": _canon_content(getattr(m, "content", None))}
+        out.append(f"msg{i}:{h(one)}")
     return out
 
 

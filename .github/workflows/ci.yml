@@ -21,6 +21,35 @@ env:
   PYTHONUTF8: "1"
 
 jobs:
+  # 最低支持版本的语法/运行门。**pyproject 写的是 requires-python >=3.11，而下面的 test job
+  # 只跑 3.12**——于是 3.12 才有的语法（PEP 701 的 f-string 跨行表达式）在本机与 CI 全绿、
+  # 用户 Windows 上一启动就 SyntaxError（2026-08-20 真机踩到，`cassette.py` 那处）。
+  # 声明支持哪个版本，就得在那个版本上跑一次；不想跑就把 requires-python 抬上去。
+  floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"        # = pyproject 的 requires-python 下限
+      - name: 装依赖
+        run: pip install -e . -c build-constraints.txt
+      # 先编译：语法错在**导入之前**就炸，单跑测试反而看不清是哪个文件
+      - name: 全仓库语法编译（3.11）
+        run: python -m compileall -q src scripts tests run.py
+      - name: Python 全回归（3.11）
+        run: |
+          set -u
+          failed=()
+          for t in tests/test_*.py; do
+            if ! timeout 600 python "$t" </dev/null; then failed+=("$t"); fi
+          done
+          if [ ${#failed[@]} -ne 0 ]; then
+            printf '失败：%s\n' "${failed[@]}"; exit 1
+          fi
+      - name: 决策内核回归门（Golden）
+        run: python tests/golden/runner.py
+
   test:
     runs-on: ubuntu-latest      # 回放不需要 Windows；平台相关的那部分仍由 release.yml 在 windows 上守
     steps:
