@@ -228,6 +228,35 @@ def test_cwd_follows_the_session_workspace():
     assert "cwd" not in seen[-1]
 
 
+def test_agentic_flag_is_decided_by_code_not_guessed_by_name():
+    """"这次是不是委派"由代码判定后随 `tool_use` 事件下发——**别让前端按工具名猜**，
+    名字是 server 起的，猜必然漏。"""
+    import inspect
+
+    from agentcore.agent.loop import AgentLoop
+    src = inspect.getsource(AgentLoop)
+    assert src.count('"agentic": self._is_agentic') == 2, "并行与串行两条分支都要带上"
+
+    class _Reg:
+        def __init__(self, tools):
+            self._t = tools
+
+        def get(self, name):
+            return self._t[name]
+
+    class _Agentic:
+        _takes_cwd = True
+
+    class _Plain:
+        pass
+
+    loop = AgentLoop.__new__(AgentLoop)
+    loop.registry = _Reg({"codex__codex": _Agentic(), "read_file": _Plain()})
+    assert loop._is_agentic("codex__codex") is True
+    assert loop._is_agentic("read_file") is False
+    assert loop._is_agentic("不存在的工具") is False       # 取不到不能抛
+
+
 def test_cancel_all_stops_inflight_calls():
     """agent 型 server 一次调用几分钟，没有出口就只能干等到 call_timeout（真机 900s）——
     「停止」必须真的能停。"""

@@ -156,6 +156,10 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
   同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
   **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
+- **委派型调用（agent 型 MCP）单独渲染成「委派卡」**：抬头给**目标**（prompt 首句）与
+  **已用时**，默认展开——它要跑几分钟，收起来等于又变回黑箱；用时那个数字是"在跑"与"卡住"
+  的唯一区分。是不是委派由**代码判定**（`AgentLoop._is_agentic`，看 `_takes_cwd`）随
+  `tool_use` 事件下发，**别让前端按工具名猜**——名字是 server 起的，猜必然漏。
 - **「停止」会取消在飞的 MCP 调用**（`Conversation.stop()` → `McpManager.cancel_all()`）。
   不接的话 agent 型 server 一次调用几分钟，按了停止仍要干等到 `call_timeout`（真机 900s）。
   取消后给的是**可读文案**「调用已被用户停止」——原样抛 `CancelledError` 会被包成

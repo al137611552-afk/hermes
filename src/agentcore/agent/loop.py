@@ -838,14 +838,16 @@ class AgentLoop:
             executor = ThreadPoolExecutor(max_workers=min(self._PARALLEL_CAP, len(parallel_ids)))
             for c in calls:
                 if c.id in parallel_ids:
-                    emit("tool_use", {"id": c.id, "name": c.name, "input": c.input})
+                    emit("tool_use", {"id": c.id, "name": c.name, "input": c.input,
+                                      "agentic": self._is_agentic(c.name)})
                     futures[c.id] = executor.submit(
                         self._exec_tool_with_retry, c.name, c.input, emit=emit, call=c)
         try:
             for c in calls:  # 串行组照旧（与并行组并发进行）
                 if c.id in futures:
                     continue
-                emit("tool_use", {"id": c.id, "name": c.name, "input": c.input})
+                emit("tool_use", {"id": c.id, "name": c.name, "input": c.input,
+                                  "agentic": self._is_agentic(c.name)})
                 outputs[c.id] = self._exec_tool_with_retry(c.name, c.input, emit=emit, call=c)
                 self._emit_result(emit, c, outputs[c.id])
             for c in calls:  # 收并行组结果（按原序等待/上报）
@@ -903,6 +905,17 @@ class AgentLoop:
         if d:  # 写/编辑的本次 diff：内联展示在对话流（仅前端，不回灌模型）
             ev["diff"] = {"path": d["path"], "text": d["diff"]}
         emit("tool_result", ev)
+
+    def _is_agentic(self, name: str) -> bool:
+        """这次调用是不是**委派给另一个 agent**（codex 那类：一次调用跑几分钟、会改一堆文件）。
+
+        由代码判定后随事件下发，**不让前端按工具名猜**——名字是 server 起的，猜必然漏。
+        """
+        try:
+            tool = self.registry.get(name)
+        except Exception:  # noqa: BLE001
+            return False
+        return bool(getattr(tool, "_takes_cwd", False))
 
     def _exec_tool_with_retry(self, name: str, params: dict, *, emit=None, call=None
                               ) -> tuple[str, bool, list[dict]]:

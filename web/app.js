@@ -742,14 +742,25 @@ function renderToolUse(v, data) {
   if (data.name === "delegate") return;  // 委派由专门的子任务块展示，不再出通用工具块
   finalizeTextBubble(v);
   const box = document.createElement("details");
-  box.className = "tool-block";
-  box.open = false;
+  box.className = "tool-block" + (data.agentic ? " tool-agentic" : "");
+  // 委派型调用**默认展开**：它要跑几分钟，收起来就等于又变回黑箱
+  box.open = !!data.agentic;
 
   const summary = document.createElement("summary");
-  summary.innerHTML = `<span class="tool-name">${data.name}</span>` +
-    `<span class="tool-args">${escapeHtml(summarize(data.input))}</span>` +
-    `<span class="tool-status running">运行中…</span>`;
+  if (data.agentic) {
+    // 一次调用＝一个自主 agent 跑几分钟、可能改一堆文件，信息量跟 read_file 不是一个量级：
+    // 抬头给**目标**与**已用时**，而不是一串 JSON 参数
+    summary.innerHTML = `<span class="tool-name">🤖 ${escapeHtml(data.name)}</span>` +
+      `<span class="tool-args">${escapeHtml(delegationGoal(data.input))}</span>` +
+      `<span class="tool-elapsed">0s</span>` +
+      `<span class="tool-status running">运行中…</span>`;
+  } else {
+    summary.innerHTML = `<span class="tool-name">${data.name}</span>` +
+      `<span class="tool-args">${escapeHtml(summarize(data.input))}</span>` +
+      `<span class="tool-status running">运行中…</span>`;
+  }
   box.appendChild(summary);
+  if (data.agentic) startElapsed(box);
 
   const result = document.createElement("pre");
   result.className = "tool-result";
@@ -758,6 +769,25 @@ function renderToolUse(v, data) {
 
   v.toolBlocks[data.id] = box;
   appendRow(v, box);
+}
+
+// 委派卡的计时：**长任务的存在感全靠它**——没有它就分不清"在跑"和"卡住"。
+// 结束时由 renderToolResult 停掉；卡片被移除也要停，别留孤儿定时器。
+function startElapsed(box) {
+  const el = box.querySelector(".tool-elapsed");
+  if (!el) return;
+  const t0 = Date.now();
+  box._elapsedTimer = setInterval(() => {
+    if (!box.isConnected) { stopElapsed(box); return; }
+    el.textContent = formatElapsed(Date.now() - t0);
+  }, 1000);
+  box._startedAt = t0;
+}
+
+function stopElapsed(box) {
+  if (box._elapsedTimer) { clearInterval(box._elapsedTimer); box._elapsedTimer = null; }
+  const el = box.querySelector(".tool-elapsed");
+  if (el && box._startedAt) el.textContent = formatElapsed(Date.now() - box._startedAt);
 }
 
 function renderToolStream(v, data) {
@@ -778,6 +808,7 @@ function renderToolResult(v, data) {
   if (data.name === "delegate") return;  // 同上，委派结果在子任务块里看
   const box = v.toolBlocks[data.id];
   if (!box) return;
+  stopElapsed(box);        // 停表：结束后那个数字就是本次真实用时
   const status = box.querySelector(".tool-status");
   status.textContent = data.ok ? "完成" : "失败";
   status.className = "tool-status " + (data.ok ? "ok" : "fail");

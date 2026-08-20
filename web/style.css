@@ -551,6 +551,15 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
 /* 高影响力工具的说明行：解释"为什么这条没有『以后别问』的按钮"，避免被当成 bug */
 .perm-note { margin-top: 6px; font-size: 12px; color: var(--muted); line-height: 1.5; }
 /* MCP 体检结果：分级着色，逐条铺开（人点它就是因为看不出哪儿错） */
+/* 委派卡（agent 型 MCP 调用）：一次调用＝一个自主 agent 跑几分钟，
+   信息量跟 read_file 不是一个量级——抬头给目标与用时，左侧一条竖线把它跟普通工具块分开 */
+.tool-agentic { border-left: 3px solid var(--accent); padding-left: 8px; }
+.tool-agentic .tool-name { font-weight: 600; }
+.tool-elapsed {
+  margin-left: 8px; font-size: 11.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .mcp-diag-out { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
 .mcp-diag-line { font-size: 12px; line-height: 1.5; color: var(--muted); word-break: break-all; }
 .mcp-diag-line.ok { color: var(--ok); }
