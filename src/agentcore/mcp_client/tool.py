@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from .gitwatch import diff_status, render_changes, status_lines
 from ..tools.base import Tool, ToolError, ToolOutput
 
 # 工具名分隔：server 名 + "__" + 原始工具名（整体满足 Anthropic 工具名 [a-zA-Z0-9_-]{1,64}）
@@ -158,6 +159,10 @@ class McpTool(Tool):
         self._thread_key = thread_param(self.input_schema)
         # 当前会话的工作区（由 build_registry 绑）。None＝不补 cwd，行为同以前。
         self.workspace = None
+        # **「schema 收 cwd」＝agent 型**：它在某个目录里自己干活（codex 就是）。
+        # 用它同时决定"补不补 cwd"和"要不要用 git 记录改动"。
+        # 别用 thread key 当判据——`codex__codex` 的 schema 里根本没有 threadId（只有 reply 有）。
+        self._takes_cwd = "cwd" in ((self.input_schema or {}).get("properties") or {})
         self._caller = caller
 
     # 要实时流（loop 会给 stream 回调，前端把增量追加到运行中的工具块）。
@@ -194,14 +199,17 @@ class McpTool(Tool):
                 params[RESUMED_KEY] = last      # run() 取走，用来在结果里标一句
         # cwd：schema 收这个参数、模型又没给 → 用当前会话的工作区。
         # 不补的话它就在 hermes 自己的安装目录里干活（真机踩过），而且**不报错**。
-        if "cwd" in ((self.input_schema or {}).get("properties") or {}) \
-                and not params.get("cwd") and self.workspace:
+        if self._takes_cwd and not params.get("cwd") and self.workspace:
             params["cwd"] = self.workspace
         return params
 
     def run(self, params: dict, stream=None):
         params = self.prepare(params)
         resumed = params.pop(RESUMED_KEY, "")
+        # agent 型调用（schema 收 cwd 的那种）：**调用前后各取一次 git 状态**。
+        # 事后取一次会把用户自己没提交的改动算到 agent 头上——那种"自信的错数"比没有更糟。
+        watch_cwd = str(params.get("cwd") or "") if self._takes_cwd else ""
+        before = status_lines(watch_cwd) if watch_cwd else None
         try:
             result = self._caller(self.server, self.tool_name, params, stream)
         except Exception as e:  # 连接断开 / 超时 / 子进程已退出等
@@ -218,6 +226,8 @@ class McpTool(Tool):
         # 不回显的话，模型既学不会也没法在换工具时带走。
         note = f"[已自动接续 {self._thread_key}={resumed}]\n" if resumed else ""
         tail = f"\n\n[{self._thread_key or 'thread'}] {tid}（追问同一件事时带上它）" if tid else ""
-        text = f"{note}{text}{tail}"
+        # **改了什么由 git 说，不由 agent 自述说**（同评测那条「判分优先程序化」）
+        changed = render_changes(diff_status(before, status_lines(watch_cwd))) if watch_cwd else ""
+        text = f"{note}{text}{tail}{changed}"
         return ToolOutput(text=text, blocks=blocks) if blocks else text
 

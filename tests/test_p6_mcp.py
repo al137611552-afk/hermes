@@ -228,6 +228,36 @@ def test_cwd_follows_the_session_workspace():
     assert "cwd" not in seen[-1]
 
 
+def test_agentic_is_decided_by_cwd_not_by_thread_key():
+    """**「schema 收 cwd」＝agent 型**。别用 thread key 当判据——`codex__codex` 的 schema 里
+    根本没有 threadId（只有 codex-reply 有），用它当门会让起始那次既不补 cwd、也不记改动。
+    2026-08-20 端到端真跑就是这么发现的。"""
+    start = McpTool("codex", "codex", "d", {"properties": {"prompt": {}, "cwd": {}}},
+                    caller=lambda *a, **k: _Result([_Text("ok")]))
+    reply = McpTool("codex", "codex-reply", "d", {"properties": {"prompt": {}, "threadId": {}}},
+                    caller=lambda *a, **k: _Result([_Text("ok")]))
+    plain = McpTool("fs", "read_file", "d", {"properties": {"path": {}}},
+                    caller=lambda *a, **k: _Result([_Text("ok")]))
+    assert start._takes_cwd is True and start._thread_key == ""
+    assert reply._takes_cwd is False and reply._thread_key == "threadId"
+    assert plain._takes_cwd is False
+
+
+def test_plain_tools_never_touch_git():
+    """普通 MCP 工具（文件系统/浏览器）不该为了一次读文件去跑 git。"""
+    calls = []
+    import agentcore.mcp_client.tool as tool_mod
+    orig = tool_mod.status_lines
+    tool_mod.status_lines = lambda cwd, **k: calls.append(cwd) or []
+    try:
+        t = McpTool("fs", "read_file", "d", {"properties": {"path": {}}},
+                    caller=lambda *a, **k: _Result([_Text("ok")]))
+        out = t.run({"path": "a.txt"})
+    finally:
+        tool_mod.status_lines = orig
+    assert calls == [] and "git status" not in out
+
+
 def test_prepare_runs_before_the_gate_so_the_bar_shows_real_params():
     """确认条上要显示**真正会执行的参数**——cwd 决定它在哪儿干活，看不到就等于没确认。
     所以 loop 必须在 gate 之前调 prepare。"""

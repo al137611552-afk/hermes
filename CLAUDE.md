@@ -156,6 +156,14 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
   同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
   **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
+- **agent 型 MCP 调用会附一份 `git status` 的客观改动**（`mcp_client/gitwatch.py`）。
+  agent 回来的是自然语言自述（"我修好了 X"），**动了哪些文件只有 git 说了算**——
+  同评测那条「判分优先程序化」。取**调用前后的差集**，不是事后一把梭：工作区本来就可能是脏的，
+  把用户自己的改动算到 agent 头上是"自信的错数"。`None`（不是 git 仓库/没装 git/超时）
+  与 `[]`（干净）**是两件事**，混淆就会显示假结论。
+- **判断"是不是 agent 型工具"看 schema 收不收 `cwd`**（`_takes_cwd`），**别用 thread key**：
+  `codex__codex` 的 schema 里根本没有 threadId（只有 `codex-reply` 有），
+  用它当门会让**起始那次**既不补 cwd 也不记改动（2026-08-20 端到端真跑才发现）。
 - **MCP 工具的补参走 `prepare()`，且 loop 在 `gate.confirm` 之前调它**。确认条上要显示的是
   **真正会执行的参数**——`cwd` 决定 agent 型 server 在哪儿干活，看不到就等于没确认。
   补两样：续话 id（模型没给才补）、`cwd`（跟随**当前会话工作区**，`bind_workspace` 绑成副本——
