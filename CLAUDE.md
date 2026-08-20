@@ -156,8 +156,16 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
   同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
   **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
+- **Codex 一条标准 MCP 通知都不发**（2026-08-20 探针实测：全程只有自定义的 `codex/event`）。
+  所以 `progress_callback` 那条标准通道对它**收不到任何东西**——要拿过程必须挂
+  `NotificationBinding(method="codex/event")`；不挂的话消息在 pydantic 那关就失败
+  （真机报 `Field required [type=missing]`），连进都进不来。渲染在 `mcp_client/events.py`
+  （纯函数，语料取自真实载荷）：`agent_message_content_delta` 是逐字流、原样拼接不加换行；
+  `exec_approval_request` 必须显示——**Codex 在等审批而 hermes 接不了这条通道**，
+  不说出来就是干等到超时（出路：调用时给 `approval-policy="never"`）。
+  归属按 `_meta.requestId`，认不出宁可不显示，不往别的调用上挂。
 - **MCP 工具会实时推过程**（`McpTool.wants_stream=True` → `manager.call(stream=)` →
-  `session.call_tool(progress_callback=)`）。**agent 型 server 没有它就是黑箱**：codex 一次调用
+  `session.call_tool(progress_callback=)` + 上面那条自定义通道）。**agent 型 server 没有它就是黑箱**：codex 一次调用
   跑几分钟，中途什么都看不到、错了也只能等到最后。走的是 hermes 早有的 `tool_stream` 管子
   （前台 shell 用的同一条），**前端不用改**。老 SDK 没有 `progress_callback` 参数会自动跳过。
 - **MCP 的 `call_timeout` 要按 server 定，不是全局一个数**（`McpServerConfig.call_timeout`）。

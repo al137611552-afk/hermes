@@ -19,6 +19,7 @@ import threading
 import time
 
 from ..config import MCPConfig, McpServerConfig
+from .events import CODEX_EVENT, event_request_id, render_event
 from .tool import McpTool, ThreadMemory
 
 
@@ -93,6 +94,12 @@ class McpManager:
         self._errbufs: dict = {}             # server -> StringIO，捕获子进程 stderr（真正崩因，如"目录不存在"）
         # agent 型 server 的续话记忆：模型漏带 thread id 时自动补，避免**静默新开会话**
         self._threads = ThreadMemory()
+        # 自定义事件 → 实时流的归属表。**按 requestId 绑定**：子 Agent 可能并发调同一个
+        # server，靠"当前那次"猜必然串台。首条事件到达时，若只有一次调用还没绑定，
+        # 就认定是它（并发同时起跑的极端情况下宁可不显示，也不要张冠李戴）。
+        self._ev_lock = threading.Lock()
+        self._ev_pending: dict = {}          # server -> [stream 回调]
+        self._ev_bound: dict = {}            # (server, requestId) -> stream 回调
 
     @property
     def errors(self) -> dict:
@@ -192,8 +199,9 @@ class McpManager:
             # errlog 捕获 server stderr（真正崩因在这，如"目录不存在"）；老版本 SDK 没此参数则跳过
             _kw = ({"errlog": errfile} if errfile is not None
                    and "errlog" in _inspect.signature(stdio_client).parameters else {})
+            bindings = self._event_bindings(name)
             async with stdio_client(params, **_kw) as (read, write):
-                async with ClientSession(read, write) as session:
+                async with ClientSession(read, write, **bindings) as session:
                     await session.initialize()
                     listed = await session.list_tools()
                     self._sessions[name] = session
@@ -239,8 +247,67 @@ class McpManager:
                 except Exception:  # noqa: BLE001 — 推流失败绝不能影响工具调用本身
                     pass
             kw["progress_callback"] = _on_progress
-        fut = self._submit(session.call_tool(tool_name, params, **kw))
-        return fut.result(timeout=self.call_timeout_for(server))
+        if stream is not None:
+            with self._ev_lock:
+                self._ev_pending.setdefault(server, []).append(stream)
+        try:
+            fut = self._submit(session.call_tool(tool_name, params, **kw))
+            return fut.result(timeout=self.call_timeout_for(server))
+        finally:
+            if stream is not None:
+                with self._ev_lock:
+                    pend = self._ev_pending.get(server) or []
+                    if stream in pend:
+                        pend.remove(stream)
+                    for k in [k for k, v in self._ev_bound.items() if v is stream]:
+                        self._ev_bound.pop(k, None)
+
+    def _event_bindings(self, server: str) -> dict:
+        """给 `codex/event` 这类**自定义通知**挂一个绑定（SDK 的官方口子）。
+
+        不挂的话它们会在 pydantic 那关直接失败（用户真机见到的 `Field required`），
+        消息连进都进不来——**Codex 一条标准 MCP 通知都不发**，不接就等于没有过程。
+        老 SDK 没有 `notification_bindings` 参数则自动跳过，行为退回原样。
+        """
+        try:
+            import inspect
+
+            from mcp import ClientSession
+            from mcp.client.extension import NotificationBinding
+            from pydantic import BaseModel, ConfigDict
+            if "notification_bindings" not in inspect.signature(ClientSession.__init__).parameters:
+                return {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+        class _AnyParams(BaseModel):
+            """宽松载荷：**不照着某个版本的事件字段建模**——上游一改字段就会全线失效，
+            而这条通道的价值恰恰是"尽量把过程透出来"。校验交给 render_event 做容错。"""
+            model_config = ConfigDict(extra="allow")
+
+        async def _handler(params) -> None:
+            raw = params.model_dump(by_alias=True) if hasattr(params, "model_dump") else params
+            text = render_event(raw.get("msg") if isinstance(raw, dict) else None)
+            if text:
+                self._dispatch_event(server, event_request_id(raw), text)
+
+        return {"notification_bindings": [
+            NotificationBinding(method=CODEX_EVENT, params_type=_AnyParams, handler=_handler)]}
+
+    def _dispatch_event(self, server: str, rid, text: str) -> None:
+        """把一条事件文本投给**发起它的那次调用**的实时流。"""
+        with self._ev_lock:
+            cb = self._ev_bound.get((server, rid))
+            if cb is None:
+                pend = self._ev_pending.get(server) or []
+                if rid is None or len(pend) != 1:
+                    return          # 认不出归属：宁可不显示，也不要挂到别人的调用上
+                cb = pend[0]
+                self._ev_bound[(server, rid)] = cb
+        try:
+            cb("codex", text)
+        except Exception:  # noqa: BLE001 — 推流失败绝不能影响工具调用本身
+            pass
 
     @staticmethod
     def _supports_progress() -> bool:
