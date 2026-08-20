@@ -312,6 +312,21 @@ def test_stop_forwards_to_mcp():
     assert "cancel_all" in src
 
 
+def test_effective_cwd_is_echoed_in_the_result():
+    """agent 在别的目录里建文件时**完全无声**：它自述"已创建"，工作区里却什么都没有，
+    人要靠翻进程、搜磁盘才查得出来（2026-08-21 真机：Codex 在别处建了项目并起了服务）。
+    回显工作目录之后，"它说建了 → 工作区没有 → 目录写着别处"三句话就能对上。
+    """
+    t = McpTool("codex", "codex", "d", {"properties": {"prompt": {}, "cwd": {}}},
+                caller=lambda *a, **k: _Result([_Text("已创建 server.js")]))
+    out = t.run({"prompt": "x", "cwd": "/tmp/proj"})
+    assert "[工作目录] /tmp/proj" in out, out
+    # 不收 cwd 的普通工具不该多这一行
+    plain = McpTool("fs", "read_file", "d", {"properties": {"path": {}}},
+                    caller=lambda *a, **k: _Result([_Text("ok")]))
+    assert "[工作目录]" not in plain.run({"path": "a.txt"})
+
+
 def test_working_inside_hermes_own_dir_is_called_out_loudly():
     """真机踩到：面板模板把"当前工作区"填成了 hermes 的临时工作区
     `data/workspaces/_scratch`，于是 Codex 全干在了 hermes 自己的目录里。

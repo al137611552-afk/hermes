@@ -239,12 +239,17 @@ class McpTool(Tool):
             self._threads.set(self.server, tid)
         if not ok:
             raise ToolError(text)  # 回灌模型，AgentLoop 不中断
+        # **把"在哪儿干的活"摆到明面上**：agent 在别的目录里建文件时完全无声——
+        # 它自述"已创建"，工作区里却什么都没有，人要靠翻进程/搜磁盘才查得出来
+        # （2026-08-21 真机：Codex 在别处建了项目并起了服务，工作区里一个文件都没有）。
+        # 回显之后，"它说建了 → 工作区没有 → 但目录写着别处"三句话就能对上。
+        where = f"\n[工作目录] {watch_cwd}" if watch_cwd else ""
         # **把续话 id 摆到明面上**：自动接续是兜底，模型自己带上才是常态；
         # 不回显的话，模型既学不会也没法在换工具时带走。
         note = f"[已自动接续 {self._thread_key}={resumed}]\n" if resumed else ""
         tail = f"\n\n[{self._thread_key or 'thread'}] {tid}（追问同一件事时带上它）" if tid else ""
         # **改了什么由 git 说，不由 agent 自述说**（同评测那条「判分优先程序化」）
         changed = render_changes(diff_status(before, status_lines(watch_cwd))) if watch_cwd else ""
-        text = f"{misplaced}{note}{text}{tail}{changed}"
+        text = f"{misplaced}{note}{text}{where}{tail}{changed}"
         return ToolOutput(text=text, blocks=blocks) if blocks else text
 
