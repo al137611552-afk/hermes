@@ -1,0 +1,323 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:d182d1d682", "msg0:7005da1e4b", "msg1:4730ba01f0", "msg2:94f02db10f", "msg3:369009aeca", "msg4:c3eaa71f79"], "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "搜索引擎"}
+{"type": "thinking", "text": "一直在"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "同样的"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "高端"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "站点"}
+{"type": "thinking", "text": "结果"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "看起来"}
+{"type": "thinking", "text": "像是"}
+{"type": "thinking", "text": "被"}
+{"type": "thinking", "text": "搜索引擎"}
+{"type": "thinking", "text": "重"}
+{"type": "thinking", "text": "排"}
+{"type": "thinking", "text": "干扰"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "或者是"}
+{"type": "thinking", "text": "数据"}
+{"type": "thinking", "text": "源"}
+{"type": "thinking", "text": "问题"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "系统"}
+{"type": "thinking", "text": "建议"}
+{"type": "thinking", "text": "改用"}
+{"type": "thinking", "text": " site"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "限定"}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "官方"}
+{"type": "thinking", "text": "源"}
+{"type": "thinking", "text": "定向"}
+{"type": "thinking", "text": "检索"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "注意到"}
+{"type": "thinking", "text": "搜索结果"}
+{"type": "thinking", "text": "一直"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "同样的"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "条"}
+{"type": "thinking", "text": "——"}
+{"type": "thinking", "text": "这"}
+{"type": "thinking", "text": "看起来"}
+{"type": "thinking", "text": "像"}
+{"type": "thinking", "text": "搜索引擎"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "固定的"}
+{"type": "thinking", "text": "结果"}
+{"type": "thinking", "text": "集"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "我需要"}
+{"type": "thinking", "text": "换"}
+{"type": "thinking", "text": "思路"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " browser"}
+{"type": "thinking", "text": "_n"}
+{"type": "thinking", "text": "avigate"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "直接"}
+{"type": "thinking", "text": "去"}
+{"type": "thinking", "text": "京东"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "什么"}
+{"type": "thinking", "text": "值得"}
+{"type": "thinking", "text": "买"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "SM"}
+{"type": "thinking", "text": "Z"}
+{"type": "thinking", "text": "DM"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "这类"}
+{"type": "thinking", "text": "电商"}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "导"}
+{"type": "thinking", "text": "购"}
+{"type": "thinking", "text": "网站"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "不过"}
+{"type": "thinking", "text": "根据"}
+{"type": "thinking", "text": "系统"}
+{"type": "thinking", "text": "提示"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "b"}
+{"type": "thinking", "text": "rowser"}
+{"type": "thinking", "text": "_n"}
+{"type": "thinking", "text": "avigate"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "去"}
+{"type": "thinking", "text": " b"}
+{"type": "thinking", "text": "ing"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "百度"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "谷歌"}
+{"type": "thinking", "text": "搜"}
+{"type": "thinking", "text": "关键词"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "禁止"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "白"}
+{"type": "thinking", "text": "搜"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "去"}
+{"type": "thinking", "text": "京东"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "什么"}
+{"type": "thinking", "text": "值得"}
+{"type": "thinking", "text": "买"}
+{"type": "thinking", "text": "这些"}
+{"type": "thinking", "text": "电商"}
+{"type": "thinking", "text": "站"}
+{"type": "thinking", "text": "点的"}
+{"type": "thinking", "text": "站"}
+{"type": "thinking", "text": "内"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "是可以"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "——"}
+{"type": "thinking", "text": "那是"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "站"}
+{"type": "thinking", "text": "内"}
+{"type": "thinking", "text": "下"}
+{"type": "thinking", "text": "钻"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "场景"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "试试"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " web"}
+{"type": "thinking", "text": "_search"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": " site"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "限定"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "比如"}
+{"type": "thinking", "text": " site"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "sm"}
+{"type": "thinking", "text": "zd"}
+{"type": "thinking", "text": "m"}
+{"type": "thinking", "text": ".com"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " browser"}
+{"type": "thinking", "text": "_n"}
+{"type": "thinking", "text": "avigate"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "去"}
+{"type": "thinking", "text": "什么"}
+{"type": "thinking", "text": "值得"}
+{"type": "thinking", "text": "买"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "sm"}
+{"type": "thinking", "text": "zd"}
+{"type": "thinking", "text": "m"}
+{"type": "thinking", "text": ".com"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "去"}
+{"type": "thinking", "text": "京东"}
+{"type": "thinking", "text": "站"}
+{"type": "thinking", "text": "内"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "试试"}
+{"type": "thinking", "text": " site"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "限定"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "以及"}
+{"type": "thinking", "text": "浏览器"}
+{"type": "thinking", "text": "直"}
+{"type": "thinking", "text": "通"}
+{"type": "thinking", "text": "电商"}
+{"type": "thinking", "text": "网站"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "计划"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " web"}
+{"type": "thinking", "text": "_search"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " site"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "sm"}
+{"type": "thinking", "text": "zd"}
+{"type": "thinking", "text": "m"}
+{"type": "thinking", "text": ".com"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " web"}
+{"type": "thinking", "text": "_search"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " site"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "jd"}
+{"type": "thinking", "text": ".com"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "办公"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " browser"}
+{"type": "thinking", "text": "_n"}
+{"type": "thinking", "text": "avigate"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "去"}
+{"type": "thinking", "text": " sm"}
+{"type": "thinking", "text": "zd"}
+{"type": "thinking", "text": "m"}
+{"type": "thinking", "text": ".com"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "页"}
+{"type": "thinking", "text": "\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "做"}
+{"type": "thinking", "text": " site"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "限定"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "看"}
+{"type": "thinking", "text": "效果"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "搜索引擎"}
+{"type": "text", "text": "这几"}
+{"type": "text", "text": "轮"}
+{"type": "text", "text": "都"}
+{"type": "text", "text": "返回"}
+{"type": "text", "text": "同一"}
+{"type": "text", "text": "批"}
+{"type": "text", "text": "高端"}
+{"type": "text", "text": "型号"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "说明"}
+{"type": "text", "text": "泛"}
+{"type": "text", "text": "搜"}
+{"type": "text", "text": "被"}
+{"type": "text", "text": "干扰"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "改用"}
+{"type": "text", "text": " site"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "限定"}
+{"type": "text", "text": "到"}
+{"type": "text", "text": "导"}
+{"type": "text", "text": "购"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "电商"}
+{"type": "text", "text": "站点"}
+{"type": "text", "text": "定向"}
+{"type": "text", "text": "检索"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "同时"}
+{"type": "text", "text": "直接用"}
+{"type": "text", "text": "浏览器"}
+{"type": "text", "text": "去"}
+{"type": "text", "text": "什么"}
+{"type": "text", "text": "值得"}
+{"type": "text", "text": "买"}
+{"type": "text", "text": "这类"}
+{"type": "text", "text": "导"}
+{"type": "text", "text": "购"}
+{"type": "text", "text": "站"}
+{"type": "text", "text": "下"}
+{"type": "text", "text": "钻"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_rYgOttU2OzO0kwdiuE6u7800", "name": "web_search", "input": {"max_results": 8, "query": "site:smzdm.com 静音机械键盘 办公"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_SQABcG1qCwukPjO0QRzC9174", "name": "web_search", "input": {"max_results": 8, "query": "site:zhihu.com 500元 静音机械键盘 推荐 办公"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 1264, "output": 454, "cache_read": 10240, "cache_write": 0}}}

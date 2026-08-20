@@ -1,0 +1,8 @@
+{
+ "passed": true,
+ "tool_calls": 1,
+ "steps": 2,
+ "subagents": 0,
+ "nudges": {},
+ "why": "覆盖 3/3 条要点（要求 ≥2）"
+}

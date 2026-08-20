@@ -24,6 +24,25 @@ class Evaluator(Protocol):
         ...
 
 
+# 观察类工具：输出描述的是**世界的状态**，不是"我做了一件事"的结果。
+# 读到一个含 assert 的测试文件、grep 命中一行 AssertionError——只说明世界里有这么一段文本，
+# **不构成一次失败**。CodingEvaluator 的 applies() 只看输出特征词、不看工具，于是把它们
+# 一并接管并判成 blocker「测试未全过」，后果三重（块 V4 收割语料时照出来的）：
+#   ①失败语料被污染：13 次 logic 里 7 次来自 read_file；
+#   ②`deadend_hint` 在**纯只读任务**里误报（l3_parallel_audit 基线实测触发 1 次）；
+#   ③候选策略「先定位别盲改」的证据被稀释。
+# 判据见 ADR 0027 决策 11：写进失败语料的必须**是一次动作**且**它失败了**。
+# 注：Search/Shell/Research 三个评估器本来就按**工具名**接管，不受影响；
+# 这里只挡 Coding 这一个"按文本特征词认领"的。
+OBSERVATION_TOOLS = frozenset({
+    "read_file", "list_dir", "code_outline", "find_symbol", "search_code",
+    "grep_search", "glob_search",                 # 检索：命中的是别人的文本
+    "git_status", "git_diff", "git_log",          # 读仓库状态
+    "web_fetch",                                  # 读一个网页
+    "take_screenshot",                            # 看一眼屏幕
+})
+
+
 # 注册顺序 = 优先级。Coding 在前：shell 跑出来的测试输出应归 Coding 而非 Shell。
 # Research 早于 Search：联网搜索（web_search）走质量评估（判约束满足），代码检索仍归 Search。
 def _registry() -> "list[Evaluator]":

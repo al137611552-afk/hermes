@@ -625,6 +625,7 @@ class Conversation:
             research_max_rounds=res.config.agent.research_max_rounds,
             research_judge=self._make_research_judge(provider, res.config.agent.research_judge),
             tool_budget=self._get_tool_budget(res.config),
+            workspace=self.workspace,
         )
         n_in = len(model_messages)  # 压缩后喂入条数；loop 仅在其后追加新消息
         try:
@@ -1877,6 +1878,7 @@ class Conversation:
             research_max_rounds=cfg.agent.research_max_rounds,
             research_judge=self._make_research_judge(provider, cfg.agent.research_judge),
             tool_budget=self._get_tool_budget(cfg),   # 与主 Agent 同一实例：子 Agent 的搜索也计入总数
+            workspace=self.workspace,   # 与主 Agent 同口径，否则同一条路两种指纹
         )
         # 子循环抛异常时自动重试一次（附上失败原因），仍失败才回灌主 Agent（FR-11.6b）。
         # 取消时不重试（用户主动停止）。
@@ -2265,9 +2267,11 @@ class Conversation:
             pass
 
     def _get_failure_memory(self, enabled: bool):
-        """块E：懒建并复用单个 FailureMemory（跨会话死路记忆，data/failures.db）。
+        """块E：懒建并复用单个 FailureMemory（跨会话死路记忆）。
 
-        enabled=False → None（功能关）。打开失败也降级 None，绝不阻断对话。
+        库路径取 `agent.failure_memory_db`，空则默认 `data/failures.db`；评测由 harness 指到
+        独立库并标 source=eval（ADR 0027 决策 2）。enabled=False → None（功能关）。
+        打开失败也降级 None，绝不阻断对话。
         """
         if not enabled:
             return None
@@ -2276,7 +2280,9 @@ class Conversation:
             try:
                 from ..config import ROOT
                 from ..agent.world_state import FailureMemory
-                fm = FailureMemory(ROOT / "data" / "failures.db")
+                custom = (self.res.config.agent.failure_memory_db or "").strip()
+                path = Path(custom) if custom else (ROOT / "data" / "failures.db")
+                fm = FailureMemory(path, source="eval" if custom else "real")
             except Exception:  # noqa: BLE001
                 fm = None
             self._failure_memory_cache = fm

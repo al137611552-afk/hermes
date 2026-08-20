@@ -1,0 +1,14 @@
+# 回放专用模型档案（块 V3）。**不含任何密钥**——只有 api_key_env 引用，
+# 而回放路径压根不取 key（build_provider 在 resolve_api_key 之前就返回）。
+#
+# 为什么要入库：cassette 的请求指纹里**嵌了 model id**，录音与档案是一对绑定的东西。
+# 档案不入库，CI 就没法回放；分开放两处，迟早对不上。
+dsv4:
+  provider: anthropic
+  model: deepseek-v4-flash
+  api_key_env: DEEPSEEK_API_KEY
+  base_url: https://api.deepseek.com/anthropic
+  max_tokens: 8192
+  temperature: 0.3
+  vision: false
+  prompt_cache: false

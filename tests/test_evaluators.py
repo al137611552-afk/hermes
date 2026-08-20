@@ -59,6 +59,59 @@ def test_coding_verify_marker_pass():
     assert e.issues == []
 
 
+# ---- CodingEvaluator：退出码兜底（2026-08-19 补，V1 揪出的缺口）----------------
+
+def test_coding_nonzero_exit_without_counts_is_not_run():
+    """`pytest 不存在的文件` → exit 4、无任何用例计数：测试**根本没跑起来**，必须是 blocker。
+
+    原先 CodingEvaluator 接管了（输出含 "pytest"）却解析不出计数，把退出码一起吞掉判成"无 issues"，
+    于是"测试命令本身写错了"这一整类失败对评估内核完全隐形。
+    """
+    out = ("[exit code] 4\n[stdout]\n=== test session starts ===\n"
+           "platform linux -- Python 3.12.3, pytest-9.1.0\n"
+           "ERROR: file or directory not found: nonexistent_xyz.py\n")
+    e = CodingEvaluator().evaluate("run_bash", out)
+    assert e.issues == ["测试未跑成=blocker"], e.issues
+    assert e.metrics["exit_code"] == 4.0
+    assert e.confidence == 1.0, "退出码是硬事实，不该还是 0.6 的启发式猜测"
+
+
+def test_coding_collected_zero_items_is_not_run():
+    """pytest 收集到 0 个用例（exit 5）：`0 passed` 不算"有计数"，同样是没跑成。"""
+    out = "[exit code] 5\n[stdout]\ncollected 0 items\n\n0 passed in 0.01s\n"
+    e = CodingEvaluator().evaluate("run_bash", out)
+    assert e.issues == ["测试未跑成=blocker"], (e.issues, e.metrics)
+
+
+def test_coding_all_passed_but_nonzero_exit_is_blocker():
+    """用例全过、命令却非零退出（收集/插件/收尾阶段出错）——也是真问题，不能报"全过"。"""
+    e = CodingEvaluator().evaluate("run_bash", "[exit code] 1\n[stdout]\n==== 3 passed in 0.1s ====")
+    assert e.issues == ["退出码非零=失败"], e.issues
+    assert e.metrics["passed"] == 3 and e.metrics["exit_code"] == 1.0
+
+
+def test_coding_count_regex_does_not_match_across_lines():
+    """**幻影计数回归门**：`pytest-9.1.0\nERROR:` 曾被 `(\\d+)\\s+errors?` 跨行读成"0 errors"，
+    凭空造出 total=0，于是"没跑成"被判成"用例全过"。计数正则必须限定同一行。"""
+    out = "版本 pytest-9.1.0\nERROR: file not found"
+    e = CodingEvaluator().evaluate("run_bash", out)
+    assert "total" not in e.metrics, e.metrics
+    assert "errors" not in e.metrics, e.metrics
+
+
+def test_coding_records_exit_code_even_with_counts():
+    """退出码无论有没有计数都记为事实——它是 shell 包装层给的硬信息。"""
+    e = CodingEvaluator().evaluate("run_bash", "[exit code] 0\n[stdout]\n==== 2 passed ====")
+    assert e.metrics["exit_code"] == 0.0 and e.metrics["passed"] == 2
+    assert e.issues == []
+
+
+def test_coding_without_exit_code_line_unchanged():
+    """没有 `[exit code]` 行的输入（verify.py 定向校验）行为不变——只加兜底、不改既有判定。"""
+    e = CodingEvaluator().evaluate("edit_file", "🧪 受影响测试（FR-13.C）：全部通过")
+    assert e.issues == [] and "exit_code" not in e.metrics
+
+
 # ---- SearchEvaluator：检索 ----------------------------------------------------
 
 def test_search_grep_empty():
@@ -171,6 +224,78 @@ def test_emit_result_no_eval_for_unknown_tool():
     AgentLoop._emit_result(emit, call, ("文件内容", True, []))
     assert "eval" not in captured["tool_result"]   # 无适配 Evaluator → 不附
 
+
+
+def test_coding_evaluator_ignores_observation_tools():
+    """**读文件/检索读到失败字样 ≠ 这次动作失败了**（ADR 0027 决策 11，块 V4a）。
+
+    CodingEvaluator 按输出特征词认领（测试结果会搭在各种工具输出里），但观察类工具例外——
+    否则读一个含 assert 的测试文件就被判成 blocker「测试未全过」，进而污染失败语料、
+    让 deadend_hint 在纯只读任务里误报（块 V4 收割语料时实测照出）。
+    """
+    from agentcore.agent.evaluators import evaluate
+    from agentcore.agent.evaluators.base import OBSERVATION_TOOLS
+
+    body = "1\tassert add(1, 2) == 4, \"1+2 应当等于 4\"\n2\tAssertionError"
+    for name in ("read_file", "grep_search", "list_dir", "code_outline", "git_diff"):
+        assert name in OBSERVATION_TOOLS, name
+        assert CodingEvaluator().applies(name, body) is False, name
+    # 检索类仍走 SearchEvaluator（命中数事实照常产出），只是不再被 Coding 抢走
+    ev = evaluate("grep_search", body)
+    assert ev is None or not ev.issues, ev
+
+
+def test_coding_evaluator_still_claims_execution_output():
+    """别修过头：测试结果搭在 shell / edit_file（受影响测试）输出里，仍必须被接管。"""
+    assert CodingEvaluator().applies("run_bash", "1 failed, 2 passed in 0.3s") is True
+    assert CodingEvaluator().applies("edit_file", "🧪 受影响测试（FR-13.C）：1 failed") is True
+
+
+def test_reading_a_failing_test_file_is_not_a_failure():
+    """端到端口径：整条链路（evaluate → classify）对读文件必须一声不响。"""
+    from agentcore.agent.loop import AgentLoop
+
+    body = "1\tdef test_x():\n2\t    assert 1 == 2\n3\tAssertionError: boom"
+    _ev, classes = AgentLoop._assess("read_file", body, True, {"path": "test_x.py"})
+    assert classes == [], classes
+    _ev, classes = AgentLoop._assess("run_bash", body, True, None)
+    assert classes, "执行类的同样文本仍必须判成失败，别修过头"
+
+
+def test_shell_echoed_exit_code_is_not_swallowed():
+    """`cmd 2>&1; echo "exit=$?"` —— 整条命令的退出码变成 echo 的 0，真实失败被掩盖。
+
+    这类写法极常见（真跑里连撞三次：找不到命令、语法错、私有包缺失），而它让
+    "命令根本没跑起来"这一整类失败对评估内核完全隐形：不进 issues、不分类、不进失败语料。
+    与块 V1a 修的"CodingEvaluator 吞退出码"同一家族——**退出码是硬事实，丢了就什么都判不了**。
+    """
+    from agentcore.agent.evaluators import evaluate
+    from agentcore.agent.taxonomy import ErrorClass, classify
+
+    out = ("[exit code] 0\n[stdout]\n"
+           "bash: line 1: acme-build: command not found\nexit=127\n")
+    ev = evaluate("run_bash", out, {"command": 'acme-build --release 2>&1; echo "exit=$?"'})
+    assert ev.issues and "127" in ev.issues[0], ev.issues
+    assert ErrorClass.NOT_FOUND in classify(ev, out)
+
+
+def test_shell_echoed_exit_code_zero_is_still_success():
+    from agentcore.agent.evaluators import evaluate
+
+    out = "[exit code] 0\n[stdout]\nhello\nexit=0\n"
+    assert not evaluate("run_bash", out, {"command": 'echo hello; echo "exit=$?"'}).issues
+
+
+def test_shell_does_not_invent_failures_from_log_text():
+    """判据刻意收得很窄（要求命令里确实写了 `$?`）：宽一点就会把 `cat error.log`、
+    grep 到 Error 的正常输出全判成失败——那正是块 V4a 刚清理掉的语料污染，不能反手又造一批。"""
+    from agentcore.agent.evaluators import evaluate
+
+    out = "[exit code] 0\n[stdout]\n2026-01-01 Error: something happened\nexit=1 是日志正文\n"
+    assert not evaluate("run_bash", out, {"command": "cat error.log"}).issues
+    # 连 `$?` 都没写的串联命令：**已知不覆盖**，这里钉住这条边界，免得日后误以为已经处理了
+    assert not evaluate("run_bash", "[exit code] 0\n[stdout]\nboom: command not found\n",
+                        {"command": "boom; true"}).issues
 
 def _run_all():
     import inspect

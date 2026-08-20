@@ -1,0 +1,24 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:1d746b61f5"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " start"}
+{"type": "thinking", "text": " by"}
+{"type": "thinking", "text": " exploring"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " workspace"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " understand"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " project"}
+{"type": "thinking", "text": " structure"}
+{"type": "thinking", "text": "."}
+{"type": "text", "text": "我先"}
+{"type": "text", "text": "看一下"}
+{"type": "text", "text": "项目"}
+{"type": "text", "text": "结构和"}
+{"type": "text", "text": "相关"}
+{"type": "text", "text": "代码"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_DdvUlISN6TFndMz5kiKD9642", "name": "list_dir", "input": {"path": ""}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_sMuPI6HMjwW2ehX3rada3502", "name": "glob_search", "input": {"pattern": "**/*.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 170, "output": 94, "cache_read": 8832, "cache_write": 0}}}

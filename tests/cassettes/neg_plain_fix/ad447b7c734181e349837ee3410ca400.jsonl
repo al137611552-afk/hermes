@@ -1,0 +1,40 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:594e690f40"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "说"}
+{"type": "thinking", "text": " test"}
+{"type": "thinking", "text": "_c"}
+{"type": "thinking", "text": "alc"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "挂了"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "看"}
+{"type": "thinking", "text": "失败"}
+{"type": "thinking", "text": "原因"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "修"}
+{"type": "thinking", "text": " calc"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "不改"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "再"}
+{"type": "thinking", "text": "跑"}
+{"type": "thinking", "text": "一次"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": "工作"}
+{"type": "thinking", "text": "区"}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": "有什么"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ozU2d8Hp0SIByyc75fvS2640", "name": "list_dir", "input": {}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_5KJgUITBgxOKMQ4koZlc1757", "name": "glob_search", "input": {"pattern": "**/*.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 103, "output": 97, "cache_read": 8832, "cache_write": 0}}}

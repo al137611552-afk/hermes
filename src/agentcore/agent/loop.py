@@ -53,9 +53,15 @@ _BROWSE_NUDGE_AT = 6   # 大库里累计浏览这么多次还没用 search_code�
 def _nudge_injection(need: Need, **ctx) -> str:
     """按 Need 选注入文案（纯函数）。ctx 提供 PROGRESS_STALLED 所需的 path/count。"""
     if need is NUDGE_LOGIN:
-        return ("[系统] 刚打开的页面是**登录墙**（需要登录才能看内容）。**必须**用 ask_user 工具暂停、"
-                "提示用户在弹出的浏览器里登录后回复『继续』，等回复了再 browser_navigate 重开目标页继续。"
-                "**严禁** browser_navigate 到 google / baidu / bing 等搜索引擎绕开登录——那不是用户要的、会被判为绕路。")
+        # 用 request_handoff 而不是 ask_user：登录要用户**动手**，不是让用户**拍板**——
+        # 这正是 config.yaml 系统提示词里写死的分工。此处曾一直停在换手工具落地之前的写法
+        # （FR-13.H/ADR 0023 之前），等于**最高权限的硬注入在教模型用错工具**，
+        # 与系统提示词自相矛盾（同 v3.63 那条已知坑：加新工具要把提示词里指向旧做法的路标一起改）。
+        return ("[系统] 刚打开的页面是**登录墙**（需要登录才能看内容）。这一步只有用户本人能做："
+                "**必须**用 request_handoff 把控制权交还用户（说明为什么要换手、以及交回后你会怎么验证），"
+                "等用户做完交回，再 browser_navigate 重开目标页确认。若重开后仍是登录页才再换手一次。"
+                "**别自己破解滑块/验证码**（必输）；**严禁** browser_navigate 到 google / baidu / bing 等"
+                "搜索引擎绕开登录——那不是用户要的、会被判为绕路。")
     if need is NUDGE_BROWSE:
         return (
             "[系统观察] 你已经逐个浏览了不少文件来找代码——这个项目较大，"
@@ -172,8 +178,17 @@ def _latest_user_text(messages) -> str:
     return ""
 
 
+# 这些工具的 blocker 是**质量差距**，不是"这条路走不通"，故不进失败语料（ADR 0027 决策 11）。
+# `web_search` 的 issues＝「返回了但不达标」（预算没满足），块H2 已有专门处置（催重搜/换源阶梯）；
+# 而它**真正的硬失败**（超时/无结果）反倒不产 issues——走 `_EMPTY_MARKERS` 那条路只留 signals。
+# 也就是说记进来的必然是质量差距，方向正好是反的。后果（块 V4 收割时照出）：
+# 同一个 query 被当死路累计、与 research_hint 重复插话；且 taxonomy 没有"质量不达标"这一类，
+# 全落进 unknown——6 条 unknown 的路里 5 条是它，把 Learning 的证据面整个带偏。
+_QUALITY_ONLY_TOOLS = frozenset({"web_search"})
+
+
 def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps, threshold=2,
-                            on_failure=None):
+                            on_failure=None, workspace=None):
     """块E：同一条路（指纹）反复**非瞬时**失败 → 注入"此路已 N 次不通"事实，促模型换思路。
 
     瞬时 IO 失败**不计**（那是 block D 自动重试的活，不是死路）。每条失败记入 WorldState
@@ -183,13 +198,17 @@ def detect_repeated_failure(calls, out_by_id, world, failure_memory, nudged_fps,
     from .taxonomy import ErrorClass
     transient = ErrorClass.TRANSIENT_IO.value
     for c in calls:
+        if c.name in _QUALITY_ONLY_TOOLS:
+            continue
         text = out_by_id.get(c.id, "") or ""
         _ev, classes = AgentLoop._assess(c.name, text, True, getattr(c, "input", None))
         nontransient = [getattr(x, "value", x) for x in classes
                         if getattr(x, "value", x) != transient]
         if not nontransient:
             continue  # 成功 / 纯瞬时 → 不是死路
-        fp = fingerprint(c.name, getattr(c, "input", None))
+        # workspace 传下去做路径归一：不归一则同一条路在不同工作区/不同评测跑里指纹不同，
+        # 跨会话记忆与块G 聚合双双失真（ADR 0027 决策 2）。
+        fp = fingerprint(c.name, getattr(c, "input", None), workspace)
         n = world.record_failure(fp, nontransient, detail=text[:200])
         cross = None
         if failure_memory is not None:
@@ -434,6 +453,7 @@ class AgentLoop:
         research_max_rounds: int = 3,
         research_judge=None,
         tool_budget=None,
+        workspace=None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -457,6 +477,8 @@ class AgentLoop:
         # 会话级工具预算（ToolBudget 实例）：**主 Agent 与所有子 Agent 共用同一个**，否则上限形同虚设。
         # None=不限次（存量调用方与测试零行为变化）。
         self.tool_budget = tool_budget
+        # 工作区根：只用于死路指纹的路径归一（ADR 0027 V0）。None=不归一，存量行为不变。
+        self.workspace = workspace
         import time as _t
         self._sleep = _t.sleep                  # 退避用；测试可替换为 no-op
 
@@ -672,7 +694,8 @@ class AgentLoop:
                     df = detect_repeated_failure(
                         calls, out_by_id, world, self.failure_memory,
                         deadend_fps, self.deadend_threshold,
-                        on_failure=lambda _fp, classes, _label: seen_classes.extend(classes))
+                        on_failure=lambda _fp, classes, _label: seen_classes.extend(classes),
+                        workspace=self.workspace)
                     if df:
                         inject_blocks.append({"type": "text", "text": df})
                         emit("deadend_hint", {"text": df})

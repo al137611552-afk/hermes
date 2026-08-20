@@ -129,6 +129,9 @@ class AgentConfig(BaseModel):
     retry_backoff_base: float = 0.5    # auto_retry 退避基数秒，第 n 次重试前等 base*2^(n-1)（指数退避）
     failure_memory: bool = True        # 块E 死路记忆：同一条路（工具+关键入参）反复**非瞬时**失败时，
                                        # 记入跨会话记忆并提示模型换思路（不再原样重试）。False=关
+    failure_memory_db: str = ""    # 死路记忆库路径；空=默认 data/failures.db。
+                                   # 评测走独立库（ADR 0027 决策 2：隔离靠分库，才能清空重跑
+                                   # 而不误删真实使用积累的跨会话资产）。
     deadend_threshold: int = 2         # 同一条路累计失败 ≥ 此值 → 提示换思路（瞬时 IO 不计，归 auto_retry）
     research_refine: bool = True       # 块H2：联网搜索返回了但不达标（如无一在预算内）时提示换词/换源重搜。False=关
     research_refine_max: int = 1       # 同一搜索 query 最多催重搜几次（防无限重搜）
@@ -288,6 +291,13 @@ class WebConfig(BaseModel):
     # 接了浏览器穿透时，web_fetch 命中反爬/登录墙/JS 空壳就自动改用浏览器读同一 URL。
     # 关掉则只提示受阻、由模型自己决定要不要开浏览器（注意：浏览器带登录态，读到的可能是私域内容）。
     browser_fallback: bool = True
+    # Firecrawl 托管检索源（FR-11.1d）：off / fallback / primary / always。
+    # **没有 FIRECRAWL_API_KEY 时一律等于 off**——开箱不预设 provider（v3.56），
+    # 且免 key 链路必须永远可用（不带凭据也能搜是 hermes 的底线能力）。
+    # **默认 primary（2026-08-20 用户拍板，原为 fallback）**：fallback 的三条判据在真机上
+    # 几乎从不触发，于是那把 key 什么也没买到。给了更好的源就默认用它；
+    # 配额用尽（HTTP 402）时**自动退回免 key 链路并在结果里说明**，本进程内不再重试。
+    firecrawl: str = "primary"
 
 
 class ArtifactsConfig(BaseModel):

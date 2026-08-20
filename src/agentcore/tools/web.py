@@ -19,6 +19,8 @@ import concurrent.futures
 import html as html_mod
 import json
 import re
+import threading
+import urllib.error
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
@@ -283,6 +285,255 @@ def canonical_url(url: str) -> str:
     path = sp.path.rstrip("/") or "/"
     return urllib.parse.urlunsplit((sp.scheme.lower(), host, path,
                                     urllib.parse.urlencode(sorted(q)), ""))
+
+
+# ---- Firecrawl（FR-11.1d）：给召回那一跳加一个**托管检索源** -------------------
+#
+# 为什么接在这一层：hermes 检索栈里最脆的就是召回——Bing RSS / DDG lite 都是免 key 抓页面
+# 再解析，随时可能被改版、反爬、空壳打穿（v3.43 那次"浏览器搜索返回空壳"就是同一类事故）。
+# 而它后面的 RRF 融合、语义重排、控源多样、读正文摘录、质量闸（块H1/H2）、换源阶梯——
+# **全都与召回源解耦**。所以把 Firecrawl 做成 `_search_one` 的一个引擎，上面那些机制原样受益，
+# **工具面零变化**：模型仍然只看到 web_search，不必在两个搜索工具之间选路
+# （v3.53 的教训：由代码自动切换，别让模型选路；且强模型在能凑合时会绕开新工具）。
+#
+# **默认 fallback 而不是 always**，理由是算术不是偏好：实测 search(limit=5) = **2 credits**，
+# 免费档 1000 credits/月；而真跑里一个研究型任务要搜 7–8 次（评测实测），
+# 全量走 = 14–16 credits/任务 ≈ 一个月只够 60–70 个任务。把配额花在
+# **免 key 链路真的不行的时候**才买得到增量；够用的时候多打一次付费 API 什么也买不到。
+#
+# 还有一条反直觉的：全量并进 RRF 未必更好。RRF 让"多引擎都有"的结果上浮，
+# Firecrawl 独有的好结果只有一票，可能反被压下去。哪个默认更好该用评测测，不该拍脑袋。
+FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search"
+FIRECRAWL_KEY_ENV = "FIRECRAWL_API_KEY"
+# 四档。**默认 primary**（2026-08-20 用户拍板改的，原默认是 fallback）：
+#   off      只用免 key 链路
+#   fallback 免 key 链路不达标才升级（省配额，但真机实测**几乎从不触发**——
+#            于是那把 key 什么也没买到，这正是改默认的直接原因）
+#   primary  **Firecrawl 主搜**，免 key 链路只在它没结果/给不够/不可用时兜底
+#   always   三路并发一起进 RRF
+FIRECRAWL_MODES = ("off", "fallback", "primary", "always")
+
+# 配额耗尽的**进程内**记忆。为什么要记：配额用尽后每次搜索都先撞一次 402 才退回，
+# 白等一个往返、日志还刷屏。402 本身不计费，所以重启后重试一次的代价可以忽略——
+# 故**只记在内存、不落盘**（落盘要处理计费周期、换 key、多进程，不值当）。
+_QUOTA_LOCK = threading.Lock()
+_QUOTA = {"why": ""}
+
+
+class FirecrawlQuotaError(ToolError):
+    """配额用尽（HTTP 402）。**与一般失败分开**：这一类要粘住不再重试，
+    而超时/限流那类是瞬时的，粘住等于把付费源永久关掉。"""
+
+
+def firecrawl_quota_exhausted() -> str:
+    """配额已耗尽则返回原因（真值），否则空串。"""
+    with _QUOTA_LOCK:
+        return _QUOTA["why"]
+
+
+def mark_firecrawl_exhausted(why: str) -> None:
+    with _QUOTA_LOCK:
+        _QUOTA["why"] = why or "配额用尽"
+
+
+def reset_firecrawl_quota() -> None:
+    """换了 key / 新的计费周期 / 测试之间清状态。"""
+    with _QUOTA_LOCK:
+        _QUOTA["why"] = ""
+
+
+def _looks_like_quota(code: int, body: str) -> bool:
+    """**只认 402**。429 是限流（瞬时，退避后能恢复），把它当配额用尽会误关整条付费链路——
+    这是"误报比漏报贵"在这里的具体形态（同块V 决策 6）。"""
+    return code == 402 or bool(re.search(r"insufficient\s+credits|out\s+of\s+credits", body or "", re.I))
+
+
+def _firecrawl_post(url: str, payload: dict, timeout: int):
+    """Firecrawl 的两个端点共用的 POST（受控 IO）。把"配额用尽"从一般失败里分出来。"""
+    key = firecrawl_key()
+    if not key:
+        raise ToolError(f"没有 {FIRECRAWL_KEY_ENV}")
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                 "User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", "replace")[:300]
+        except Exception:  # noqa: BLE001
+            pass
+        if _looks_like_quota(e.code, body):
+            raise FirecrawlQuotaError(f"Firecrawl 配额用尽（HTTP {e.code}）") from None
+        raise ToolError(f"Firecrawl 请求失败：HTTP {e.code} {body[:120]}") from None
+    except Exception as e:  # noqa: BLE001 — 网络错误统一转可读，交给各处的降级路径
+        raise ToolError(f"Firecrawl 请求失败：{type(e).__name__}: {str(e)[:120]}") from e
+
+
+def firecrawl_key() -> str:
+    """从环境读 key（**只从环境**：密钥绝不进代码/配置文件）。没有 key = 该能力自动关闭。"""
+    import os
+
+    return (os.environ.get(FIRECRAWL_KEY_ENV) or "").strip()
+
+
+def parse_firecrawl(payload) -> "list[dict]":
+    """Firecrawl `/v2/search` 的 JSON → 与 parse_bing / parse_ddg **同构**的结果条目（纯函数）。
+
+    实测返回形状：`{"success":…, "data": {"web": [{"url","title","description","position"}]}}`。
+    同构是关键——同构才能直接进 `fuse_results` 的 RRF，跟别的引擎一视同仁。
+    容错从宽：字段缺失/形状变了就跳过该条，绝不抛异常（一个源的抽风不该拖垮整次搜索）。
+    """
+    data = payload.get("data") if isinstance(payload, dict) else None
+    items = data.get("web") if isinstance(data, dict) else data
+    out: "list[dict]" = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        url = str(it.get("url") or "").strip()
+        if not url.startswith(("http://", "https://")):
+            continue
+        out.append({
+            "title": str(it.get("title") or url).strip(),
+            "url": url,
+            "snippet": str(it.get("description") or it.get("snippet") or "").strip(),
+        })
+    return out
+
+
+# ---- Firecrawl 读页兜底（FR-11.1d 段 2）--------------------------------------
+#
+# 装在**浏览器穿透之前**：它无本地依赖（不用 npx + Chrome），起得快、也不带登录态，
+# 是"轻"的那一档。顺序是 HTTP → Firecrawl → 浏览器，越往后越重、越有侵入性。
+#
+# **2026-08-20 真网实测定的口径**（决定了下面每一条判断）：
+#   - scrape = **1 credit**（search 是 2），普通文档页 1.9s、渲染页 2.8s、反爬页 6.7s；
+#   - 适用面是 **JS 空壳**：`app.slack.com/help` 我们直读只有 141 字符，它读回 1874 字符；
+#   - **打不穿强反爬/登录墙**：知乎 403 页它拿回来的是「你似乎来到了没有知识存在的荒原」
+#     拦截页（242 字符），加 `proxy=stealth` 也一样（382 字符，仍是拦截页）。
+#     所以**必须对它的产出再判一次**——否则花了 credit 还把拦截页当正文喂给模型。
+FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape"
+FIRECRAWL_READ_BUDGET = 2        # 每次 web_search 最多用几次 scrape 兜底（读正文那一跳）
+FIRECRAWL_MIN_GAIN = 1.5         # 换源要买到增量：新正文至少得是原来的这么多倍
+_FC_READ_TIMEOUT = 30            # 渲染比直读慢（实测 1.9~6.7s），给够但不无限等
+# 跳转/拦截插页：正文长度够、也不含常规反爬词，但内容是"马上带你去别处"。
+# 只在**付费源产出**这一关用，不进 `_BLOCK_MARKERS`——那条是全链路共用的，
+# 在那里误判会让 HTTP 直读也无谓升级（误报的代价比漏报高，同块V 决策 6 的立场）。
+_FC_INTERSTITIAL = re.compile(
+    r"秒后自动跳转|正在跳转|自动跳转至|automatically redirect|redirecting you", re.I)
+# 登录墙：Firecrawl **没有你的登录态**，花 credit 也读不出来，直接交给浏览器（它有）。
+# 这不是省事，是省配额：这类页在 Firecrawl 那里是稳定的必然失败。
+_LOGIN_MARKERS = re.compile(
+    r"请登录|登录后(?:查看|可见)|need to (?:sign|log) ?in|please (?:sign|log) ?in", re.I)
+
+
+def parse_firecrawl_page(payload) -> str:
+    """Firecrawl `/v2/scrape` 的 JSON → 正文（纯函数）。形状变了就返回空串，绝不抛。
+
+    只认 markdown/content 两个键：**不回落 `html`**——那是没提取过的原始页面，
+    交给上层当"正文"会把导航侧栏一起喂给模型，比没读到更糟。
+    """
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return ""
+    for k in ("markdown", "content"):
+        v = data.get(k)
+        if isinstance(v, str) and v.strip():
+            return v
+    return ""
+
+
+def firecrawl_gain(baseline: str, fetched: str) -> "str | None":
+    """付费源读回来的正文**值不值得采纳**（纯函数）。返回"不值得"的原因，或 None＝采纳。
+
+    三条判据都朝**宁可继续降级**的方向偏：降到浏览器只是慢几秒，而把拦截页当正文交出去
+    是既花了钱又给了错的东西（同 ADR 0025「一个自信的错数比缺失更危险」）。
+
+    `baseline` = 直读已经拿到的正文（没有就传空）。有基线时要求**长出 FIRECRAWL_MIN_GAIN 倍**：
+    换源的全部意义就是买增量，读回来跟原来差不多＝这一 credit 什么也没买到。
+    """
+    t = (fetched or "").strip()
+    if not t:
+        return "Firecrawl 也没读到正文"
+    blocked = looks_blocked(t, True)     # 按 HTML 口径判：短正文也算空壳
+    if blocked:
+        return f"Firecrawl 读回来的仍是{blocked}"
+    m = _FC_INTERSTITIAL.search(t[:1000])
+    if m:
+        return f"Firecrawl 读回来的是跳转/拦截插页（命中「{m.group(0)}」）"
+    base = len((baseline or "").strip())
+    if base and len(t) < base * FIRECRAWL_MIN_GAIN:
+        return f"Firecrawl 没买到增量（{base} → {len(t)} 字符）"
+    return None
+
+
+def firecrawl_scrape(url: str, timeout: int = _FC_READ_TIMEOUT) -> str:
+    """Firecrawl `/v2/scrape` 读一页正文（受控 IO）。没 key / 失败 → ToolError。
+
+    `onlyMainContent` 交给它做主正文提取——我们自己的 `extract_main_text` 吃的是 HTML，
+    而这里拿回来的已经是 markdown，两边不重复干活。
+    """
+    payload = _firecrawl_post(
+        FIRECRAWL_SCRAPE_URL,
+        {"url": url, "formats": ["markdown"], "onlyMainContent": True}, timeout)
+    return parse_firecrawl_page(payload)
+
+
+def _too_few(fused, want: int) -> bool:
+    """"召回太少"＝不足要的一半（向上取整）。
+
+    下限是 1 而不是 2：写 `max(2, …)` 会让 `want=1` 的搜索**永远**判为太少、每次都升级——
+    白烧配额，且正好是这条判据想避免的事（自检 test_thin_recall_threshold_is_half 钉着）。
+    零结果那条更硬，由上面单独一支处理。
+    """
+    return len(fused) < max(1, (int(want) + 1) // 2)
+
+
+def upgrade_reason(query: str, fused: "list[dict]", want: int, evaluate_fn=None) -> "str | None":
+    """免 key 链路这次的结果**要不要升级到 Firecrawl**（纯函数）。返回升级理由，或 None。
+
+    三条判据，都要求**可证伪**（同块E「喂事实而非拍脑袋」的纪律）：
+      ① 零结果——最硬，没什么可争的；
+      ② 召回太少（不足要的一半）——数得出来；
+      ③ 质量不达标——直接复用块H1 `ResearchEvaluator` 已经产出的 blocker
+         （如"有标价却无一在预算内"），不另造一套判据。
+
+    **刻意不看**"结果对不对题"那类语义判断：那是块H3a 模型裁判的活，放这里既慢又贵，
+    且会让一次工具调用的开销变得不可预测。
+    """
+    if not fused:
+        return "免 key 链路零结果"
+    if _too_few(fused, want):
+        return f"免 key 链路只召回 {len(fused)} 条（要 {want} 条）"
+    if evaluate_fn is None:
+        return None
+    try:
+        ev = evaluate_fn("web_search", render_items(fused[:want]), {"query": query})
+    except Exception:  # noqa: BLE001 — 质量评估故障绝不拖垮搜索本身
+        return None
+    issues = list(getattr(ev, "issues", None) or [])
+    return issues[0] if issues else None
+
+
+def render_items(ranked: "list[dict]", bodies: "dict | None" = None) -> str:
+    """把结果条目渲染成给模型看的正文（纯函数）。
+
+    抽出来是因为**升级闸要先"看一眼"这批结果**才能判质量，而块H1 的评估器吃的就是这个格式；
+    渲染逻辑两处各写一份迟早漂（本项目已因"两处写"吃过亏，见 EXIT_CODE_RE 那条注释）。
+    """
+    lines: "list[str]" = []
+    for i, r in enumerate(ranked or [], 1):
+        src = r.get("sources") or []
+        tag = f"  [{'+'.join(src)}]" if len(src) > 1 else ""
+        lines.append(f"{i}. {r['title']}{tag}\n   {r['url']}"
+                     + (f"\n   {r['snippet']}" if r.get("snippet") else ""))
+        body = (bodies or {}).get(r["url"])
+        if body:
+            lines.append("   ↳ " + body.replace("\n", "\n     "))
+    return "\n".join(lines)
 
 
 def fuse_results(per_engine: "list[tuple[str, list[dict]]]") -> list[dict]:
@@ -803,7 +1054,7 @@ class WebSearchTool(Tool):
     def __init__(self, *, engine: str = "auto", timeout: int = 20, max_results: int = 5,
                  widen_pages: int = 1, reranker=None,
                  read_top_n: int = 0, read_chars: int = _READ_CHARS,
-                 artifacts=None) -> None:
+                 artifacts=None, firecrawl: str = "off") -> None:
         # 注意构造器默认＝**老行为**（不宽召回、不读正文、不重排），产品默认由 registry 从
         # config 注入（widen_pages=3 / read_top_n=3 / reranker）。同 research_judge 的做法：
         # 直接 new 出来的实例（存量单测、脚本）行为零变化，也不会在离线测试里偷偷连网。
@@ -821,9 +1072,24 @@ class WebSearchTool(Tool):
         self._read_top_n = max(0, int(read_top_n or 0))
         self._read_chars = max(200, int(read_chars or _READ_CHARS))
         self._artifacts = artifacts   # 读到的完整正文超 cap 时落产物（ADR 0021）
+        # Firecrawl 托管检索源（FR-11.1d）：off / fallback（不达标才升级）/ always（并进 RRF）。
+        # **没 key 一律等于 off**——开箱不预设 provider（v3.56 的立场），
+        # 且免 key 链路必须永远可用：它是 hermes 不带凭据就能搜的底线能力。
+        self._firecrawl = str(firecrawl or "off").strip().lower()
+        if self._firecrawl not in FIRECRAWL_MODES:
+            self._firecrawl = "off"
+
+    def _search_firecrawl(self, query: str, limit: int) -> list[dict]:
+        """Firecrawl `/v2/search`（受控 IO）。没 key 直接抛错，由调用方按"这个源没用上"处理。"""
+        payload = _firecrawl_post(
+            FIRECRAWL_SEARCH_URL,
+            {"query": query, "limit": max(1, min(int(limit), MAX_RESULTS_CAP))}, self._timeout)
+        return parse_firecrawl(payload)
 
     def _search_one(self, engine: str, query: str) -> list[dict]:
         """跑一个引擎。**Bing 先走 RSS 结构化端点**，解析不出再降级啃 HTML。"""
+        if engine == "firecrawl":
+            return self._search_firecrawl(query, self._max_results)
         q = urllib.parse.quote(query)
         if engine == "bing":
             try:
@@ -904,46 +1170,97 @@ class WebSearchTool(Tool):
         n = max(1, min(n, MAX_RESULTS_CAP))
 
         engines = _ENGINES if self._engine == "auto" else (self._engine,)
-        per, errors = self._gather(engines, query)
+        # 配额用尽后**不再重试**：每次都先撞一次 402 才退回，白等一个往返
+        quota = firecrawl_quota_exhausted()
+        fc_on = self._firecrawl != "off" and bool(firecrawl_key()) and not quota
+        degraded = quota or ""      # 退回免 key 链路的原因（**要说出来**）
+
+        # primary（默认）：**Firecrawl 主搜**。用户给了更好的源与 key，就该默认用它——
+        # 而不是等免 key 链路先失败（fallback 那套真机实测几乎从不触发，那把 key 白给）。
+        # 主源没结果 / 给不够 / 不可用时，免 key 链路照样兜底：**不带凭据也能搜是底线能力**。
+        fc_first = []
+        if self._firecrawl == "primary" and fc_on:
+            try:
+                fc_first = self._search_firecrawl(query, n)
+            except FirecrawlQuotaError as e:
+                mark_firecrawl_exhausted(str(e))   # 粘住：本进程内不再打 Firecrawl
+                degraded = str(e)
+            except ToolError as e:
+                degraded = f"Firecrawl 不可用（{e}）"
+
+        if fc_first and not _too_few(fc_first, n):
+            per, errors = [("firecrawl", fc_first)], []      # 主源够用，免 key 链路不必跑
+        else:
+            if self._firecrawl == "always" and fc_on:
+                engines = (*engines, "firecrawl")   # 并发跑，与别的引擎一视同仁地进 RRF
+            per, errors = self._gather(engines, query)
+            if fc_first:
+                # 主源有货但不够 n 条：免 key 链路补齐，一起进 RRF（补这一趟不额外花钱）
+                per = [("firecrawl", fc_first), *per]
+            elif degraded:
+                errors.append(f"firecrawl: {degraded}")
         got = [(e, rs) for e, rs in per if rs]
+        fused = fuse_results(got) if got else []
+
+        # 升级闸（FR-11.1d）：免 key 链路这次不行 → **代码自己**换托管源重来一次，再一起融合。
+        # 不走"提示模型重搜"那条路（块H2）：V5 计分板实测 research_hint 触发后改善只有 2/8，
+        # 而这里是确定性的——判据可证伪、动作由代码执行，不赌模型听不听劝。
+        upgraded = ""
+        if self._firecrawl == "fallback" and firecrawl_key():
+            from ..agent.evaluators import evaluate as _evaluate     # 懒导入，避免工具层硬依赖
+            why = upgrade_reason(query, fused, n, _evaluate)
+            if why:
+                try:
+                    extra = self._search_firecrawl(query, n)
+                except ToolError as e:
+                    errors.append(f"firecrawl: {e}")
+                    extra = []
+                if extra:
+                    got.append(("firecrawl", extra))
+                    fused = fuse_results(got)
+                    upgraded = why
+
         if not got:
             errors += [f"{e}: 无结果或页面结构无法解析" for e, rs in per if not rs]
             raise ToolError("搜索失败：" + ("；".join(errors) if errors else "无结果"))
         # 跨引擎 RRF 融合 → 重排（模型语义优先、确定性兜底）+控源多样性 → top-n
-        fused = fuse_results(got)
         ranked, how = rerank_with_model(query, fused, n, self._reranker)
         used = "+".join(e for e, _ in got)
         head = (f"[搜索结果·{used}] {query}"
                 f"（{len(got)} 个引擎并发、RRF 融合去重，自 {len(fused)} 条候选按{how}选 {len(ranked)} 条）")
+        if upgraded:
+            # **动用了付费源要说出来**：省得事后对不上账，也让模型知道这批结果换过源
+            head += f"\n[已换源] {upgraded} → 已用 Firecrawl 补搜并重新融合"
+        if degraded and self._firecrawl in ("primary", "always"):
+            # 退回也要说出来：否则"结果变差了"会被归到模型头上，查不到真原因
+            head += (f"\n[已退回] {degraded} → 本次改用免 key 链路"
+                     + ("（本进程内不再重试；换 key 或下个计费周期后重启即恢复）"
+                        if firecrawl_quota_exhausted() else ""))
         if errors:
             head += f"\n[注] 部分来源未用上：{'；'.join(errors)}"
         bodies = self._read_bodies(ranked[:self._read_top_n], query) if self._read_top_n else {}
         if bodies:
             head += f"\n[已读正文] 前 {len(bodies)} 条已抓取正文并按查询摘录（下面 ↳ 的部分）"
-        lines = [head]
-        for i, r in enumerate(ranked, 1):
-            src = r.get("sources") or []
-            tag = f"  [{'+'.join(src)}]" if len(src) > 1 else ""
-            lines.append(f"{i}. {r['title']}{tag}\n   {r['url']}"
-                         + (f"\n   {r['snippet']}" if r["snippet"] else ""))
-            body = bodies.get(r["url"])
-            if body:
-                lines.append("   ↳ " + body.replace("\n", "\n     "))
-        return "\n".join(lines)
+        return head + "\n" + render_items(ranked, bodies)
 
     def _read_bodies(self, results: list[dict], query: str) -> dict:
         """并发抓前 K 条正文，按 query 摘录。返回 {url: 摘录}。
 
         **任何一条读不动都只影响它自己**：反爬/超时/空页都标一句原因跳过，
         搜索结果照常返回——读正文是增值项，绝不能让它把搜索拖失败。
-        受阻的这里不切浏览器（那是 web_fetch 的自动升级职责），标注让模型按需自己去读。
+        受阻的这里不切浏览器（那是 web_fetch 的自动升级职责），但会先试一次 Firecrawl（段 2）。
         """
         results = [r for r in results if (r.get("url") or "").startswith(("http://", "https://"))]
         if not results:
             return {}
+        # 托管源兜底的**每次调用**预算（并发共享，故用信号量）：read_top_n 默认 3，
+        # 不封顶则最坏 3 credits/次搜索、叠加搜索本身可能的 2 credits＝5。封到 2 让最坏情况
+        # 可预期，也贯彻段 1 那条——**把配额花在免 key 链路真的不行的时候**。
+        budget = threading.Semaphore(FIRECRAWL_READ_BUDGET)
         out: dict = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(results)) as pool:
-            futs = {pool.submit(self._read_one, r["url"], query): r["url"] for r in results}
+            futs = {pool.submit(self._read_one, r["url"], query, budget): r["url"]
+                    for r in results}
             for fut in concurrent.futures.as_completed(futs):
                 url = futs[fut]
                 try:
@@ -952,13 +1269,34 @@ class WebSearchTool(Tool):
                     out[url] = f"[读取失败：{type(e).__name__}]"
         return {u: out[u] for u in (r["url"] for r in results) if out.get(u)}   # 保持结果顺序
 
-    def _read_one(self, url: str, query: str) -> str:
+    def _firecrawl_body(self, url: str, baseline: str, budget) -> str:
+        """读正文的托管源兜底（受控 IO）。没开 / 没 key / 预算用尽 / 没买到增量 → 空串。
+
+        **登录墙直接放弃**：Firecrawl 没有你的登录态，那类页在它那里是稳定的必然失败，
+        试一次＝白烧 1 credit。这种页只有带登录态的浏览器有戏（web_fetch 那条路）。
+        """
+        if self._firecrawl == "off" or budget is None or not firecrawl_key():
+            return ""
+        if _LOGIN_MARKERS.search((baseline or "")[:3000]):
+            return ""
+        if not budget.acquire(blocking=False):
+            return ""   # 本次搜索的兜底配额已用完
+        try:
+            md = firecrawl_scrape(url, max(self._timeout, _FC_READ_TIMEOUT))
+        except ToolError:
+            return ""   # 兜底失败只让这一条少读一页，绝不影响搜索本身
+        return "" if firecrawl_gain(baseline, md) else md
+
+    def _read_one(self, url: str, query: str, budget=None) -> str:
         """抓一页 → 主正文 → 按 query 摘录（不够长就整段给）。"""
         try:
             _final, body, ctype = _http_get(url, self._timeout)
         except ToolError as e:
             # 403/429 之类多半是反爬（知乎实测就是 403），和"正文空壳"同一类处置：
-            # 这里不切浏览器（那是 web_fetch 的自动升级职责），但要**指路**，别让模型以为此页没救。
+            # 先试托管源（1 credit、无本地依赖），不行再**指路**，别让模型以为此页没救。
+            md = self._firecrawl_body(url, "", budget)
+            if md:
+                return self._excerpt_body(md, url, query, via="Firecrawl")
             reason = re.sub(r"请求失败（[^）]*）：", "", str(e))[:80]
             return f"[未读到正文：{reason}——需要的话用 web_fetch 读它（会自动改用浏览器）]"
         ct = (ctype or "").lower()
@@ -972,7 +1310,19 @@ class WebSearchTool(Tool):
             return "[未读到正文：内容无法正确解码（疑似二进制或未知编码）]"
         blocked = looks_blocked(text, is_html)
         if blocked:
+            # 空壳/反爬：托管源在这一档最见效（实测 141 → 1874 字符），试一次再说没救
+            md = self._firecrawl_body(url, text, budget)
+            if md:
+                return self._excerpt_body(md, url, query, via="Firecrawl")
             return f"[未读到正文：{blocked}——需要的话用 web_fetch 读它（会自动改用浏览器）]"
+        return self._excerpt_body(text, url, query)
+
+    def _excerpt_body(self, text: str, url: str, query: str, via: str = "") -> str:
+        """正文 → 按 query 摘录（超限的原文落产物）。两条读取路径共用，行为必须一致。
+
+        `via` 非空＝这条是**换源**读来的：动用了付费源就要说出来（同段 1 head 里的 [已换源]），
+        省得事后对不上账，也让模型知道这段正文的来路与别条不同。
+        """
         text = (text or "").strip()
         if not text:
             return "[未读到正文：页面没有可提取的文本]"
@@ -984,7 +1334,8 @@ class WebSearchTool(Tool):
             if art is not None:
                 note = f"\n[完整正文 {art.chars:,} 字符已存 {art.rel}]"
         tail = "" if len(text) <= self._read_chars else f"（摘自 {len(text):,} 字符正文）"
-        return f"{excerpt}{tail}{note}"
+        mark = f"[已换源·{via}] " if via else ""
+        return f"{mark}{excerpt}{tail}{note}"
 
 
 class WebFetchTool(Tool):
@@ -1008,7 +1359,7 @@ class WebFetchTool(Tool):
     }
 
     def __init__(self, *, timeout: int = 20, max_chars: int = DEFAULT_FETCH_CHARS,
-                 browser_reader=None, artifacts=None) -> None:
+                 browser_reader=None, artifacts=None, firecrawl: str = "off") -> None:
         self._timeout = timeout
         self._max_chars = max_chars
         # ADR 0021：抓到了却被 cap 掉的原文落成产物（None=照旧丢弃）。
@@ -1018,6 +1369,13 @@ class WebFetchTool(Tool):
         # **自动升级而不是让模型选路**：HTTP 判定受阻就换浏览器读同一 URL（v3.43 的"不许绕路"
         # 本意保留，但不再连唯一的快路一起砍掉）。
         self._browser_reader = browser_reader
+        # 托管源读页兜底（FR-11.1d 段 2）：**与搜索共用 `web.firecrawl` 这一个开关**。
+        # 但读页这边 fallback 与 always **行为相同**——都是"HTTP 不行才用"。
+        # 读页没有"并进 RRF"那种融合收益：同一个 URL 读两遍只会得到同一份正文，
+        # 主动多打一次付费 API 什么也买不到。always 只改搜索那一跳的行为。
+        self._firecrawl = str(firecrawl or "off").strip().lower()
+        if self._firecrawl not in FIRECRAWL_MODES:
+            self._firecrawl = "off"
 
     def _clip_and_keep(self, text: str, cap: int, focus: str, url: str) -> str:
         """裁剪正文；被 cap 掉的原文落产物并附句柄（省上下文的同时不丢数据）。"""
@@ -1029,6 +1387,26 @@ class WebFetchTool(Tool):
             return out
         return (out + f"\n[产物 {art.id}] 本页完整正文（{art.chars:,} 字符）已存 {art.rel}"
                       "——要被截掉/未摘录的部分就 grep_search / read_file(offset=) 它，别重抓。")
+
+    def _read_via_firecrawl(self, url: str, baseline: str = "") -> "tuple[str, str]":
+        """托管源兜底读一页。返回 (正文, 没用上的原因)——成功则原因为空，反之正文为空。
+
+        **排在浏览器之前**：无本地依赖（不用 npx + Chrome）、几秒就回、也不带登录态，
+        是更轻也更少侵入的一档。它拿不下的（登录墙、强反爬）再交给浏览器。
+        """
+        if self._firecrawl == "off":
+            return "", ""
+        if not firecrawl_key():
+            return "", f"未配置 {FIRECRAWL_KEY_ENV}"
+        if _LOGIN_MARKERS.search((baseline or "")[:3000]):
+            # 登录墙：Firecrawl 没有登录态，稳定失败，别白烧 credit（同 _firecrawl_body）
+            return "", "登录墙，Firecrawl 无登录态"
+        try:
+            md = firecrawl_scrape(url, max(self._timeout, _FC_READ_TIMEOUT))
+        except ToolError as e:
+            return "", str(e)
+        why = firecrawl_gain(baseline, md)
+        return ("", why) if why else (md, "")
 
     def _read_via_browser(self, url: str) -> "str | None":
         if not self._browser_reader:
@@ -1050,7 +1428,31 @@ class WebFetchTool(Tool):
             cap = self._max_chars
         cap = max(500, min(cap, 100_000))
 
-        final_url, body, ctype = _http_get(url, self._timeout)
+        try:
+            final_url, body, ctype = _http_get(url, self._timeout)
+        except ToolError as e:
+            # HTTP 层就失败（403/429 多半是反爬）。**此前这里直接抛**，浏览器兜底根本够不着——
+            # 而 web_search 读不动时给的指路正是"用 web_fetch 读它（会自动改用浏览器）"，
+            # 那是张空头支票。现在按同一条阶梯降级：Firecrawl → 浏览器 → 才报错。
+            md, fc_why = self._read_via_firecrawl(url)
+            if md:
+                return (f"[URL] {url}\n[读取方式] HTTP 直读失败 → **已自动改用 Firecrawl 读取**"
+                        "（托管源，不带你的登录态）\n\n"
+                        + self._clip_and_keep(md, cap, focus, url))
+            via = self._read_via_browser(url)
+            if via and not via.startswith("[浏览器兜底失败]"):
+                return (f"[URL] {url}\n[读取方式] HTTP 直读失败 → **已自动改用浏览器读取**"
+                        "（浏览器带你的登录态，内容可能包含登录后才可见的信息）\n\n"
+                        + self._clip_and_keep(via, cap, focus, url))
+            # 三条路都没走通：**每一条的原因都带上**，否则排查时只能看到最后一层的错
+            tried = [str(e)]
+            if fc_why:
+                tried.append(f"Firecrawl：{fc_why}")
+            if via:
+                tried.append(via.strip("[]"))
+            elif not self._browser_reader:
+                tried.append("浏览器：未接穿透")
+            raise ToolError("；".join(tried)) from None
         is_html = "html" in ctype.lower() or bool(re.search(r"<\s*html", body[:2000], re.I))
         if is_html:
             title, text = extract_main_text(body)   # 主正文（去导航/页脚/侧栏）
@@ -1061,13 +1463,21 @@ class WebFetchTool(Tool):
         # 反爬/需登录/JS 空壳的「假成功」：接了浏览器穿透就**自动**改用浏览器读同一 URL
         blocked = looks_blocked(text, is_html)
         if blocked:
+            # 先试托管源：JS 空壳正是它最见效的一档（实测 141 → 1874 字符），
+            # 且比起浏览器穿透，它不带登录态——读到的必是公开内容，副作用更小。
+            md, fc_why = self._read_via_firecrawl(final_url, text)
+            if md:
+                return (f"[URL] {final_url}\n[读取方式] HTTP 受阻（{blocked}）→ "
+                        "**已自动改用 Firecrawl 读取**（托管源，不带你的登录态）\n\n"
+                        + self._clip_and_keep(md, cap, focus, final_url))
             via = self._read_via_browser(final_url)
             if via and not via.startswith("[浏览器兜底失败]"):
                 return (f"[URL] {final_url}\n[读取方式] HTTP 受阻（{blocked}）→ **已自动改用浏览器读取**"
                         "（浏览器带你的登录态，内容可能包含登录后才可见的信息）\n\n"
                         + self._clip_and_keep(via, cap, focus, final_url))
-            hint = (f"（{via}）" if via else
-                    "（未接浏览器穿透）")
+            hint = (f"（{via}）" if via else "（未接浏览器穿透）")
+            if fc_why:
+                hint += f"（Firecrawl：{fc_why}）"
             return (f"⚠ 抓取受阻（{blocked}）{hint}——下面内容可能是拦截页或不完整。\n"
                     "换官方 API / 其它来源，或开启浏览器穿透后重试。\n\n"
                     f"{head}\n\n{text if text.strip() else '(页面没有可提取的文本)'}")

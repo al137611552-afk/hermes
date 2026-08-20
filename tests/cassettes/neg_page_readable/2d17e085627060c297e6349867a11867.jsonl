@@ -1,0 +1,29 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:d182d1d682", "msg0:6186ec5abd"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "The"}
+{"type": "thinking", "text": " user"}
+{"type": "thinking", "text": " wants"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " open"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " URL"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " browser"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " summarize"}
+{"type": "thinking", "text": " three"}
+{"type": "thinking", "text": " key"}
+{"type": "thinking", "text": " points"}
+{"type": "thinking", "text": " from"}
+{"type": "thinking", "text": " that"}
+{"type": "thinking", "text": " page"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " navigate"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " it"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_kTDIaCM5DndBUaBRJy2y2170", "name": "browser__browser_navigate", "input": {"url": "https://notes.example.org/hermes-eval"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 93, "output": 83, "cache_read": 7936, "cache_write": 0}}}

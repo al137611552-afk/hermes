@@ -24,20 +24,72 @@ from pathlib import Path
 _WS_RE = re.compile(r"\s+")
 # 取指纹时看的"关键入参"——能区分"同一条路"的字段。其它入参（如 background 标志）忽略。
 _KEY_PARAMS = ("command", "path", "file_path", "pattern", "query", "url", "name")
+# 工作区绝对路径在指纹里的替身。**同一条路在不同工作区必须同指纹**，否则跨会话/跨评测跑
+# 无法聚合（ADR 0027 决策 2）。
+_WS_PLACEHOLDER = "<ws>"
+_BACKSLASH = chr(92)   # 反斜杠字面量
 
 
-def fingerprint(tool_name: str, params: "dict | None") -> str:
+def _ws_prefixes(workspace) -> tuple:
+    """工作区的候选绝对路径前缀（已归一：正斜杠 + 小写 + 去尾斜杠），长者在前。
+
+    **同时给出原样与 `resolve()` 两种形态**：macOS 的 `/var` 与 `/private/var`、Windows 临时目录的
+    8.3 短名（`RUNNER~1`）与长名，实际出现的往往只是其中一种（CLAUDE.md 已记的 CI 坑同源）。
+    只中一种就漏掉另一种，指纹照样分裂。
+    """
+    if not workspace:
+        return ()
+    cands = {str(Path(workspace))}
+    try:
+        cands.add(str(Path(workspace).resolve()))
+    except OSError:      # 路径不存在/不可达：resolve 失败不致命，用原样那份
+        pass
+    out = {c.replace("\\", "/").rstrip("/").lower() for c in cands if c}
+    # 长前缀优先：/a/b/c 必须先于 /a/b 被替换，否则留下半截相对路径
+    return tuple(sorted(out, key=len, reverse=True))
+
+
+def _fold_workspace(text: str, prefixes) -> str:
+    """把字符串里出现的工作区绝对路径折成**工作区相对路径**。无工作区则原样返回。
+
+    规范形选"相对"而不是 `<ws>/xxx`，是因为模型对同一个文件**两种写法都会用**
+    （`read_file(path="/tmp/ws/a.py")` 与 `read_file(path="a.py")`）——折成相对形后两者同指纹。
+    裸的工作区根（后面不带路径）没有相对形可言，记作 `<ws>` 以免变成空串。
+
+    纯字符串替换（非 Path 运算）：`command` 里的路径嵌在命令行中间，切不出来。
+    """
+    for pre in prefixes:
+        if not pre:
+            continue
+        text = text.replace(pre + "/", "")     # 前缀 + 分隔符 → 相对路径
+        text = text.replace(pre, _WS_PLACEHOLDER)   # 剩下的裸根
+    return text
+
+
+def fingerprint(tool_name: str, params: "dict | None", workspace=None) -> str:
     """对一次工具调用取稳定指纹 = 工具名 + 归一化的关键入参。
 
-    归一化折叠空白 + 小写，避免无意义差异把"同一条路"分裂成多个指纹。
+    归一化做三件事，目的都是**别把同一条路分裂成多个指纹**：
+    1. 折叠空白 + 小写（`pytest  -q` == `PYTEST -Q`）；
+    2. 反斜杠转正斜杠（同一个文件的两种写法算同一条路）；
+    3. `workspace` 给了的话，把其绝对路径折成工作区相对路径——**这是跨会话/跨评测聚合的前提**：
+       评测在 `tempfile` 建工作区，不归一则同一失败每跑一个新指纹，块G `propose()` 的双门
+       （`min_count`/`min_paths`）两个方向同时失真（ADR 0027 背景）。
+
+    `workspace=None` 时只做 1、2 两步（存量调用方按此路径走）。
     返回 16 位十六进制（sha1 截断，碰撞概率可忽略，足够当聚合 key）。
+
+    > 已知取舍：第 2 步会把 shell 里作转义用的反斜杠也折成正斜杠。指纹是**聚合用的分桶键、
+    > 不是安全边界**，这类罕见合并无害。
     """
     parts = [tool_name or ""]
     p = params or {}
+    prefixes = _ws_prefixes(workspace)
     for k in _KEY_PARAMS:
         v = p.get(k)
         if v:
-            parts.append(f"{k}={_WS_RE.sub(' ', str(v)).strip().lower()}")
+            s = _WS_RE.sub(" ", str(v)).strip().lower().replace(_BACKSLASH, "/")
+            parts.append(f"{k}={_fold_workspace(s, prefixes)}")
     raw = "".join(parts)
     return hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:16]
 
@@ -104,6 +156,7 @@ CREATE TABLE IF NOT EXISTS failures (
     count        INTEGER NOT NULL DEFAULT 1,
     first_at     REAL NOT NULL,
     last_at      REAL NOT NULL,
+    source       TEXT NOT NULL DEFAULT 'real',
     PRIMARY KEY (fingerprint, error_class, decision)
 );
 """
@@ -116,15 +169,27 @@ class FailureMemory:
     `known_deadend()` 供 E3：出手前查"此路是否已知死"。线程安全、独立文件、无新依赖。
     """
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, *, source: str = "real") -> None:
         db_path = Path(db_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
         self._now = time.time          # 测试可替换
+        # 本库的语料来源（real / eval / selftest）。**隔离靠分库、这一列只用于导出后合并分析时区分**
+        # （ADR 0027 决策 2）：同一个库内它恒定，故不进主键——进了主键会改变去重语义。
+        self._source = source or "real"
+
+    def _migrate(self) -> None:
+        """轻量迁移：给旧库补 source 列。不重建表、不丢数据——旧行按 DEFAULT 落为 'real'，
+        语义正确（它们本来就都是真实使用产生的）。"""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(failures)")}
+        if "source" not in cols:
+            self._conn.execute(
+                "ALTER TABLE failures ADD COLUMN source TEXT NOT NULL DEFAULT 'real'")
 
     def record(self, fingerprint: str, error_classes=None, decision: str = "", detail: str = "") -> None:
         """记**一次**失败 = 一行增量。只记主分类（classify 已按优先级排序，第一个=根因主类），
@@ -139,9 +204,9 @@ class FailureMemory:
                 (now, detail, fingerprint, ec, decision))
             if cur.rowcount == 0:
                 self._conn.execute(
-                    "INSERT INTO failures(fingerprint,error_class,decision,detail,count,first_at,last_at)"
-                    " VALUES(?,?,?,?,1,?,?)",
-                    (fingerprint, ec, decision, detail, now, now))
+                    "INSERT INTO failures(fingerprint,error_class,decision,detail,count,"
+                    "first_at,last_at,source) VALUES(?,?,?,?,1,?,?,?)",
+                    (fingerprint, ec, decision, detail, now, now, self._source))
             self._conn.commit()
 
     def count_for(self, fingerprint: str, error_class=None) -> int:
@@ -174,8 +239,8 @@ class FailureMemory:
         """导出全部失败记录（供块G 离线聚合）。每行 = 一个 (指纹,分类,Decision) 计数。"""
         with self._lock:
             rs = self._conn.execute(
-                "SELECT fingerprint, error_class, decision, detail, count, first_at, last_at"
-                " FROM failures").fetchall()
+                "SELECT fingerprint, error_class, decision, detail, count, first_at,"
+                " last_at, source FROM failures").fetchall()
         return [dict(r) for r in rs]
 
     def close(self) -> None:

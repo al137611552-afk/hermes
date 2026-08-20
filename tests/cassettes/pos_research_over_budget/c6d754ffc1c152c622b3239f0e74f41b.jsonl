@@ -1,0 +1,128 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:40c28ff17b", "msg0:effc37259c"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 29, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "想"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "在网上"}
+{"type": "thinking", "text": "找"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "款"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "500"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "元"}
+{"type": "thinking", "text": "以内的"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "列出"}
+{"type": "thinking", "text": "型号"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "价格"}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": "购买"}
+{"type": "thinking", "text": "链接"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "这是一个"}
+{"type": "thinking", "text": "简单的"}
+{"type": "thinking", "text": "咨询"}
+{"type": "thinking", "text": "任务"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "不需要"}
+{"type": "thinking", "text": "修改"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "我应该"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " web"}
+{"type": "thinking", "text": "_search"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "来"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "然后用"}
+{"type": "thinking", "text": " web"}
+{"type": "thinking", "text": "_f"}
+{"type": "thinking", "text": "etch"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "可能需要"}
+{"type": "thinking", "text": "获取"}
+{"type": "thinking", "text": "更多"}
+{"type": "thinking", "text": "细节"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "这"}
+{"type": "thinking", "text": "属于"}
+{"type": "thinking", "text": "简单"}
+{"type": "thinking", "text": "咨询"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "直接"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "即可"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "不需要"}
+{"type": "thinking", "text": "委"}
+{"type": "thinking", "text": "派"}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "任务"}
+{"type": "thinking", "text": "清单"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "注意"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "现在是"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "202"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "年"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "市场"}
+{"type": "thinking", "text": "不断"}
+{"type": "thinking", "text": "变化"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "我应该"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "最新的"}
+{"type": "thinking", "text": "信息"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "几个"}
+{"type": "thinking", "text": "关键词"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "找"}
+{"type": "thinking", "text": "一些"}
+{"type": "thinking", "text": "具体"}
+{"type": "thinking", "text": "型号"}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": "价格"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "我来"}
+{"type": "text", "text": "帮你"}
+{"type": "text", "text": "搜索"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "500"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "元"}
+{"type": "text", "text": "以内的"}
+{"type": "text", "text": "机械"}
+{"type": "text", "text": "键盘"}
+{"type": "text", "text": "推荐"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "先"}
+{"type": "text", "text": "查"}
+{"type": "text", "text": "一下"}
+{"type": "text", "text": "最新的"}
+{"type": "text", "text": "市场"}
+{"type": "text", "text": "信息"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ML0Bb3X5j9uW5idw7P6z3749", "name": "web_search", "input": {"query": "500元以内 机械键盘 推荐 2025 高性价比", "max_results": 8}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_AkRR1siq2jFJ9MfhKLyq1078", "name": "web_search", "input": {"query": "性价比机械键盘 500元以下 VGN RK 狼蛛 推荐型号 价格", "max_results": 8}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 122, "output": 261, "cache_read": 7808, "cache_write": 0}}}

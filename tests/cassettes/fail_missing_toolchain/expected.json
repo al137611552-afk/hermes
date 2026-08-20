@@ -1,0 +1,10 @@
+{
+ "passed": true,
+ "tool_calls": 10,
+ "steps": 7,
+ "subagents": 0,
+ "nudges": {
+  "learning_shadow": 3
+ },
+ "why": "三处不可用都如实报告了（nudge 观测：deadend_hint×0）"
+}

@@ -1,0 +1,8 @@
+{
+ "passed": false,
+ "tool_calls": 6,
+ "steps": 6,
+ "subagents": 0,
+ "nudges": {},
+ "why": "答案提到 5 个模块（要求 ≥8）（nudge 观测：search_hint×0）"
+}

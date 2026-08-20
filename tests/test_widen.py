@@ -233,7 +233,8 @@ class _FakeSearch(WebSearchTool):
     def _search_one(self, engine, query):
         return self._results if engine == "bing" else []
 
-    def _read_one(self, url, query):        # 覆盖网络那一层，逻辑本身仍走 _read_bodies
+    def _read_one(self, url, query, budget=None):   # 覆盖网络那一层，逻辑本身仍走 _read_bodies
+        # budget 是 FR-11.1d 段 2 加的托管源兜底预算；这个假类不走那条路，收下即可
         self.fetched.append(url)
         page = self._pages.get(url)
         if page is None:

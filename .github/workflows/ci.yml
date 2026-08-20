@@ -1,0 +1,101 @@
+# 每次 push / PR 都跑的门（块 V3，ADR 0027）。
+#
+# **为什么要有它**：此前 `.github/workflows/` 只有 `release.yml`，且只在**推 tag** 时触发——
+# 等于「发版是流水线的第一次运行」。日常改动没有任何自动门，全靠人记得在本地跑全回归。
+#
+# 关键前提是块 V3 的**回放**：评测原本要真模型 + 网络 + key，进不了 CI；
+# 录音落在 `tests/cassettes/` 之后，`--replay` 完全离线、不需要凭据，才谈得上进 CI。
+# 故本 workflow **不需要任何 secret**。
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]        # 推 tag 走 release.yml，别跑两遍
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # 与 release.yml 同一条纪律：别让**输出装饰**决定构建成败（中文/✓ 在非 UTF-8 locale 下会炸）
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
+jobs:
+  # 最低支持版本的语法/运行门。**pyproject 写的是 requires-python >=3.11，而下面的 test job
+  # 只跑 3.12**——于是 3.12 才有的语法（PEP 701 的 f-string 跨行表达式）在本机与 CI 全绿、
+  # 用户 Windows 上一启动就 SyntaxError（2026-08-20 真机踩到，`cassette.py` 那处）。
+  # 声明支持哪个版本，就得在那个版本上跑一次；不想跑就把 requires-python 抬上去。
+  floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"        # = pyproject 的 requires-python 下限
+      - name: 装依赖
+        run: pip install -e . -c build-constraints.txt
+      # 先编译：语法错在**导入之前**就炸，单跑测试反而看不清是哪个文件
+      - name: 全仓库语法编译（3.11）
+        run: python -m compileall -q src scripts tests run.py
+      - name: Python 全回归（3.11）
+        run: |
+          set -u
+          failed=()
+          for t in tests/test_*.py; do
+            if ! timeout 600 python "$t" </dev/null; then failed+=("$t"); fi
+          done
+          if [ ${#failed[@]} -ne 0 ]; then
+            printf '失败：%s\n' "${failed[@]}"; exit 1
+          fi
+      - name: 决策内核回归门（Golden）
+        run: python tests/golden/runner.py
+
+  test:
+    runs-on: ubuntu-latest      # 回放不需要 Windows；平台相关的那部分仍由 release.yml 在 windows 上守
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      # 跟 release/build 用**同一份约束**：测的依赖组合必须就是发出去的那一套
+      - name: 装依赖
+        run: pip install -e . -c build-constraints.txt
+
+      - name: Python 全回归（每个文件是独立 runner，非 pytest）
+        run: |
+          set -u
+          failed=()
+          for t in tests/test_*.py; do
+            echo "---- $t"
+            # </dev/null：有测试会在 stdin 上等输入，CI 的 stdin 不是 tty，
+            # 不接空输入会**永久阻塞**直到 job 超时（2026-08-19 踩过，见 test_cli 那条修复）
+            if ! timeout 600 python "$t" </dev/null; then failed+=("$t"); fi
+          done
+          if [ ${#failed[@]} -ne 0 ]; then
+            printf '失败：%s\n' "${failed[@]}"; exit 1
+          fi
+
+      - name: 前端纯逻辑测试
+        run: node --test tests/web/*.test.js
+
+      - name: 决策内核回归门（Golden）
+        run: python tests/golden/runner.py
+
+      # 块 V3：离线回放评测。**不需要 key**——回放路径在取凭据之前就返回。
+      # 门守的不是"任务过没过"（那取决于模型当天表现），而是
+      # **"给定同样的模型输出，代码是否还产出同样的结果"**——逐项比对录制基线。
+      # 不可回放的任务会**大声跳过并说明理由**（工具输出含时间戳/哈希、夹具拷活源码…），
+      # 不是静默略过。录音失效会以 CassetteMiss 报错并指出哪条消息变了 + 给出重录命令。
+      - name: 端到端评测（离线回放，与录制基线逐项比对）
+        run: |
+          cp tests/cassettes/model.yaml user_models.yaml
+          python scripts/eval/run_eval.py --tier L1 --offline --replay --no-record \
+            --model dsv4 --quiet
+          python scripts/eval/run_eval.py --tier L2 --offline --replay --no-record \
+            --model dsv4 --quiet
+          python scripts/eval/run_eval.py --tier L3 --offline --replay --no-record \
+            --model dsv4 --quiet

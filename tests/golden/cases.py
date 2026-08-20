@@ -11,6 +11,8 @@
 - "grounding" : 答案接地/时效闸（块H3c detect_ungrounded_answer：时效敏感+搜过+无引用无声明→催）
 - "switch"    : 换源策略阶梯（块H switch_strategy_nudge：NO_PROGRESS 逐级 site→browser→ask_user）
 - "novelty"   : 搜索结果 → 域名集（块H extract_domains：确定性去重/归一，Novelty 信号源）
+- "fingerprint": 两次工具调用 → 同/异指纹（ADR 0027 V0：死路指纹的路径归一口径。
+                 语料写**等价关系**不写哈希值——哈希不可读，且有意变更时全表重算无从审阅）
 - "consensus_gate": 开工 gate（ADR 0019 gate_status：未决阻塞==0 且签字→open，否则 locked；门理由禁含百分比）
 - "review_stop"   : 评审停止条件（ADR 0019 should_stop：max_rounds / no_new_blocking / wording_only / continue）
 
@@ -18,7 +20,44 @@
 新增能力时**追加**语料、不改既有期望（除非确是有意的行为变更，需同步说明）。
 """
 
+# 块 V0 语料用的固定假工作区（不需真实存在；写死才确定性可复现）。
+_WS = "/ws/proj"
+
 CASES = [
+    # ---- 块V0：死路指纹的路径归一（ADR 0027 决策 2）------------------------
+    # 同一个文件的绝对写法与相对写法必须同指纹——模型两种都会用。
+    {"id": "fp-abs-equals-rel", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": _WS + "/calc.py"}, "workspace": _WS},
+     "b": {"tool": "read_file", "params": {"path": "calc.py"}, "workspace": _WS},
+     "expect": "same"},
+    # 同一相对路径在两个不同工作区 → 同指纹（这是跨评测跑聚合的前提）。
+    {"id": "fp-cross-workspace", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": "/tmp/run1/calc.py"}, "workspace": "/tmp/run1"},
+     "b": {"tool": "read_file", "params": {"path": "/tmp/run2/calc.py"}, "workspace": "/tmp/run2"},
+     "expect": "same"},
+    # command 里嵌着的绝对路径同样要折（路径在命令行中间，切不出来）。
+    {"id": "fp-command-embedded-path", "kind": "fingerprint",
+     "a": {"tool": "run_bash", "params": {"command": "pytest /tmp/run1/test_calc.py -q"},
+           "workspace": "/tmp/run1"},
+     "b": {"tool": "run_bash", "params": {"command": "pytest /tmp/run2/test_calc.py -q"},
+           "workspace": "/tmp/run2"},
+     "expect": "same"},
+    # 反斜杠/正斜杠是同一个文件的两种写法。
+    {"id": "fp-separator-normalized", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": "src" + chr(92) + "a.py"}},
+     "b": {"tool": "read_file", "params": {"path": "src/a.py"}},
+     "expect": "same"},
+    # **防归一过头**：工作区内不同文件仍须分得开，否则所有路合成一条、死路记忆失效。
+    {"id": "fp-different-files-still-differ", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": _WS + "/calc.py"}, "workspace": _WS},
+     "b": {"tool": "read_file", "params": {"path": _WS + "/other.py"}, "workspace": _WS},
+     "expect": "diff"},
+    # 不传 workspace 时不折——存量调用方与旧库口径不变。
+    {"id": "fp-no-workspace-not-folded", "kind": "fingerprint",
+     "a": {"tool": "read_file", "params": {"path": "/tmp/run1/calc.py"}},
+     "b": {"tool": "read_file", "params": {"path": "/tmp/run2/calc.py"}},
+     "expect": "diff"},
+
     # ---- 块A：crazy verdict → Need -----------------------------------------
     {"id": "need-done", "kind": "need", "verdict": "done", "expect": "goal_satisfied"},
     {"id": "need-phase", "kind": "need", "verdict": "phase_done", "expect": "goal_satisfied"},
@@ -39,6 +78,23 @@ CASES = [
     {"id": "eval-shell-exit-zero", "kind": "evaluate", "tool": "run_powershell",
      "output": "[exit code] 0\n[stdout]\nok",
      "expect": {"has_issues": False, "metric": ["exit_code", 0.0]}},
+    # 退出码兜底（2026-08-19 新增，V1 揪出的缺口）：**新增语料，既有期望一条未改**。
+    # 测试没跑起来 / 收集到 0 个用例 / 全过但收尾非零——三种都必须判失败。
+    {"id": "eval-pytest-not-run-exit4", "kind": "evaluate", "tool": "run_bash",
+     "output": ("[exit code] 4\n[stdout]\n=== test session starts ===\n"
+                "platform linux -- Python 3.12.3, pytest-9.1.0\n"
+                "ERROR: file or directory not found: nonexistent_xyz.py\n"),
+     "expect": {"has_issues": True, "metric": ["exit_code", 4.0]}},
+    {"id": "eval-pytest-collected-zero", "kind": "evaluate", "tool": "run_bash",
+     "output": "[exit code] 5\n[stdout]\ncollected 0 items\n\n0 passed in 0.01s\n",
+     "expect": {"has_issues": True}},
+    {"id": "eval-pytest-passed-but-nonzero-exit", "kind": "evaluate", "tool": "run_bash",
+     "output": "[exit code] 1\n[stdout]\n==== 3 passed in 0.1s ====",
+     "expect": {"has_issues": True, "metric": ["passed", 3]}},
+    # 幻影计数回归门：跨行匹配曾把 `9.1.0\nERROR` 读成"0 errors"。total 必须**不存在**。
+    {"id": "eval-no-phantom-count-across-lines", "kind": "evaluate", "tool": "run_bash",
+     "output": "版本 pytest-9.1.0\nERROR: file not found",
+     "expect": {"has_issues": False, "metric": ["total", None]}},
     {"id": "eval-search-empty-not-failure", "kind": "evaluate", "tool": "grep_search",
      "output": "无命中。",
      "expect": {"has_issues": False}},
@@ -103,6 +159,37 @@ CASES = [
               {"fp": "p3", "class": "transient_io"}],
      "expect": {"classes": []}},              # 瞬时 IO 永不成策略
 
+    # ---- 块 V4 补齐：命令串联把退出码 echo 掉，失败不许因此隐形（同 V1a 的"吞退出码"家族）----
+    {"id": "eval-shell-echoed-exit-code-nonzero", "kind": "evaluate", "tool": "run_bash",
+     "params": {"command": "acme-build --release 2>&1; echo \"exit=$?\""},
+     "output": ("[exit code] 0\n[stdout]\n"
+                "bash: line 1: acme-build: command not found\nexit=127\n"),
+     "expect": {"has_issues": True, "metric": ["echoed_exit_code", 127.0]}},
+    {"id": "eval-shell-echoed-exit-code-zero", "kind": "evaluate", "tool": "run_bash",
+     "params": {"command": "echo hi; echo \"exit=$?\""},
+     "output": "[exit code] 0\n[stdout]\nhi\nexit=0\n",
+     "expect": {"has_issues": False}},
+    # 反向闸：没写 `$?` 就不许从日志正文里臆造失败（判据收窄的理由）
+    {"id": "eval-shell-log-text-is-not-a-failure", "kind": "evaluate", "tool": "run_bash",
+     "params": {"command": "cat error.log"},
+     "output": "[exit code] 0\n[stdout]\nError: 昨天那次的记录\nexit=1 是日志正文\n",
+     "expect": {"has_issues": False}},
+
+    # ---- 块 V4a：观察类工具的输出里有失败字样 ≠ 一次失败（ADR 0027 决策 11）----
+    # 补盲区，非改行为：既有 evaluate 语料用的都是执行类工具（run_bash/run_powershell），
+    # 从没覆盖"读到一个失败的测试文件"这条路，于是它一直被判成 blocker 并写进失败语料。
+    {"id": "eval-read-file-with-assertions-not-a-failure", "kind": "evaluate", "tool": "read_file",
+     "params": {"path": "run_tests.py"},
+     "output": ("1\tfrom calc import add\n"
+                "2\tassert add(1, 2) == 4, \"1+2 应当等于 4\"\n"
+                "3\tAssertionError\n"),
+     "expect": {"has_issues": False}},
+    {"id": "eval-grep-hit-with-traceback-not-a-failure", "kind": "evaluate", "tool": "grep_search",
+     "params": {"pattern": "AssertionError"},
+     "output": ("tests/test_x.py:12:    AssertionError: boom\n"
+                "tests/test_y.py:44:Traceback (most recent call last):\n"),
+     "expect": {"has_issues": False}},
+
     # ---- 块H1：搜索/调研结果质量——预算约束满足（小红书 618 睡衣 500 元验收）----
     {"id": "research-budget-miss", "kind": "evaluate", "tool": "web_search",
      "params": {"query": "在小红书搜索618推荐的女士睡衣，500元以内"},
@@ -111,6 +198,15 @@ CASES = [
                 "2. 设计师款睡裙\n   http://b\n   1280元\n"
                 "3. 进口长袖睡衣\n   http://c\n   ￥699"),
      "expect": {"has_issues": True, "metric": ["within_budget", 0.0]}},
+    # 表头**两行**（v3.54 块3「搜完顺带读正文」之后的真实形态）：`hits` 必须仍是结果条数。
+    # 补盲区，非改行为——原有两条语料建于块3 之前、都是单行表头，故一直没覆盖到（V2 批 2 照出）。
+    {"id": "research-budget-miss-multiline-header", "kind": "evaluate", "tool": "web_search",
+     "params": {"query": "机械键盘 500元以内"},
+     "output": ("[搜索结果·bing+duckduckgo] 机械键盘 500元以内\n"
+                "[已读正文] 前 2 条已抓取正文并按查询摘录（下面 ↳ 的部分）\n"
+                "1. A 键盘\n   http://a\n   ¥899\n   ↳ 页面标价 ¥899\n"
+                "2. B 键盘\n   http://b\n   ¥1299"),
+     "expect": {"has_issues": True, "metric": ["hits", 2.0]}},
     {"id": "research-budget-ok", "kind": "evaluate", "tool": "web_search",
      "params": {"query": "女士睡衣 500元以内"},
      "output": ("[搜索结果·bing] 女士睡衣\n"
