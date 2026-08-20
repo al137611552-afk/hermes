@@ -119,6 +119,38 @@ def test_dispatch_binds_by_request_id_and_refuses_to_guess():
     assert got_b == []
 
 
+def test_raw_event_recovered_from_validation_error():
+    """老 SDK 把不认识的通知**当校验失败**丢过来（用户真机见到的 `Field required`）。
+    原始报文只能从 ValidationError 的 `input` 里回捞——捞不到就安静放弃。"""
+    from agentcore.mcp_client.manager import _raw_event_params
+
+    class _Exc(Exception):
+        def __init__(self, errs):
+            self._e = errs
+
+        def errors(self):
+            return self._e
+
+    raw = {"method": "codex/event", "params": {"_meta": {"requestId": 3},
+                                               "msg": {"type": "agent_message_content_delta",
+                                                       "delta": "起"}}}
+    got = _raw_event_params(_Exc([{"input": raw}]))
+    assert got == raw["params"]
+    # 不是我们要的通知 / 结构不对 / errors() 自己炸了——一律 None，别抛
+    assert _raw_event_params(_Exc([{"input": {"method": "别的"}}])) is None
+    assert _raw_event_params(_Exc([{"nope": 1}])) is None
+    assert _raw_event_params(ValueError("没有 errors()")) is None
+
+
+def test_sdk_capabilities_are_reported_for_diagnosis():
+    """"没有边跑边出字"要能一眼分清是**配置问题还是环境问题**：
+    老 SDK 两条通道都没有的话，接得再对也不会有输出。"""
+    from agentcore.mcp_client.diag import sdk_capabilities
+    caps = sdk_capabilities()
+    assert set(caps) == {"version", "events", "message_handler"}
+    assert isinstance(caps["events"], bool) and isinstance(caps["message_handler"], bool)
+
+
 def test_dispatch_never_breaks_the_call():
     """推流回调自己炸了，也不能影响工具调用——过程展示是增值项。"""
     from agentcore.config import MCPConfig

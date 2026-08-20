@@ -83,6 +83,18 @@ def _flatten_exc(e) -> str:
     return "；".join(leaves) if leaves else f"{type(e).__name__}: {e}"
 
 
+def _raw_event_params(exc):
+    """从 pydantic 校验失败里回捞 `codex/event` 的原始 params（老 SDK 退路用）。捞不到返回 None。"""
+    try:
+        for err in exc.errors():          # 每条 error 带着被校验的原始输入
+            inp = err.get("input")
+            if isinstance(inp, dict) and inp.get("method") == CODEX_EVENT:
+                return inp.get("params")
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 class McpManager:
     def __init__(self, config: MCPConfig) -> None:
         self.config = config
@@ -291,7 +303,7 @@ class McpManager:
             from mcp.client.extension import NotificationBinding
             from pydantic import BaseModel, ConfigDict
             if "notification_bindings" not in inspect.signature(ClientSession.__init__).parameters:
-                return {}
+                return self._event_fallback(server)      # 老 SDK：退到 message_handler
         except Exception:  # noqa: BLE001
             return {}
 
@@ -319,6 +331,40 @@ class McpManager:
         with self._ev_lock:
             futs = list(self._inflight)
         return sum(1 for f in futs if not f.cancelled() and f.cancel())
+
+    def _event_fallback(self, server: str) -> dict:
+        """老 SDK 没有 `notification_bindings` 时的退路：用 `message_handler` 捞。
+
+        老 SDK 把不认识的通知**当校验失败**丢给 message_handler（那就是用户看到的
+        `Field required [type=missing]`），原始报文只能从 ValidationError 的 `input` 里回捞——
+        不优雅，但"有过程"和"没过程"的差别值得这一段。捞不到就安静放弃，绝不刷屏。
+        """
+        try:
+            import inspect
+
+            from mcp import ClientSession
+            if "message_handler" not in inspect.signature(ClientSession.__init__).parameters:
+                return {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+        async def _handler(message) -> None:
+            params = None
+            meth = getattr(getattr(message, "root", message), "method", None)
+            if meth == CODEX_EVENT:
+                params = getattr(getattr(message, "root", message), "params", None)
+            elif isinstance(message, Exception):
+                params = _raw_event_params(message)
+            if params is None:
+                return
+            raw = params.model_dump(by_alias=True) if hasattr(params, "model_dump") else params
+            if not isinstance(raw, dict):
+                return
+            text = render_event(raw.get("msg"))
+            if text:
+                self._dispatch_event(server, event_request_id(raw), text)
+
+        return {"message_handler": _handler}
 
     def _elicitation_hook(self, server: str) -> dict:
         """接住 server 的审批请求（标准 `elicitation/create`）。

@@ -560,7 +560,11 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
   font-variant-numeric: tabular-nums;
 }
 
-.mcp-diag-out { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.mcp-diag-out {
+  flex: 0 0 100%; width: 100%;        /* 独占一行，别参与那一行的挤压 */
+  margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
+  display: flex; flex-direction: column; gap: 3px;
+}
 .mcp-diag-line { font-size: 12px; line-height: 1.5; color: var(--muted); word-break: break-all; }
 .mcp-diag-line.ok { color: var(--ok); }
 .mcp-diag-line.bad { color: var(--danger); }
@@ -1507,6 +1511,7 @@ body.plan-on .composer::before {
 /* 🔌 MCP 扩展面板（Tier2-①） */
 .mcp-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .mcp-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  flex-wrap: wrap;   /* 体检结果要独占一整行：不换行的话它会被挤在名字和按钮中间（真机踩到） */
   border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
 .mcp-row:hover { border-color: var(--border-strong); }
 .mcp-main { flex: 1; min-width: 0; }

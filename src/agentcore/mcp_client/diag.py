@@ -51,6 +51,31 @@ def resolve_command(cmd: str) -> str:
     return ""
 
 
+def sdk_capabilities() -> dict:
+    """装的 mcp SDK 支不支持两条关键通道（受控 IO：只读版本与函数签名）。
+
+    真机反馈"没有边跑边出字"时，第一件要分清的就是**配置问题还是环境问题**——
+    过程流依赖 `notification_bindings`（或退而求其次的 `message_handler`），
+    老 SDK 两条都没有的话，接得再对也不会有输出。
+    """
+    out = {"version": "?", "events": False, "message_handler": False}
+    try:
+        import importlib.metadata as md
+        out["version"] = md.version("mcp")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import inspect
+
+        from mcp import ClientSession
+        sig = inspect.signature(ClientSession.__init__).parameters
+        out["events"] = "notification_bindings" in sig
+        out["message_handler"] = "message_handler" in sig
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def analyze_spec(spec: dict, global_timeout: float, *, resolved: str = "",
                  candidates=None, cwd_exists=None) -> list:
     """只看配置本身能发现的问题（**纯函数**）。返回 [{level, text}]。
@@ -94,7 +119,10 @@ def analyze_spec(spec: dict, global_timeout: float, *, resolved: str = "",
         out.append({"level": WARN, "text": "已开「免确认」：该 server 的工具不过权限确认"})
     elif not spec.get("always_confirm"):
         out.append({"level": WARN,
-                    "text": "没开「每次都问」：本会话点过「全部允许」后，它也会跟着免确认"})
+                    "text": "**没开「每次都问」**：这个 server 的调用会吃「本会话全部允许」，"
+                            "点过一次之后就不再弹确认（面板里勾上「每次都问」即可）"})
+    else:
+        out.append({"level": OK, "text": "已开「每次都问」：不吃「本会话全部允许」，每次调用都确认"})
     return out
 
 
@@ -157,6 +185,15 @@ def diagnose(name: str, spec: dict, global_timeout: float, probe: bool = True) -
         resolved=resolve_command(command) if command else "",
         candidates=all_in_path(command) if command else [],
         cwd_exists=(Path(cwd).is_dir() if cwd else None))
+    caps = sdk_capabilities()
+    if not caps["events"] and not caps["message_handler"]:
+        findings.append({"level": WARN,
+                         "text": f"mcp SDK {caps['version']} 不支持通知通道："
+                                 "过程不会实时显示（升级 mcp 可解）"})
+    else:
+        findings.append({"level": OK,
+                         "text": f"mcp SDK {caps['version']}（过程流通道"
+                                 f"{'：notification_bindings' if caps['events'] else '：message_handler 兜底'}）"})
     tools = []
     if probe and command:
         r = probe_connect(spec)
