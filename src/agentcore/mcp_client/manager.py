@@ -19,7 +19,7 @@ import threading
 import time
 
 from ..config import MCPConfig, McpServerConfig
-from .tool import McpTool
+from .tool import McpTool, ThreadMemory
 
 
 _EMPTY_SCHEMA = {"type": "object", "properties": {}}
@@ -91,6 +91,8 @@ class McpManager:
         self._tools: list[McpTool] = []
         self._errors: dict[str, str] = {}    # server -> 连接失败原因（拆开 ExceptionGroup，供 GUI 显示）
         self._errbufs: dict = {}             # server -> StringIO，捕获子进程 stderr（真正崩因，如"目录不存在"）
+        # agent 型 server 的续话记忆：模型漏带 thread id 时自动补，避免**静默新开会话**
+        self._threads = ThreadMemory()
 
     @property
     def errors(self) -> dict:
@@ -202,6 +204,7 @@ class McpManager:
                             input_schema=tool_input_schema(t),
                             caller=self.call, trusted=sc.trust,   # call(server, tool, params, stream)
                             always_confirm=getattr(sc, "always_confirm", False),
+                            threads=self._threads,
                         )
                         for t in listed.tools
                     ]

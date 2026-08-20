@@ -125,6 +125,83 @@ def test_mcptool_run_text():
     assert calls == [("fs", "read_file", {"path": "a.txt"})]  # 用原始名调用
 
 
+# ---- 续话 id 自动接续（2026-08-20 真机痛点）--------------------------------
+# 续话 id 只能靠模型自己从上一次返回里掏出来再带上，漏了就是**静默新开会话**：
+# 上下文全丢、还不报错，表现成"它怎么又从头问一遍"。
+
+class _ResultSC(_Result):
+    def __init__(self, content, structured=None, is_error=False):
+        super().__init__(content, is_error)
+        self.structuredContent = structured
+
+
+def test_extract_thread_id_only_trusts_structured_content():
+    """只认 structuredContent。**不去正文里正则捞**——正文是自然语言、形状随模型变，
+    靠它接续迟早接到别的会话上，比接不上更糟。"""
+    from agentcore.mcp_client.tool import extract_thread_id
+    assert extract_thread_id(_ResultSC([_Text("x")], {"threadId": "T-1"})) == "T-1"
+    assert extract_thread_id(_ResultSC([_Text("x")], {"thread_id": " T-2 "})) == "T-2"
+    assert extract_thread_id(_ResultSC([_Text('thread id: T-9')], None)) == ""
+    assert extract_thread_id(_Result([_Text("x")])) == ""       # 没这个属性也不能抛
+
+
+def test_thread_param_is_decided_by_schema_not_tool_name():
+    """按 schema 认，不按 `*-reply` 这种命名约定认——约定不是契约。"""
+    from agentcore.mcp_client.tool import thread_param
+    assert thread_param({"properties": {"threadId": {}, "prompt": {}}}) == "threadId"
+    assert thread_param({"properties": {"prompt": {}}}) == ""
+    assert thread_param({}) == ""
+
+
+def test_reply_tool_auto_resumes_last_thread():
+    from agentcore.mcp_client.tool import ThreadMemory
+
+    mem = ThreadMemory()
+    seen = []
+    def caller(server, name, params, stream=None):
+        seen.append(params)
+        return _ResultSC([_Text("ok")], {"threadId": "T-1"})
+
+    start = McpTool("codex", "codex", "d", {"properties": {"prompt": {}}},
+                    caller=caller, threads=mem)
+    out = start.run({"prompt": "做事"})
+    assert "[thread] T-1" in out, out          # 回显：模型自己带上才是常态，自动接续只是兜底
+
+    reply = McpTool("codex", "codex-reply", "d",
+                    {"properties": {"prompt": {}, "threadId": {}}}, caller=caller, threads=mem)
+    out2 = reply.run({"prompt": "继续"})
+    assert seen[-1]["threadId"] == "T-1", seen[-1]
+    assert out2.startswith("[已自动接续 threadId=T-1]"), out2[:60]
+
+
+def test_explicit_thread_id_is_never_overwritten():
+    """模型显式给了就以它为准——它可能有意开新会话或切到别的线程。"""
+    from agentcore.mcp_client.tool import ThreadMemory
+
+    mem = ThreadMemory()
+    mem.set("codex", "T-OLD")
+    seen = []
+    reply = McpTool("codex", "codex-reply", "d", {"properties": {"threadId": {}}},
+                    caller=lambda s, n, p, st=None: seen.append(p) or _ResultSC([_Text("ok")]),
+                    threads=mem)
+    reply.run({"threadId": "T-NEW"})
+    assert seen[-1]["threadId"] == "T-NEW"
+
+
+def test_tools_without_thread_key_are_untouched():
+    """普通 MCP 工具（文件系统/浏览器）不该被塞进莫名其妙的参数。"""
+    from agentcore.mcp_client.tool import ThreadMemory
+
+    mem = ThreadMemory()
+    mem.set("fs", "T-1")
+    seen = []
+    t = McpTool("fs", "read_file", "d", {"properties": {"path": {}}},
+                caller=lambda s, n, p, st=None: seen.append(p) or _Result([_Text("ok")]),
+                threads=mem)
+    out = t.run({"path": "a.txt"})
+    assert seen[-1] == {"path": "a.txt"} and "[thread]" not in out
+
+
 def test_always_confirm_flag_and_trust_are_mutually_exclusive():
     """agent 型 server 每次都问；trust=True 时本来就不过 gate，两者同时开只会自相矛盾——
     以 trust 为准（不过 gate），always_confirm 归 False，别让配置矛盾变成运行期悬念。"""
