@@ -90,6 +90,33 @@ def test_probe_reports_launch_failure_instead_of_raising():
     assert r["ok"] is False and "FileNotFoundError" in r["error"] or r["error"]
 
 
+def test_named_workspaces_are_legit_only_scratch_and_install_dir_warn():
+    """**具名会话工作区是正当的**（`data/workspaces/1`），一刀切会误报——真机误报过。
+    该警告的只有草稿区（没打开项目时的默认）和安装目录里的其它位置。"""
+    from agentcore.config import APP_DIR
+    from agentcore.mcp_client.diag import inside_hermes_dir
+
+    assert inside_hermes_dir(str(APP_DIR / "data" / "workspaces" / "1")) is False
+    assert inside_hermes_dir(str(APP_DIR / "data" / "workspaces" / "_scratch")) is True
+    assert inside_hermes_dir(str(APP_DIR / "src")) is True
+    assert inside_hermes_dir(str(APP_DIR)) is True
+    assert inside_hermes_dir("/tmp/my-project") is False
+    assert inside_hermes_dir("") is False
+    # 自定义 workspaces_root 也要认
+    assert inside_hermes_dir(str(APP_DIR / "ws" / "proj"),
+                             workspaces_root=str(APP_DIR / "ws")) is False
+
+
+def test_mcp_subprocess_inherits_parent_env():
+    """SDK 默认只给白名单环境，代理变量（HTTPS_PROXY…）会被滤掉——真机表现是 codex 在子进程里
+    反复 Reconnecting/超时，而同一条命令在用户终端里好好的。"""
+    import inspect
+
+    from agentcore.mcp_client.manager import McpManager
+    src = inspect.getsource(McpManager._serve)
+    assert "_os.environ" in src and "sc.env or {}" in src, "必须继承父进程环境再叠加 server 配置"
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

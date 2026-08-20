@@ -203,9 +203,14 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - **权限两个开关矛盾时以「更严」为准**：`always_confirm` 压过 `trust`。真机踩到用户配里
   两个都为 true，按原先"trust 优先"的写法，"每次都问"被**静默作废**、一次确认都没弹。
   面板已改成两者互斥，代码侧是兜底（手编 config.yaml 仍可能写出矛盾），体检会把矛盾报成 BAD。
+- **MCP 子进程继承 hermes 自己的环境**（`{**os.environ, **sc.env}`）。SDK 默认只给一份
+  **白名单**环境，代理变量（HTTPS_PROXY…）、CODEX_HOME、区域设置全被滤掉——真机表现是
+  codex 在子进程里反复 `Reconnecting… / request timed out`，而同一条命令在用户终端里好好的。
 - **别在 hermes 自己的目录里派活**：面板模板会把"当前工作区"填进 `cwd`，而没打开项目时
   那是 `data/workspaces/_scratch`——agent 会全干在那儿，**不报错、结果也看着正常**。
   调用时会喊一句（`inside_hermes_dir`），体检也报 BAD。
+  **但别一刀切**：`data/workspaces/<名字>` 是 hermes 的**具名会话工作区、完全正当**，
+  只有草稿区 `_scratch` 与安装目录里的其它位置才该警告（一刀切在真机上误报过）。
 - **起子进程读输出必须有硬看门狗**：`p.stdout.readline()` 在对端一个字都不吐时会
   **永久阻塞**，`while time.time() < deadline` 那种循环根本跑不到——体检因此把按钮
   卡在「体检中…」再也不动（2026-08-20 真机）。用 `threading.Timer(timeout, p.kill)`：

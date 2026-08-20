@@ -208,9 +208,16 @@ class McpManager:
         try:
             from mcp import ClientSession, StdioServerParameters
             from mcp.client.stdio import stdio_client
+            # **继承 hermes 自己的环境**再叠加 server 配置。SDK 默认只给一份**白名单**环境
+            # （PATH/USERPROFILE 等），代理变量（HTTPS_PROXY…）、CODEX_HOME、区域设置全被滤掉——
+            # 真机表现就是 codex 在子进程里反复 `Reconnecting… / request timed out`，
+            # 而同一条命令在用户终端里好好的（2026-08-20）。
+            # MCP server 是用户自己配的本地命令，与 hermes 的 shell 工具同源，给同一份环境才一致。
+            import os as _os
+            env = {**_os.environ, **(sc.env or {})}
             params = StdioServerParameters(
                 command=sc.command, args=list(sc.args),
-                env=(sc.env or None), cwd=sc.cwd,
+                env=env, cwd=sc.cwd,
             )
             # errlog 捕获 server stderr（真正崩因在这，如"目录不存在"）；老版本 SDK 没此参数则跳过
             _kw = ({"errlog": errfile} if errfile is not None

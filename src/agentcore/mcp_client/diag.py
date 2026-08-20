@@ -83,17 +83,31 @@ def sdk_capabilities() -> dict:
     return out
 
 
-def inside_hermes_dir(cwd: str) -> bool:
-    """cwd 是不是落在 hermes 自己的安装目录里（纯逻辑，只比路径）。
+def _norm(p) -> str:
+    return str(p).replace("\\", "/").rstrip("/").lower()
 
-    真机踩到：面板模板把"当前工作区"填成了 `data/workspaces/_scratch`——那是 hermes 的
-    临时工作区，不是用户的项目，agent 会在那儿建文件而**不报错**。
+
+def inside_hermes_dir(cwd: str, workspaces_root=None) -> bool:
+    """cwd 是不是"不该在那儿干活"的 hermes 自家目录（纯逻辑，只比路径）。
+
+    分三种，别一刀切（2026-08-20 真机误报过）：
+      - `data/workspaces/<名字>` —— **hermes 的具名会话工作区，完全正当**，不警告；
+      - `data/workspaces/_scratch` —— 没打开项目时的草稿区，agent 干在那儿多半不是本意；
+      - 安装目录里的**其它**位置（src/、data/ 本身…）—— 更不该。
     """
     try:
         from ..config import APP_DIR
-        here = str(APP_DIR).replace("\\", "/").rstrip("/").lower()
-        target = str(cwd).replace("\\", "/").rstrip("/").lower()
-        return bool(here) and (target == here or target.startswith(here + "/"))
+        app = _norm(APP_DIR)
+        target = _norm(cwd)
+        if not app or not (target == app or target.startswith(app + "/")):
+            return False                      # 压根不在 hermes 目录里
+        ws_root = _norm(workspaces_root or (Path(APP_DIR) / "data" / "workspaces"))
+        scratch = ws_root + "/_scratch"
+        if target == scratch or target.startswith(scratch + "/"):
+            return True                       # 草稿区
+        if target.startswith(ws_root + "/"):
+            return False                      # 具名工作区：正当
+        return True
     except Exception:  # noqa: BLE001
         return False
 
@@ -135,8 +149,8 @@ def analyze_spec(spec: dict, global_timeout: float, *, resolved: str = "",
         out.append({"level": BAD, "text": f"工作目录不存在：{cwd}"})
     elif inside_hermes_dir(cwd):
         out.append({"level": BAD,
-                    "text": f"工作目录指向 hermes 自己的目录（{cwd}）——agent 会在**那儿**干活，"
-                            "不是你的项目。改成你的项目路径"})
+                    "text": f"工作目录指向 hermes 的草稿区/安装目录（{cwd}）——agent 会在**那儿**"
+                            "干活，不是你的项目。改成项目路径，或在 hermes 里开一个具名工作区"})
     if not spec.get("call_timeout"):
         out.append({"level": WARN,
                     "text": f"单次调用超时跟随全局（{global_timeout:g}s）：agent 型 server "
