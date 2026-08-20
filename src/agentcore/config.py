@@ -291,6 +291,13 @@ class WebConfig(BaseModel):
     # 接了浏览器穿透时，web_fetch 命中反爬/登录墙/JS 空壳就自动改用浏览器读同一 URL。
     # 关掉则只提示受阻、由模型自己决定要不要开浏览器（注意：浏览器带登录态，读到的可能是私域内容）。
     browser_fallback: bool = True
+    # Firecrawl 托管检索源（FR-11.1d）：off / fallback / always。
+    # **没有 FIRECRAWL_API_KEY 时一律等于 off**——开箱不预设 provider（v3.56），
+    # 且免 key 链路必须永远可用（不带凭据也能搜是 hermes 的底线能力）。
+    # 默认 fallback 而不是 always 是算术不是偏好：实测 search(limit=5)=2 credits、
+    # 免费档 1000/月，而一个研究型任务真跑要搜 7–8 次 → 全量走一个月只够 60–70 个任务。
+    # 把配额花在免 key 链路真的不行的时候，才买得到增量。
+    firecrawl: str = "fallback"
 
 
 class ArtifactsConfig(BaseModel):

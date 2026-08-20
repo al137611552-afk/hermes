@@ -133,10 +133,12 @@ def build_registry(
                           reranker=search_reranker,
                           read_top_n=getattr(web, "read_top_n", 3),
                           read_chars=getattr(web, "read_chars", 1500),
-                          artifacts=artifacts),
+                          artifacts=artifacts,
+                          firecrawl=getattr(web, "firecrawl", "off")),
             WebFetchTool(timeout=web.timeout, max_chars=web.fetch_max_chars,
                          browser_reader=(browser_reader
                                          if getattr(web, "browser_fallback", True) else None),
+                         firecrawl=getattr(web, "firecrawl", "off"),
                          artifacts=artifacts),
         ]
     if screenshot:
