@@ -1090,6 +1090,25 @@ class Api:
         return {"ok": True, "servers": read_user_mcp(), "tools": tools,
                 "errors": errors, "connect_error": errors.get(name)}
 
+    def diag_mcp_server(self, name: str) -> dict:
+        """体检一个 MCP server：配置 → 命令解析 → 起子进程握手，逐层报结论。
+
+        面板原来只能显示一句 `Connection closed` 加 server 的 stderr，不够定位——
+        真踩到的两种故障（参数写进命令框、PATH 里两份同名）都**不在**那句话里。
+        """
+        from ..config import read_user_mcp
+        from ..mcp_client.diag import diagnose
+        spec = (read_user_mcp() or {}).get(name)
+        if not spec:
+            # 面板加的在 user_mcp.json，手编的在 config.yaml——两处都要认
+            spec = {n: s.model_dump() for n, s in self.res.config.mcp.servers.items()}.get(name)
+        if not spec:
+            return {"ok": False, "error": f"没有名为 {name} 的 server"}
+        try:
+            return {"ok": True, **diagnose(name, spec, self.res.config.mcp.call_timeout)}
+        except Exception as e:  # noqa: BLE001 — 体检本身绝不能把面板带崩
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
     def delete_mcp_server(self, name: str) -> dict:
         from ..config import read_user_mcp, remove_user_mcp_server
         remove_user_mcp_server(name)

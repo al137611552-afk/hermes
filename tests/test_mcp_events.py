@@ -80,6 +80,19 @@ def test_request_id_is_the_attribution_key():
     assert event_request_id(None) is None
 
 
+def test_elicitation_text_names_the_command_and_the_way_out():
+    """审批被拒必须**说得清、能照做**：静默拒绝的表现就是用户看到的
+    "工作区被以只读方式挂载、写操作被拒"，查不到原因（2026-08-20 真机）。"""
+    from agentcore.mcp_client.events import render_elicitation
+    out = render_elicitation({"message": "Allow Codex to run ...?",
+                              "codex_command": ["/bin/bash", "-lc", "printf 'hi' > c.txt"]})
+    assert "printf 'hi' > c.txt" in out            # 到底要干什么
+    assert "approval-policy" in out and "never" in out and "sandbox" in out   # 出路
+    # 没有 codex_command 时退回 message，不能变成空白
+    assert "Allow Codex" in render_elicitation({"message": "Allow Codex to run x?"})
+    assert render_elicitation(None).startswith("⛔")
+
+
 def test_dispatch_binds_by_request_id_and_refuses_to_guess():
     """归属规则：首条事件到达时若**只有一次调用未绑定**才认领；并发同时起跑时宁可不显示。
 

@@ -3872,6 +3872,24 @@ function renderAppearancePane() {
   });
 }
 
+// 体检结果：按 ok / warn / bad 分级显示在该 server 行下面。
+// **不折叠、不省略**——人打开它就是因为看不出哪儿错了。
+function renderMcpDiag(row, res) {
+  const old = row.querySelector(".mcp-diag-out");
+  if (old) old.remove();
+  const box = document.createElement("div");
+  box.className = "mcp-diag-out";
+  if (!res || !res.ok) {
+    box.innerHTML = `<div class="mcp-diag-line bad">体检失败：${escapeHtml((res && res.error) || "无响应")}</div>`;
+  } else {
+    const icon = { ok: "✅", warn: "⚠", bad: "❌" };
+    box.innerHTML = (res.findings || [])
+      .map((f) => `<div class="mcp-diag-line ${escapeHtml(f.level)}">${icon[f.level] || "•"} ${escapeHtml(f.text)}</div>`)
+      .join("") || '<div class="mcp-diag-line ok">没发现问题</div>';
+  }
+  row.appendChild(box);
+}
+
 async function renderMcpPane() {
   // 🔌 MCP 扩展：列出/增删改用户加的外部 MCP server，改动即时重连生效。
   const r = (await window.pywebview.api.get_mcp_servers()) || {};
@@ -3900,6 +3918,7 @@ async function renderMcpPane() {
           ${err}
         </div>
         <label class="mcp-toggle" title="启用 / 停用"><input type="checkbox" class="mcp-en"${s.enabled ? " checked" : ""}></label>
+        <button class="ws-btn mcp-diag" type="button">体检</button>
         <button class="ws-btn mcp-edit" type="button">编辑</button>
         <button class="ws-btn mcp-del" type="button">删除</button>
       </div>`;
@@ -4013,6 +4032,19 @@ async function renderMcpPane() {
     });
   });
 
+  // 「体检」：连不上时别让人对着一句 Connection closed 干瞪眼——把每一层都摊开
+  provDetailEl.querySelectorAll(".mcp-diag").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const row = b.closest(".mcp-row");
+      const name = row && row.dataset.name;
+      if (!name) return;
+      b.disabled = true; b.textContent = "体检中…";
+      const res = await window.pywebview.api.diag_mcp_server(name).catch(() => null);
+      b.disabled = false; b.textContent = "体检";
+      renderMcpDiag(row, res);
+    });
+  });
+
   provDetailEl.querySelector("#mcp-save").addEventListener("click", async () => {
     const name = provDetailEl.querySelector("#mcp-f-name").value.trim();
     const command = provDetailEl.querySelector("#mcp-f-cmd").value.trim();
@@ -4035,7 +4067,15 @@ async function renderMcpPane() {
       always_confirm: alwaysConfirm });
     if (res && res.ok) {
       showToast(res.connect_error ? `已保存，但「${name}」未连上：${res.connect_error}` : `已保存，连上 ${res.tools} 个工具`);
-      renderMcpPane();
+      const failed = !!res.connect_error;
+      await renderMcpPane();
+      // 连不上就**自动体检**：这时候人最需要的不是"失败了"，是"哪一层失败、怎么改"
+      if (failed) {
+        const row = Array.prototype.find.call(
+          provDetailEl.querySelectorAll(".mcp-row"), (r) => r.dataset.name === name);
+        const d = await window.pywebview.api.diag_mcp_server(name).catch(() => null);
+        if (row) renderMcpDiag(row, d);
+      }
     } else showToast((res && res.error) || "保存失败");
   });
   refreshNavBadges();   // 面板内容变了（增删改/开关）→ 左栏徽标跟着刷新

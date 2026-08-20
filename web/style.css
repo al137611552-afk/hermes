@@ -550,6 +550,12 @@ body.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
 }
 /* 高影响力工具的说明行：解释"为什么这条没有『以后别问』的按钮"，避免被当成 bug */
 .perm-note { margin-top: 6px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+/* MCP 体检结果：分级着色，逐条铺开（人点它就是因为看不出哪儿错） */
+.mcp-diag-out { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.mcp-diag-line { font-size: 12px; line-height: 1.5; color: var(--muted); word-break: break-all; }
+.mcp-diag-line.ok { color: var(--ok); }
+.mcp-diag-line.bad { color: var(--danger); }
+
 .perm-actions { display: flex; gap: 8px; }
 .perm-allow { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-line); }
 .perm-allow:hover { background: var(--ok-bg); border-color: var(--ok); }

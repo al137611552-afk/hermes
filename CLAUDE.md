@@ -156,6 +156,20 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
   同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
   **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
+- **MCP 连不上先跑体检**：面板每行有「体检」按钮（保存失败会自动跑一次），命令行是
+  `python scripts/diag_mcp.py [server]`，两边**共用 `mcp_client/diag.py` 同一份实现**。
+  它把配置、命令解析到哪个可执行文件、PATH 里有没有多份同名、cwd/超时/权限档、
+  以及真起一次握手的结果逐层摊开——真踩到的两种故障（参数写进命令框、PATH 两份同名）
+  都**不在** `Connection closed` 那句话里。
+- **Codex 的审批（`elicitation/create`）hermes 只能拒绝**：2026-08-20 用真会话
+  （codex + DeepSeek）逐个试过 `accept`/`approved`/`content.decision=…`，它一律当拒绝，
+  **没能确定"同意"该回什么值**。现在的做法是接住它、显式拒绝、把命令与出路打进工具块——
+  不接就是 SDK 默认静默拒绝，用户只看到"写操作被拒"、查不到原因。
+  出路：调用时给 `approval-policy="never"`，用 `sandbox` 决定它能改什么。
+- **本机 codex 可以接 DeepSeek 跑真会话**（不必 ChatGPT 订阅）：`~/.codex/config.toml` 里
+  `model_provider="deepseek"` + `[model_providers.deepseek] base_url="https://api.deepseek.com/v1"`、
+  `wire_api="responses"`（0.148 起 `wire_api="chat"` 已被移除）。**顶层键必须写在任何
+  `[table]` 之前**，否则会被并进上一张表（踩过）。有了它，Codex 相关的东西不必再等 Windows。
 - **Codex 一条标准 MCP 通知都不发**（2026-08-20 探针实测：全程只有自定义的 `codex/event`）。
   所以 `progress_callback` 那条标准通道对它**收不到任何东西**——要拿过程必须挂
   `NotificationBinding(method="codex/event")`；不挂的话消息在 pydantic 那关就失败

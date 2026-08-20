@@ -1,0 +1,81 @@
+"""MCP server 体检的纯逻辑（不碰盘、不起进程）。
+
+面板原来只能显示一句 `Connection closed` 加 server 的 stderr——真踩到的两种故障
+（参数写进「启动命令」框、PATH 里两份同名命令）**都不在那句话里**，用户对着它猜了四轮。
+所以每一条结论都要能直接照着改。
+
+运行：python tests/test_mcp_diag.py
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from agentcore.mcp_client.diag import BAD, OK, WARN, analyze_spec  # noqa: E402
+
+
+def _levels(findings, level):
+    return [f["text"] for f in findings if f["level"] == level]
+
+
+def test_args_written_into_command_box_is_called_out():
+    """真机故障 ①：`codex mcp-server` 整串写进了命令框 → 被当交互式启动。"""
+    out = analyze_spec({"command": "codex mcp-server", "args": []}, 60.0, resolved="")
+    bad = " ".join(_levels(out, BAD))
+    assert "带空格" in bad and "参数" in bad
+    assert "找不到" in bad          # 顺带：整串当然解析不到
+
+
+def test_duplicate_commands_in_path_are_reported():
+    """真机故障 ②：终端解析到新版、子进程解析到旧版，表现成"这个子命令不存在"。"""
+    out = analyze_spec({"command": "codex", "args": ["mcp-server"]}, 60.0,
+                       resolved="/a/codex", candidates=["/a/codex", "/b/codex"])
+    assert any("多份同名" in t for t in _levels(out, WARN))
+    # 只有一份就不该报
+    out2 = analyze_spec({"command": "codex", "args": ["mcp-server"]}, 60.0,
+                        resolved="/a/codex", candidates=["/a/codex"])
+    assert not any("多份同名" in t for t in _levels(out2, WARN))
+
+
+def test_agent_server_pitfalls_are_warned():
+    """agent 型 server 的三个必踩点：没参数、没工作目录、超时跟随全局。"""
+    out = analyze_spec({"command": "codex", "args": []}, 60.0, resolved="/a/codex")
+    warns = " ".join(_levels(out, WARN))
+    assert "stdin is not a terminal" in warns      # 缺子命令的后果，直接写出来
+    assert "工作目录" in warns
+    assert "超时" in warns and "60" in warns
+
+
+def test_missing_cwd_directory_is_an_error_not_a_warning():
+    out = analyze_spec({"command": "codex", "args": ["mcp-server"], "cwd": "D:/nope"},
+                       60.0, resolved="/a/codex", cwd_exists=False)
+    assert any("工作目录不存在" in t for t in _levels(out, BAD))
+
+
+def test_permission_flags_are_surfaced_both_ways():
+    """trust=开 与 always_confirm=关 都要提醒——后者正是"点过全部允许就全放开"那个坑。"""
+    trusted = analyze_spec({"command": "c", "args": ["x"], "trust": True}, 60.0, resolved="/c")
+    assert any("免确认" in t for t in _levels(trusted, WARN))
+    loose = analyze_spec({"command": "c", "args": ["x"]}, 60.0, resolved="/c")
+    assert any("每次都问" in t for t in _levels(loose, WARN))
+    tight = analyze_spec({"command": "c", "args": ["x"], "always_confirm": True,
+                          "cwd": "/w", "call_timeout": 900}, 60.0,
+                         resolved="/c", cwd_exists=True)
+    assert _levels(tight, WARN) == [] and _levels(tight, BAD) == []
+    assert any("解析到" in t for t in _levels(tight, OK))
+
+
+def _run_all():
+    import inspect
+    fns = [(n, f) for n, f in globals().items()
+           if n.startswith("test_") and inspect.isfunction(f)]
+    for name, fn in fns:
+        fn()
+        print(f"  ok  {name}")
+    print(f"\n{len(fns)}/{len(fns)} passed")
+
+
+if __name__ == "__main__":
+    _run_all()

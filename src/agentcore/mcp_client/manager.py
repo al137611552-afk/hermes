@@ -19,7 +19,7 @@ import threading
 import time
 
 from ..config import MCPConfig, McpServerConfig
-from .events import CODEX_EVENT, event_request_id, render_event
+from .events import CODEX_EVENT, event_request_id, render_elicitation, render_event
 from .tool import McpTool, ThreadMemory
 
 
@@ -200,6 +200,7 @@ class McpManager:
             _kw = ({"errlog": errfile} if errfile is not None
                    and "errlog" in _inspect.signature(stdio_client).parameters else {})
             bindings = self._event_bindings(name)
+            bindings.update(self._elicitation_hook(name))
             async with stdio_client(params, **_kw) as (read, write):
                 async with ClientSession(read, write, **bindings) as session:
                     await session.initialize()
@@ -293,6 +294,36 @@ class McpManager:
 
         return {"notification_bindings": [
             NotificationBinding(method=CODEX_EVENT, params_type=_AnyParams, handler=_handler)]}
+
+    def _elicitation_hook(self, server: str) -> dict:
+        """接住 server 的审批请求（标准 `elicitation/create`）。
+
+        **只能拒绝**：应答里"同意"该填什么，用真会话逐个试过仍未确定（见 render_elicitation）。
+        但接住它本身就有价值——不接就是 SDK 默认拒绝，用户只看到"写操作被拒"、查不到原因。
+        接住之后至少能把**请求的命令与出路**打进工具块。
+        """
+        try:
+            import inspect
+
+            import mcp_types as _t
+            from mcp import ClientSession
+            if "elicitation_callback" not in inspect.signature(ClientSession.__init__).parameters:
+                return {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+        async def _cb(context, params):
+            raw = params.model_dump(by_alias=True) if hasattr(params, "model_dump") else params
+            self._dispatch_event(server, self._only_inflight_rid(server), render_elicitation(raw))
+            return _t.ElicitResult(action="decline")
+
+        return {"elicitation_callback": _cb}
+
+    def _only_inflight_rid(self, server: str):
+        """审批请求不带我们的 requestId——只有**唯一在飞**时才认得出归属，认不出就不显示。"""
+        with self._ev_lock:
+            bound = [k[1] for k in self._ev_bound if k[0] == server]
+            return bound[0] if len(bound) == 1 else None
 
     def _dispatch_event(self, server: str, rid, text: str) -> None:
         """把一条事件文本投给**发起它的那次调用**的实时流。"""

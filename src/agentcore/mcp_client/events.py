@@ -68,6 +68,27 @@ def render_event(msg) -> str:
     return ""
 
 
+def render_elicitation(params) -> str:
+    """server 发来的审批请求（标准 `elicitation/create`）→ 显示给用户的一段话（纯函数）。
+
+    **hermes 目前只能拒绝**：2026-08-20 用真会话（Codex + DeepSeek）逐个试过
+    `accept` / `approved` / `content.decision=…` 等应答形状，Codex 一律当作拒绝，
+    **没能确定它认的那个值**。所以这里的职责是把"被拒"从**静默**变成**说得清、能照做**——
+    静默拒绝的表现就是用户看到的"工作区被以只读方式挂载、写操作被拒"，查不到原因。
+    """
+    msg, cmd = "", ""
+    if isinstance(params, dict):
+        msg = str(params.get("message") or "")
+        c = params.get("codex_command")
+        cmd = str(c[-1] if isinstance(c, list) and c else (c or ""))
+    else:
+        msg = str(getattr(params, "message", "") or "")
+    body = (cmd or msg)[:200]
+    return ("⛔ Codex 请求提权（hermes 暂不能代答，已拒绝）：" + body + "\n"
+            "   出路：调用时给 approval-policy=\"never\"，用 sandbox 决定它能改什么"
+            "（read-only / workspace-write）\n")
+
+
 def event_request_id(params) -> "int | None":
     """事件属于哪一次调用（`_meta.requestId`）。取不到返回 None。
 
