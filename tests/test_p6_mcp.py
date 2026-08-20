@@ -165,6 +165,41 @@ def test_config_parsing():
     assert cfg.servers["off"].enabled is False
 
 
+def test_per_server_call_timeout_overrides_global():
+    """agent 型 server（`codex mcp-server`）一次调用＝跑完一整个会话，分钟级。
+
+    **超时该按 server 定**：为了一个慢 server 调高全局，会把 Playwright 之类的一起放松，
+    于是"卡死"要等十几分钟才暴露。没配的 server 必须一字不差地跟随全局。
+    """
+    from agentcore.mcp_client.manager import McpManager
+
+    cfg = MCPConfig(**{
+        "enabled": True,
+        "call_timeout": 60,
+        "servers": {
+            "codex": {"command": "codex", "args": ["mcp-server"], "call_timeout": 900},
+            "fs": {"command": "npx", "args": ["-y", "pkg"]},
+        },
+    })
+    assert cfg.servers["codex"].call_timeout == 900
+    assert cfg.servers["fs"].call_timeout is None      # 不写＝跟随全局，不是 0
+
+    m = McpManager(cfg)
+    assert m.call_timeout_for("codex") == 900.0
+    assert m.call_timeout_for("fs") == 60.0
+    assert m.call_timeout_for("不存在的 server") == 60.0   # 取不到配置也得给个能用的值
+
+
+def test_zero_call_timeout_falls_back_to_global():
+    """0 / None 都当"没配"——**别把它当成"立刻超时"**：那会让每次调用当场失败，
+    而用户的本意几乎必然是"没填"。"""
+    from agentcore.mcp_client.manager import McpManager
+
+    cfg = MCPConfig(**{"enabled": True, "call_timeout": 45,
+                       "servers": {"x": {"command": "c", "call_timeout": 0}}})
+    assert McpManager(cfg).call_timeout_for("x") == 45.0
+
+
 def test_registry_includes_mcp_tools_and_marks_dangerous(tmp: Path):
     mcp_tools = [
         McpTool("fs", "read_file", "d", {}, caller=lambda *a: None),

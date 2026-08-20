@@ -256,6 +256,19 @@ mcp:
   call_timeout: 60      # 单次工具调用超时（秒）
   # 启用某个 server：直接解注释下面对应的块（已是正确缩进，servers 这行不用动）。留空 = 无 server。
   servers:
+    # 示例：**Codex CLI 当子 Agent**——用你的 ChatGPT 订阅额度干重活，不烧 API 余额。
+    #   前提：装了 Codex CLI 且**已登录**（`codex login`，选 Sign in with ChatGPT）。
+    #   `codex login status` 应显示已登录；没登录时工具会连上但调用即失败。
+    #   形态是**委派**：Codex 跑它自己的循环与工具，hermes 只把任务描述发过去、拿结果回来
+    #   （不是"hermes 每一步都用 GPT 想"——那要模型档级别的接入，是另一回事）。
+    #   `cwd` **务必指到你的项目目录**，否则它在别处改文件；
+    #   `call_timeout` 单独放宽：一次调用＝跑完一整个会话，分钟级，全局那 60s 必然超时。
+    # codex:
+    #   command: codex
+    #   args: ["mcp-server"]
+    #   cwd: "C:\\Users\\你\\项目目录"
+    #   call_timeout: 900     # 15 分钟；agent 型 server 必须单独放宽
+    #   trust: false          # 它会自己执行命令——保持逐次确认更稳妥
     # 示例：官方 filesystem server（需先装 Node）。把下面解注释并改成你的目录：
     # filesystem:
     #   command: npx

@@ -219,7 +219,18 @@ class McpManager:
             raise RuntimeError(f"MCP server '{server}' 未连接")
         session = self._sessions[server]
         fut = self._submit(session.call_tool(tool_name, params))
-        return fut.result(timeout=self.config.call_timeout)
+        return fut.result(timeout=self.call_timeout_for(server))
+
+    def call_timeout_for(self, server: str) -> float:
+        """该 server 的单次调用超时：server 级覆盖优先，否则跟随全局（纯逻辑）。
+
+        agent 型 server（如 `codex mcp-server`）一次调用＝跑完一整个会话，分钟级；
+        而全局默认是按"一次工具调用"定的 60s。**超时该按 server 定**，
+        不该为了一个慢 server 把所有 server 一起放松。
+        """
+        sc = self.config.servers.get(server)
+        override = getattr(sc, "call_timeout", None) if sc else None
+        return float(override) if override else float(self.config.call_timeout)
 
     # ---- 关闭 -----------------------------------------------------------
     def _cleanup_errbufs(self) -> None:

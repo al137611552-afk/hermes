@@ -253,6 +253,11 @@ class McpServerConfig(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     cwd: str | None = None                    # 子进程工作目录
     trust: bool = False                       # true -> 该 server 工具免权限 gate（默认逐次确认）
+    call_timeout: float | None = None         # 覆盖全局 `mcp.call_timeout`（秒）；None = 跟随全局。
+                                              # **为 agent 型 server 而加**：codex mcp-server 那类
+                                              # 一次调用要跑完一整个 agent 会话（分钟级），而全局
+                                              # 60s 是按"一次工具调用"定的。调高全局会把
+                                              # Playwright 之类的也一起放松——超时该按 server 定。
 
 
 class MCPConfig(BaseModel):

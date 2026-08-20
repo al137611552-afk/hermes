@@ -149,6 +149,16 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   2026-08-20 真机：DeepSeek V4-FLASH 打开已有项目续开发，长考中
   `RemoteProtocolError: incomplete chunked read`，一断就整轮作废。
   封锁重试的只有 `text`/`tool_use`/`done`（重来会重复输出给用户），thinking 重复一段无所谓。
+- **MCP 的 `call_timeout` 要按 server 定，不是全局一个数**（`McpServerConfig.call_timeout`）。
+  **agent 型 server**（`codex mcp-server` 那类）一次调用＝跑完一整个 agent 会话，分钟级；
+  而全局默认 60s 是按"一次工具调用"定的。为了它调高全局，会把 Playwright 之类的一起放松，
+  于是那些真卡死的要等十几分钟才暴露。填 0 或不填都当"跟随全局"，**不是"立刻超时"**。
+- **拿 ChatGPT 订阅额度干活＝把 Codex CLI 当 MCP server**（`codex mcp-server`，实测 0.143.0
+  暴露 `codex` / `codex-reply` 两个工具）。这是**委派**语义：Codex 跑它自己的循环、工具和沙箱，
+  hermes 只发任务描述、收结果，**不是"hermes 每一步都用 GPT 想"**——后者要模型档级别接入
+  （OAuth 订阅 token 打非公开端点，ToS 灰区，见 ROADMAP 第三档）。配的时候三件事别漏：
+  `cwd` 指到项目目录（否则它在别处改文件）、`call_timeout` 单独放宽、`trust: false`
+  （它会自己执行命令）。前提是本机 `codex login` 过（`codex login status` 查）。
 - **mcp SDK 2.0 改了字段名**：`Tool.inputSchema` → `input_schema`。`manager.tool_input_schema()` 两名都认——
   别"清理"成只读一个，`pyproject` 写的是 `mcp>=1.2`，新旧机器都可能遇到。踩过的坑是所有 MCP server
   一起连不上（`AttributeError`），而纯 mock 单测全绿——**MCP 相关改动要连真 server 跑一次**。
