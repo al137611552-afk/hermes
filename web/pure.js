@@ -14,6 +14,45 @@
   }
 })(typeof self !== "undefined" ? self : this, function () {
   // 把任意值压成一行简短预览（工具入参摘要等），超 80 字省略
+  // 高影响力工具确认条用的参数摘要：**先把短标量列出来**（sandbox / cwd 这种决定影响范围的），
+  // 长文本（prompt）截短放最后。默认的 summarize 是 JSON 截 80 字，
+  // 而 codex 的 prompt 一长，sandbox 和 cwd 就被截没了——**恰恰是最该看见的两个**。
+  // 委派卡的抬头：**目标是给人看的第一行**，所以取 prompt 的首句/首行，
+  // 而不是 JSON 摘要（JSON 一截就把 prompt 截没了）。
+  function delegationGoal(input, cap = 90) {
+    const p = input && typeof input === "object" ? input.prompt : "";
+    const first = String(p || "").trim().split(/[\n。;；]/)[0].trim();
+    if (!first) return "（未给目标）";
+    return first.length > cap ? first.slice(0, cap) + "…" : first;
+  }
+
+  // 已用时：秒级即可。**长任务的存在感全靠它**——没有它就分不清"在跑"和"卡住"。
+  function formatElapsed(ms) {
+    const s = Math.max(0, Math.floor((ms || 0) / 1000));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    return s % 60 ? `${m}m${s % 60}s` : `${m}m`;
+  }
+
+  // 进度区只留**最后几行**：agent 的过程是流水账，全留会把页面撑爆、也盖住结论。
+  function tailLines(text, n = 3) {
+    return String(text || "").split("\n").filter((l) => l.trim()).slice(-n).join("\n");
+  }
+
+  function summarizeKeyParams(input, cap = 200) {
+    if (!input || typeof input !== "object") return summarize(input);
+    const shorts = [], longs = [];
+    for (const [k, v] of Object.entries(input)) {
+      if (v === null || v === undefined || v === "") continue;
+      if (k.startsWith("_")) continue;      // hermes 内部标记，不给人看
+      if (typeof v === "object") { longs.push(`${k}=…`); continue; }
+      const s = String(v);
+      (s.length <= 40 ? shorts : longs).push(`${k}=${s.length <= 40 ? s : s.slice(0, 40) + "…"}`);
+    }
+    const out = shorts.concat(longs).join("  ");
+    return out.length > cap ? out.slice(0, cap) + "…" : out;
+  }
+
   function summarize(input) {
     try {
       const s = JSON.stringify(input);
@@ -1018,6 +1057,7 @@
     usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
     accumulateUsage,
+    summarizeKeyParams, delegationGoal, formatElapsed, tailLines,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval, extractArtifacts, extractWaitingProcess, debateHeader,
     REVIEW_STATUSES, REVIEW_LABELS, reviewGateLabel, decisionsByStatus, decisionNeedsUser,

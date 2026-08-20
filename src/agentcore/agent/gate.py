@@ -95,14 +95,23 @@ class PermissionGate:
         BY_SAFE: "只读命令，智能确认分级自动放行",
     }
 
-    def explain(self, tool_name: str, params: dict) -> str:
-        """这次调用会怎么被裁决（不阻塞、无副作用）。confirm 与 UI 共用同一套判定，避免两处漂移。"""
+    def explain(self, tool_name: str, params: dict, always_ask: bool = False) -> str:
+        """这次调用会怎么被裁决（不阻塞、无副作用）。confirm 与 UI 共用同一套判定，避免两处漂移。
+
+        `always_ask`＝**高影响力工具**（agent 型 MCP server：一次调用就是一个自主 agent
+        跑几分钟、可能改一堆文件）。它**不吃 allow 规则、也不吃「本会话全部允许」**——
+        那个开关的心智模型是"这些零碎命令我都认"，是为单点、可逆、几秒钟的操作设计的，
+        用它顺带放开一个自主 agent，粒度显然不对（2026-08-20 真机：用户点过「全部允许」后
+        Codex 全程零确认地跑完）。deny 与毁灭性拦截仍然优先——放行档次只降不升。
+        """
         verdict = evaluate(self._allow, self._deny, tool_name, params)
         if verdict == "deny":
             return self.DENY_RULE
         # 免确认态（crazy / 全部允许）下，毁灭性命令仍强制拦截——无人值守的最后防线。
         if self._allow_all and is_destructive(tool_name, params):
             return self.DESTRUCTIVE
+        if always_ask:
+            return self.ASK
         if verdict == "allow":
             return self.BY_RULE
         if self._allow_all:
@@ -113,28 +122,36 @@ class PermissionGate:
             return self.BY_SAFE
         return self.ASK
 
-    def auto_reason(self, tool_name: str, params: dict) -> str:
+    def auto_reason(self, tool_name: str, params: dict, always_ask: bool = False) -> str:
         """免确认的人话原因；要问用户则返回空串。"""
-        return self.AUTO_REASONS.get(self.explain(tool_name, params), "")
+        return self.AUTO_REASONS.get(self.explain(tool_name, params, always_ask), "")
 
-    def confirm(self, tool_name: str, params: dict) -> bool:
+    def confirm(self, tool_name: str, params: dict, always_ask: bool = False) -> bool:
         """裁决一次危险操作。deny 规则直接拦截；allow 规则或「全部允许」免确认；
-        否则阻塞等用户决定。返回 True=允许执行。"""
-        why = self.explain(tool_name, params)
+        否则阻塞等用户决定。返回 True=允许执行。
+
+        `always_ask` 见 `explain`：高影响力工具每次都问，且**不提供「总是允许这类」**——
+        对 `codex__codex` 这种没有 path/command 参数的工具，`suggest_rule` 给出的是**裸工具名**，
+        点一次就等于"以后这个自主 agent 干什么都不用问"，而且会落盘、重启仍生效。
+        """
+        why = self.explain(tool_name, params, always_ask)
         if why in (self.DENY_RULE, self.DESTRUCTIVE):
             # 直接拒绝、不走 _emit（那是权限请求通道，会误触确认态）；模型会收到工具被拒、自行换路。
             return False
         if why != self.ASK:
             return True
 
-        suggest = suggest_rule(tool_name, params)
+        suggest = "" if always_ask else suggest_rule(tool_name, params)
         with self._lock:
             self._seq += 1
             req_id = self._seq
             ev = threading.Event()
             self._pending[req_id] = ev
 
-        self._emit({"id": req_id, "tool": tool_name, "params": params, "suggest": suggest})
+        # always=True 时前端要隐藏「总是允许这类」「本会话全部允许」并说明原因——
+        # 否则用户点了却仍然每次弹，看起来像 bug
+        self._emit({"id": req_id, "tool": tool_name, "params": params, "suggest": suggest,
+                    "always": bool(always_ask)})
         ev.wait()  # 等前端 resolve
 
         with self._lock:

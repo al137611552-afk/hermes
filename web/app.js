@@ -742,14 +742,25 @@ function renderToolUse(v, data) {
   if (data.name === "delegate") return;  // 委派由专门的子任务块展示，不再出通用工具块
   finalizeTextBubble(v);
   const box = document.createElement("details");
-  box.className = "tool-block";
-  box.open = false;
+  box.className = "tool-block" + (data.agentic ? " tool-agentic" : "");
+  // 委派型调用**默认展开**：它要跑几分钟，收起来就等于又变回黑箱
+  box.open = !!data.agentic;
 
   const summary = document.createElement("summary");
-  summary.innerHTML = `<span class="tool-name">${data.name}</span>` +
-    `<span class="tool-args">${escapeHtml(summarize(data.input))}</span>` +
-    `<span class="tool-status running">运行中…</span>`;
+  if (data.agentic) {
+    // 一次调用＝一个自主 agent 跑几分钟、可能改一堆文件，信息量跟 read_file 不是一个量级：
+    // 抬头给**目标**与**已用时**，而不是一串 JSON 参数
+    summary.innerHTML = `<span class="tool-name">🤖 ${escapeHtml(data.name)}</span>` +
+      `<span class="tool-args">${escapeHtml(delegationGoal(data.input))}</span>` +
+      `<span class="tool-elapsed">0s</span>` +
+      `<span class="tool-status running">运行中…</span>`;
+  } else {
+    summary.innerHTML = `<span class="tool-name">${data.name}</span>` +
+      `<span class="tool-args">${escapeHtml(summarize(data.input))}</span>` +
+      `<span class="tool-status running">运行中…</span>`;
+  }
   box.appendChild(summary);
+  if (data.agentic) startElapsed(box);
 
   const result = document.createElement("pre");
   result.className = "tool-result";
@@ -758,6 +769,25 @@ function renderToolUse(v, data) {
 
   v.toolBlocks[data.id] = box;
   appendRow(v, box);
+}
+
+// 委派卡的计时：**长任务的存在感全靠它**——没有它就分不清"在跑"和"卡住"。
+// 结束时由 renderToolResult 停掉；卡片被移除也要停，别留孤儿定时器。
+function startElapsed(box) {
+  const el = box.querySelector(".tool-elapsed");
+  if (!el) return;
+  const t0 = Date.now();
+  box._elapsedTimer = setInterval(() => {
+    if (!box.isConnected) { stopElapsed(box); return; }
+    el.textContent = formatElapsed(Date.now() - t0);
+  }, 1000);
+  box._startedAt = t0;
+}
+
+function stopElapsed(box) {
+  if (box._elapsedTimer) { clearInterval(box._elapsedTimer); box._elapsedTimer = null; }
+  const el = box.querySelector(".tool-elapsed");
+  if (el && box._startedAt) el.textContent = formatElapsed(Date.now() - box._startedAt);
 }
 
 function renderToolStream(v, data) {
@@ -778,6 +808,7 @@ function renderToolResult(v, data) {
   if (data.name === "delegate") return;  // 同上，委派结果在子任务块里看
   const box = v.toolBlocks[data.id];
   if (!box) return;
+  stopElapsed(box);        // 停表：结束后那个数字就是本次真实用时
   const status = box.querySelector(".tool-status");
   status.textContent = data.ok ? "完成" : "失败";
   status.className = "tool-status " + (data.ok ? "ok" : "fail");
@@ -1155,9 +1186,15 @@ function showToast(text) {
 function renderPermission(v, req) {
   const bar = document.createElement("div");
   bar.className = "perm-bar bubble";
+  // 高影响力工具（agent 型 MCP server）：**参数要看得见**——sandbox 决定它能不能改文件，
+  // cwd 决定它在哪儿改，用默认摘要会被长 prompt 截没。
+  const brief = req.always ? summarizeKeyParams(req.params) : summarize(req.params);
   bar.innerHTML =
     `<div class="perm-text">⚠ 请求执行危险操作：<b>${escapeHtml(req.tool)}</b>` +
-    `<code>${escapeHtml(summarize(req.params))}</code></div>`;
+    `<code>${escapeHtml(brief)}</code>` +
+    (req.always ? '<div class="perm-note">这类工具会自主写文件、跑命令，'
+                + '<b>每次都会询问</b>（不受「本会话全部允许」影响）。</div>' : "") +
+    `</div>`;
 
   const actions = document.createElement("div");
   actions.className = "perm-actions";
@@ -1180,7 +1217,8 @@ function renderPermission(v, req) {
     b.title = "本会话内，匹配此规则的同类操作不再询问";
     actions.appendChild(b);
   }
-  actions.appendChild(mk("本会话全部允许", "allow_all", "perm-all"));
+  // always 的请求不给"以后别问"的出口：给了也不生效，点了反而像 bug
+  if (!req.always) actions.appendChild(mk("本会话全部允许", "allow_all", "perm-all"));
   bar.appendChild(actions);
   appendRow(v, bar);
 }
@@ -3865,6 +3903,36 @@ function renderAppearancePane() {
   });
 }
 
+// 体检**必须有个头**：后端起子进程握手，对端一个字不吐时曾把按钮卡在「体检中…」不动
+// （2026-08-20 真机）。后端已加硬看门狗，这里再兜一层——UI 永远不该无限等。
+async function runDiag(name) {
+  const timeout = new Promise((resolve) => setTimeout(
+    () => resolve({ ok: false, error: "体检超时（超过 60 秒没有返回）——server 可能卡在启动上" }),
+    60000));
+  return Promise.race([
+    window.pywebview.api.diag_mcp_server(name).catch((e) => ({ ok: false, error: String(e) })),
+    timeout,
+  ]);
+}
+
+// 体检结果：按 ok / warn / bad 分级显示在该 server 行下面。
+// **不折叠、不省略**——人打开它就是因为看不出哪儿错了。
+function renderMcpDiag(row, res) {
+  const old = row.querySelector(".mcp-diag-out");
+  if (old) old.remove();
+  const box = document.createElement("div");
+  box.className = "mcp-diag-out";
+  if (!res || !res.ok) {
+    box.innerHTML = `<div class="mcp-diag-line bad">体检失败：${escapeHtml((res && res.error) || "无响应")}</div>`;
+  } else {
+    const icon = { ok: "✅", warn: "⚠", bad: "❌" };
+    box.innerHTML = (res.findings || [])
+      .map((f) => `<div class="mcp-diag-line ${escapeHtml(f.level)}">${icon[f.level] || "•"} ${escapeHtml(f.text)}</div>`)
+      .join("") || '<div class="mcp-diag-line ok">没发现问题</div>';
+  }
+  row.appendChild(box);
+}
+
 async function renderMcpPane() {
   // 🔌 MCP 扩展：列出/增删改用户加的外部 MCP server，改动即时重连生效。
   const r = (await window.pywebview.api.get_mcp_servers()) || {};
@@ -3888,11 +3956,12 @@ async function renderMcpPane() {
         ? `<div class="mcp-err">连接失败：${esc(errors[name])}</div>` : "";
       return `<div class="mcp-row" data-name="${esc(name)}">
         <div class="mcp-main">
-          <div class="mcp-name">${esc(name)}${s.trust ? ' <span class="mcp-trust">免确认</span>' : ''} ${status}</div>
+          <div class="mcp-name">${esc(name)}${s.trust ? ' <span class="mcp-trust">免确认</span>' : ''}${s.always_confirm ? ' <span class="mcp-always">每次都问</span>' : ''} ${status}</div>
           <div class="mcp-cmd">${esc(s.command || "")} ${esc((s.args || []).join(" "))}</div>
           ${err}
         </div>
         <label class="mcp-toggle" title="启用 / 停用"><input type="checkbox" class="mcp-en"${s.enabled ? " checked" : ""}></label>
+        <button class="ws-btn mcp-diag" type="button">体检</button>
         <button class="ws-btn mcp-edit" type="button">编辑</button>
         <button class="ws-btn mcp-del" type="button">删除</button>
       </div>`;
@@ -3915,7 +3984,10 @@ async function renderMcpPane() {
       '<textarea class="feat-input mcp-ta" id="mcp-f-args" rows="3" placeholder="参数：每行一个（不要带任何说明文字！）&#10;-y&#10;@modelcontextprotocol/server-filesystem&#10;D:\\你的目录"></textarea>' +
       '<button class="ws-btn mcp-pickdir" id="mcp-pickdir" type="button">📁 选择文件夹填入目录</button>' +
       '<textarea class="feat-input mcp-ta" id="mcp-f-env" rows="2" placeholder="环境变量（可选）：每行 KEY=VALUE"></textarea>' +
+      '<input class="feat-input" id="mcp-f-cwd" placeholder="工作目录（可选，留空=hermes 自己的目录）">' +
+      '<input class="feat-input" id="mcp-f-timeout" placeholder="单次调用超时秒（可选，留空=跟随全局 60s）">' +
       '<label class="feat-row"><input type="checkbox" id="mcp-f-trust"><span class="feat-text"><span class="feat-title">免确认（trust）</span><span class="feat-desc">该 server 的工具免逐次权限确认——只对你信任的 server 开。</span></span></label>' +
+      '<label class="feat-row"><input type="checkbox" id="mcp-f-always"><span class="feat-text"><span class="feat-title">每次都问（agent 型 server）</span><span class="feat-desc">一次调用＝一个自主 agent 跑几分钟、可能改一堆文件。开了之后不受「本会话全部允许」影响，每次都确认并显示 sandbox / cwd。</span></span></label>' +
       '<button class="prov-save" id="mcp-save" type="button">保存并连接</button>' +
     '</div>';
 
@@ -3929,7 +4001,10 @@ async function renderMcpPane() {
     // Codex CLI 当 MCP server：用 ChatGPT 订阅额度（认证交给 codex 自己，先在终端 `codex login`）。
     // 主模型（kimi/claude）把编码活儿委派给 codex，无需 OpenAI API key。trust 默认关：
     // codex 会自主写文件/跑命令，逐次过权限确认更稳，信任后可在列表里开「免确认」。
-    codex: { name: "codex", cmd: "codex", args: ["mcp-server"], trust: false },
+    // cwd 与 callTimeout 对 codex **不是可选项**：它一次调用＝跑完一整个 agent 会话
+    // （分钟级，全局 60s 必超时），且不钉住目录它就在 hermes 自己的安装目录里干活。
+    codex: { name: "codex", cmd: "codex", args: ["mcp-server"], trust: false,
+             cwd: true, callTimeout: 900, alwaysConfirm: true },
   };
   provDetailEl.querySelectorAll(".mcp-preset").forEach((b) => {
     b.addEventListener("click", () => {
@@ -3945,9 +4020,15 @@ async function renderMcpPane() {
       provDetailEl.querySelector("#mcp-f-args").value = args.join("\n");
       provDetailEl.querySelector("#mcp-f-env").value = "";
       provDetailEl.querySelector("#mcp-f-trust").checked = !!p.trust;
+      // p.cwd===true 表示"该填当前工作区"（模板不写死路径）
+      provDetailEl.querySelector("#mcp-f-cwd").value = p.cwd === true ? (wsRoot || "") : "";
+      provDetailEl.querySelector("#mcp-f-timeout").value = p.callTimeout || "";
+      provDetailEl.querySelector("#mcp-f-always").checked = !!p.alwaysConfirm;
       provDetailEl.querySelector("#mcp-f-args").focus();
       if (b.dataset.p === "codex") {
-        showToast("已套用 Codex 模板——先在终端跑 codex login 登录 ChatGPT 订阅，再保存即可");
+        showToast(wsRoot
+          ? "已套用 Codex 模板（工作目录=当前工作区，超时 900s）——先在终端跑 codex login 再保存"
+          : "已套用 Codex 模板——**工作目录要填你的项目路径**，并先在终端跑 codex login");
       } else {
         showToast(wsRoot ? "已套用模板（目录=当前工作区），可直接保存" : "已套用模板——把最后一行改成你的真实目录再保存");
       }
@@ -3988,6 +4069,30 @@ async function renderMcpPane() {
       provDetailEl.querySelector("#mcp-f-env").value =
         Object.entries(s.env || {}).map(([k, v]) => `${k}=${v}`).join("\n");
       provDetailEl.querySelector("#mcp-f-trust").checked = !!s.trust;
+      provDetailEl.querySelector("#mcp-f-cwd").value = s.cwd || "";
+      provDetailEl.querySelector("#mcp-f-timeout").value = s.call_timeout || "";
+      provDetailEl.querySelector("#mcp-f-always").checked = !!s.always_confirm;
+    });
+  });
+
+  // 「体检」：连不上时别让人对着一句 Connection closed 干瞪眼——把每一层都摊开
+  // 「免确认」与「每次都问」是**相反**的意思，同时勾会让配置自相矛盾——
+  // 真机踩到：两个都为 true，结果一次确认都没弹（trust 让工具压根不过 gate）。
+  const trustBox = provDetailEl.querySelector("#mcp-f-trust");
+  const alwaysBox = provDetailEl.querySelector("#mcp-f-always");
+  if (trustBox && alwaysBox) {
+    trustBox.addEventListener("change", () => { if (trustBox.checked) alwaysBox.checked = false; });
+    alwaysBox.addEventListener("change", () => { if (alwaysBox.checked) trustBox.checked = false; });
+  }
+
+  provDetailEl.querySelectorAll(".mcp-diag").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const row = b.closest(".mcp-row");
+      const name = row && row.dataset.name;
+      if (!name) return;
+      b.disabled = true; b.textContent = "体检中…";
+      renderMcpDiag(row, await runDiag(name));
+      b.disabled = false; b.textContent = "体检";
     });
   });
 
@@ -4003,11 +4108,25 @@ async function renderMcpPane() {
       if (i > 0) env[line.slice(0, i).trim()] = line.slice(i + 1).trim();
     });
     const trust = provDetailEl.querySelector("#mcp-f-trust").checked;
+    const alwaysConfirm = provDetailEl.querySelector("#mcp-f-always").checked;
+    // 留空＝跟随默认（后端不落盘），别在这里替成 ""/0——那是两种完全不同的语义
+    const cwd = provDetailEl.querySelector("#mcp-f-cwd").value.trim();
+    const callTimeout = provDetailEl.querySelector("#mcp-f-timeout").value.trim();
     showToast("连接中…（首次会下载 server 包，可能要等十几秒，请稍候）");
-    const res = await window.pywebview.api.save_mcp_server(name, { command, args, env, trust, enabled: true });
+    const res = await window.pywebview.api.save_mcp_server(name, {
+      command, args, env, trust, enabled: true, cwd, call_timeout: callTimeout,
+      always_confirm: alwaysConfirm });
     if (res && res.ok) {
       showToast(res.connect_error ? `已保存，但「${name}」未连上：${res.connect_error}` : `已保存，连上 ${res.tools} 个工具`);
-      renderMcpPane();
+      const failed = !!res.connect_error;
+      await renderMcpPane();
+      // 连不上就**自动体检**：这时候人最需要的不是"失败了"，是"哪一层失败、怎么改"
+      if (failed) {
+        const row = Array.prototype.find.call(
+          provDetailEl.querySelectorAll(".mcp-row"), (r) => r.dataset.name === name);
+        const d = await runDiag(name);
+        if (row) renderMcpDiag(row, d);
+      }
     } else showToast((res && res.error) || "保存失败");
   });
   refreshNavBadges();   // 面板内容变了（增删改/开关）→ 左栏徽标跟着刷新

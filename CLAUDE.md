@@ -149,6 +149,98 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   2026-08-20 真机：DeepSeek V4-FLASH 打开已有项目续开发，长考中
   `RemoteProtocolError: incomplete chunked read`，一断就整轮作废。
   封锁重试的只有 `text`/`tool_use`/`done`（重来会重复输出给用户），thinking 重复一段无所谓。
+- **agent 型 MCP server 要开 `always_confirm`**（config 或面板「每次都问」）。它**不吃 allow 规则、
+  也不吃「本会话全部允许」**——那个开关的心智模型是"这些零碎命令我都认"，为单点、可逆、
+  几秒钟的操作设计；用它顺带放开一个能改一堆文件的自主 agent，粒度不对
+  （2026-08-20 真机：用户点过全部允许后 Codex 全程零确认跑完一轮）。
+  **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
+  同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
+  **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
+- **委派型调用（agent 型 MCP）单独渲染成「委派卡」**：抬头给**目标**（prompt 首句）与
+  **已用时**，默认展开——它要跑几分钟，收起来等于又变回黑箱；用时那个数字是"在跑"与"卡住"
+  的唯一区分。是不是委派由**代码判定**（`AgentLoop._is_agentic`，看 `_takes_cwd`）随
+  `tool_use` 事件下发，**别让前端按工具名猜**——名字是 server 起的，猜必然漏。
+- **「停止」会取消在飞的 MCP 调用**（`Conversation.stop()` → `McpManager.cancel_all()`）。
+  不接的话 agent 型 server 一次调用几分钟，按了停止仍要干等到 `call_timeout`（真机 900s）。
+  取消后给的是**可读文案**「调用已被用户停止」——原样抛 `CancelledError` 会被包成
+  "MCP 调用失败：CancelledError"，看着像故障而不是"你自己停的"；`McpTool.run` 里
+  `ToolError` 直接放行、不再套第二层。计数时**已取消的要显式跳过**：
+  `Future.cancel()` 对它仍返回 True，直接累加会虚高。
+- **agent 型 MCP 调用会附一份 `git status` 的客观改动**（`mcp_client/gitwatch.py`）。
+  agent 回来的是自然语言自述（"我修好了 X"），**动了哪些文件只有 git 说了算**——
+  同评测那条「判分优先程序化」。取**调用前后的差集**，不是事后一把梭：工作区本来就可能是脏的，
+  把用户自己的改动算到 agent 头上是"自信的错数"。`None`（不是 git 仓库/没装 git/超时）
+  与 `[]`（干净）**是两件事**，混淆就会显示假结论。
+- **判断"是不是 agent 型工具"看 schema 收不收 `cwd`**（`_takes_cwd`），**别用 thread key**：
+  `codex__codex` 的 schema 里根本没有 threadId（只有 `codex-reply` 有），
+  用它当门会让**起始那次**既不补 cwd 也不记改动（2026-08-20 端到端真跑才发现）。
+- **MCP 工具的补参走 `prepare()`，且 loop 在 `gate.confirm` 之前调它**。确认条上要显示的是
+  **真正会执行的参数**——`cwd` 决定 agent 型 server 在哪儿干活，看不到就等于没确认。
+  补两样：续话 id（模型没给才补）、`cwd`（跟随**当前会话工作区**，`bind_workspace` 绑成副本——
+  同一批工具实例被所有会话共用，直接改字段会串台）。内部标记以 `_` 开头，前端确认条不显示。
+- **mcp SDK 1.x 驼峰 / 2.x 蛇形要两个都认**（`sdk_field()`）。CLAUDE.md 早记过 `inputSchema`
+  那一个，但当时只改了那一个：2026-08-20 端到端真跑才发现还漏着 `isError`（于是
+  **MCP 工具报错从来没被识别成错误**，错误文本被当正常结果回灌）和 `structuredContent`
+  （续话 id 一直取不到）。**这类漏都是静默的**——加字段时顺手全库搜一遍驼峰名。
+- **MCP 连不上先跑体检**：面板每行有「体检」按钮（保存失败会自动跑一次），命令行是
+  `python scripts/diag_mcp.py [server]`，两边**共用 `mcp_client/diag.py` 同一份实现**。
+  它把配置、命令解析到哪个可执行文件、PATH 里有没有多份同名、cwd/超时/权限档、
+  以及真起一次握手的结果逐层摊开——真踩到的两种故障（参数写进命令框、PATH 两份同名）
+  都**不在** `Connection closed` 那句话里。
+- **Codex 的审批（`elicitation/create`）hermes 只能拒绝**：2026-08-20 用真会话
+  （codex + DeepSeek）逐个试过 `accept`/`approved`/`content.decision=…`，它一律当拒绝，
+  **没能确定"同意"该回什么值**。现在的做法是接住它、显式拒绝、把命令与出路打进工具块——
+  不接就是 SDK 默认静默拒绝，用户只看到"写操作被拒"、查不到原因。
+  出路：调用时给 `approval-policy="never"`，用 `sandbox` 决定它能改什么。
+- **本机 codex 可以接 DeepSeek 跑真会话**（不必 ChatGPT 订阅）：`~/.codex/config.toml` 里
+  `model_provider="deepseek"` + `[model_providers.deepseek] base_url="https://api.deepseek.com/v1"`、
+  `wire_api="responses"`（0.148 起 `wire_api="chat"` 已被移除）。**顶层键必须写在任何
+  `[table]` 之前**，否则会被并进上一张表（踩过）。有了它，Codex 相关的东西不必再等 Windows。
+- **mcp 1.x 拿不到自定义通知，只能在流上加旁路**（`McpManager._tap`）。1.27.2 实测：
+  不认识的通知**只 log 一句就丢**，`message_handler` 也拿不到——所以 `notification_bindings`
+  （2.x 才有）不可用时，改成包一层读流、先偷看再原样转交。**只看不改**、一条不落地转交，
+  否则整个连接就废了。两版都验过：1.27.2 与 2.0.0 都能出实时流。
+- **权限两个开关矛盾时以「更严」为准**：`always_confirm` 压过 `trust`。真机踩到用户配里
+  两个都为 true，按原先"trust 优先"的写法，"每次都问"被**静默作废**、一次确认都没弹。
+  面板已改成两者互斥，代码侧是兜底（手编 config.yaml 仍可能写出矛盾），体检会把矛盾报成 BAD。
+- **MCP 子进程继承 hermes 自己的环境**（`{**os.environ, **sc.env}`）。SDK 默认只给一份
+  **白名单**环境，代理变量（HTTPS_PROXY…）、CODEX_HOME、区域设置全被滤掉——真机表现是
+  codex 在子进程里反复 `Reconnecting… / request timed out`，而同一条命令在用户终端里好好的。
+- **别在 hermes 自己的目录里派活**：面板模板会把"当前工作区"填进 `cwd`，而没打开项目时
+  那是 `data/workspaces/_scratch`——agent 会全干在那儿，**不报错、结果也看着正常**。
+  调用时会喊一句（`inside_hermes_dir`），体检也报 BAD。
+  **但别一刀切**：`data/workspaces/<名字>` 是 hermes 的**具名会话工作区、完全正当**，
+  只有草稿区 `_scratch` 与安装目录里的其它位置才该警告（一刀切在真机上误报过）。
+- **起子进程读输出必须有硬看门狗**：`p.stdout.readline()` 在对端一个字都不吐时会
+  **永久阻塞**，`while time.time() < deadline` 那种循环根本跑不到——体检因此把按钮
+  卡在「体检中…」再也不动（2026-08-20 真机）。用 `threading.Timer(timeout, p.kill)`：
+  到点杀进程、读端自然 EOF。UI 侧再兜一层超时——**界面永远不该无限等**。
+- **Windows 上 `.CMD` 垫片不能直接 spawn**：npm 装的 `codex` 其实是 `codex.CMD`，
+  `subprocess.Popen(["codex", …])` 必然 WinError 2（体检因此误报"起不来"，而面板明明连得上）。
+  先 `resolve_command()` 拿真实路径，`.cmd/.bat` 要经 `cmd /c` 起。PATH 候选去重也要
+  **大小写归一**，否则同一个文件会被报成"有多份同名命令"。
+- **Codex 一条标准 MCP 通知都不发**（2026-08-20 探针实测：全程只有自定义的 `codex/event`）。
+  所以 `progress_callback` 那条标准通道对它**收不到任何东西**——要拿过程必须挂
+  `NotificationBinding(method="codex/event")`；不挂的话消息在 pydantic 那关就失败
+  （真机报 `Field required [type=missing]`），连进都进不来。渲染在 `mcp_client/events.py`
+  （纯函数，语料取自真实载荷）：`agent_message_content_delta` 是逐字流、原样拼接不加换行；
+  `exec_approval_request` 必须显示——**Codex 在等审批而 hermes 接不了这条通道**，
+  不说出来就是干等到超时（出路：调用时给 `approval-policy="never"`）。
+  归属按 `_meta.requestId`，认不出宁可不显示，不往别的调用上挂。
+- **MCP 工具会实时推过程**（`McpTool.wants_stream=True` → `manager.call(stream=)` →
+  `session.call_tool(progress_callback=)` + 上面那条自定义通道）。**agent 型 server 没有它就是黑箱**：codex 一次调用
+  跑几分钟，中途什么都看不到、错了也只能等到最后。走的是 hermes 早有的 `tool_stream` 管子
+  （前台 shell 用的同一条），**前端不用改**。老 SDK 没有 `progress_callback` 参数会自动跳过。
+- **MCP 的 `call_timeout` 要按 server 定，不是全局一个数**（`McpServerConfig.call_timeout`）。
+  **agent 型 server**（`codex mcp-server` 那类）一次调用＝跑完一整个 agent 会话，分钟级；
+  而全局默认 60s 是按"一次工具调用"定的。为了它调高全局，会把 Playwright 之类的一起放松，
+  于是那些真卡死的要等十几分钟才暴露。填 0 或不填都当"跟随全局"，**不是"立刻超时"**。
+- **拿 ChatGPT 订阅额度干活＝把 Codex CLI 当 MCP server**（`codex mcp-server`，实测 0.143.0
+  暴露 `codex` / `codex-reply` 两个工具）。这是**委派**语义：Codex 跑它自己的循环、工具和沙箱，
+  hermes 只发任务描述、收结果，**不是"hermes 每一步都用 GPT 想"**——后者要模型档级别接入
+  （OAuth 订阅 token 打非公开端点，ToS 灰区，见 ROADMAP 第三档）。配的时候三件事别漏：
+  `cwd` 指到项目目录（否则它在别处改文件）、`call_timeout` 单独放宽、`trust: false`
+  （它会自己执行命令）。前提是本机 `codex login` 过（`codex login status` 查）。
 - **mcp SDK 2.0 改了字段名**：`Tool.inputSchema` → `input_schema`。`manager.tool_input_schema()` 两名都认——
   别"清理"成只读一个，`pyproject` 写的是 `mcp>=1.2`，新旧机器都可能遇到。踩过的坑是所有 MCP server
   一起连不上（`AttributeError`），而纯 mock 单测全绿——**MCP 相关改动要连真 server 跑一次**。

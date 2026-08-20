@@ -139,6 +139,57 @@ def test_autorun_readonly_still_auto_approved():
 
 # ---- gate 集成 ---------------------------------------------------------------
 
+def test_always_ask_ignores_allow_all_and_rules():
+    """agent 型工具（codex 那类）**每次都问**：既不吃 allow 规则，也不吃「本会话全部允许」。
+
+    2026-08-20 真机：用户点过「全部允许」后，Codex 全程零确认地跑完一整轮。
+    那个开关的心智模型是"这些零碎命令我都认"——为单点、可逆、几秒钟的操作设计的，
+    用它顺带放开一个能改一堆文件的自主 agent，粒度显然不对。
+    """
+    emitted = []
+    g = PermissionGate(emitted.append, allow=["codex__codex"])
+    # 先造出「本会话全部允许」的状态
+    assert g.explain("codex__codex", {}) == g.BY_RULE          # 普通口径：规则命中，不问
+    assert g.explain("codex__codex", {}, always_ask=True) == g.ASK   # 高影响力：照问不误
+    g._allow_all = True
+    assert g.explain("run_bash", {"command": "ls"}) == g.BY_SESSION
+    assert g.explain("codex__codex", {}, always_ask=True) == g.ASK
+
+
+def test_always_ask_still_loses_to_deny_and_destructive():
+    """放行档次只降不升：deny 规则与毁灭性命令仍然优先拦截，不因为"每次都问"就变成可问可放。"""
+    g = PermissionGate(lambda r: None, deny=["codex__codex"])
+    assert g.explain("codex__codex", {}, always_ask=True) == g.DENY_RULE
+    g2 = PermissionGate(lambda r: None)
+    g2._allow_all = True
+    assert g2.explain("run_bash", {"command": "rm -rf /"}, always_ask=True) == g2.DESTRUCTIVE
+
+
+def test_always_ask_offers_no_remember_option():
+    """不给「总是允许这类」：codex__codex 没有 path/command 参数，suggest_rule 给的是**裸工具名**，
+    点一次＝以后这个自主 agent 干什么都不问，而且**会落盘、重启仍生效**。"""
+    emitted = []
+    g = PermissionGate(emitted.append)
+    import threading
+    t = threading.Thread(target=lambda: g.confirm("codex__codex", {"prompt": "x"}, always_ask=True))
+    t.start()
+    while not emitted:
+        pass
+    req = emitted[0]
+    assert req["suggest"] == "" and req["always"] is True, req
+    g.resolve(req["id"], "deny")
+    t.join(timeout=5)
+    # 普通工具照旧给建议规则
+    emitted.clear()
+    t2 = threading.Thread(target=lambda: g.confirm("run_bash", {"command": "git status"}))
+    t2.start()
+    while not emitted:
+        pass
+    assert emitted[0]["suggest"] and emitted[0]["always"] is False
+    g.resolve(emitted[0]["id"], "deny")
+    t2.join(timeout=5)
+
+
 def test_gate_config_allow_skips_prompt():
     emitted = []
     g = PermissionGate(emitted.append, allow=["run_bash(git *)"], deny=["run_bash(rm *)"])

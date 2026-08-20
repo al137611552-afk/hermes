@@ -19,7 +19,9 @@ import threading
 import time
 
 from ..config import MCPConfig, McpServerConfig
-from .tool import McpTool
+from ..tools.base import ToolError
+from .events import CODEX_EVENT, event_request_id, render_elicitation, render_event
+from .tool import McpTool, ThreadMemory
 
 
 _EMPTY_SCHEMA = {"type": "object", "properties": {}}
@@ -81,6 +83,18 @@ def _flatten_exc(e) -> str:
     return "；".join(leaves) if leaves else f"{type(e).__name__}: {e}"
 
 
+def _raw_event_params(exc):
+    """从 pydantic 校验失败里回捞 `codex/event` 的原始 params（老 SDK 退路用）。捞不到返回 None。"""
+    try:
+        for err in exc.errors():          # 每条 error 带着被校验的原始输入
+            inp = err.get("input")
+            if isinstance(inp, dict) and inp.get("method") == CODEX_EVENT:
+                return inp.get("params")
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 class McpManager:
     def __init__(self, config: MCPConfig) -> None:
         self.config = config
@@ -91,6 +105,17 @@ class McpManager:
         self._tools: list[McpTool] = []
         self._errors: dict[str, str] = {}    # server -> 连接失败原因（拆开 ExceptionGroup，供 GUI 显示）
         self._errbufs: dict = {}             # server -> StringIO，捕获子进程 stderr（真正崩因，如"目录不存在"）
+        # agent 型 server 的续话记忆：模型漏带 thread id 时自动补，避免**静默新开会话**
+        self._threads = ThreadMemory()
+        # 自定义事件 → 实时流的归属表。**按 requestId 绑定**：子 Agent 可能并发调同一个
+        # server，靠"当前那次"猜必然串台。首条事件到达时，若只有一次调用还没绑定，
+        # 就认定是它（并发同时起跑的极端情况下宁可不显示，也不要张冠李戴）。
+        self._ev_lock = threading.Lock()
+        self._ev_pending: dict = {}          # server -> [stream 回调]
+        self._ev_bound: dict = {}            # (server, requestId) -> stream 回调
+        # 在飞的工具调用（供「停止」取消）。agent 型 server 一次调用几分钟，
+        # 没有出口就只能干等到 call_timeout——**长任务的基本尊严**。
+        self._inflight: set = set()
 
     @property
     def errors(self) -> dict:
@@ -183,15 +208,24 @@ class McpManager:
         try:
             from mcp import ClientSession, StdioServerParameters
             from mcp.client.stdio import stdio_client
+            # **继承 hermes 自己的环境**再叠加 server 配置。SDK 默认只给一份**白名单**环境
+            # （PATH/USERPROFILE 等），代理变量（HTTPS_PROXY…）、CODEX_HOME、区域设置全被滤掉——
+            # 真机表现就是 codex 在子进程里反复 `Reconnecting… / request timed out`，
+            # 而同一条命令在用户终端里好好的（2026-08-20）。
+            # MCP server 是用户自己配的本地命令，与 hermes 的 shell 工具同源，给同一份环境才一致。
+            import os as _os
+            env = {**_os.environ, **(sc.env or {})}
             params = StdioServerParameters(
                 command=sc.command, args=list(sc.args),
-                env=(sc.env or None), cwd=sc.cwd,
+                env=env, cwd=sc.cwd,
             )
             # errlog 捕获 server stderr（真正崩因在这，如"目录不存在"）；老版本 SDK 没此参数则跳过
             _kw = ({"errlog": errfile} if errfile is not None
                    and "errlog" in _inspect.signature(stdio_client).parameters else {})
-            async with stdio_client(params, **_kw) as (read, write):
-                async with ClientSession(read, write) as session:
+            bindings = self._event_bindings(name)
+            bindings.update(self._elicitation_hook(name))
+            async def _session(read, write):
+                async with ClientSession(read, write, **bindings) as session:
                     await session.initialize()
                     listed = await session.list_tools()
                     self._sessions[name] = session
@@ -200,13 +234,29 @@ class McpManager:
                             server=name, tool_name=t.name,
                             description=t.description or "",
                             input_schema=tool_input_schema(t),
-                            caller=self.call, trusted=sc.trust,
+                            caller=self.call, trusted=sc.trust,   # call(server, tool, params, stream)
+                            always_confirm=getattr(sc, "always_confirm", False),
+                            threads=self._threads,
                         )
                         for t in listed.tools
                     ]
                     if not ready.done():
                         ready.set_result(tools)
                     await self._stop_event.wait()  # 保活直到 close()
+
+            async with stdio_client(params, **_kw) as (read, write):
+                if bindings.get("notification_bindings"):
+                    await _session(read, write)      # 新 SDK：官方通道够用
+                else:
+                    # **老 SDK（1.x）连口子都没有**：它把不认识的通知 log 一句就丢，
+                    # `message_handler` 也拿不到（2026-08-20 在 mcp 1.27.2 上实测确认）。
+                    # 所以在**流上**加一层旁路：先偷看一眼再原样转交，与 SDK 版本无关。
+                    import anyio
+                    send, recv = anyio.create_memory_object_stream(64)
+                    async with anyio.create_task_group() as tg:
+                        tg.start_soon(self._tap, name, read, send)
+                        await _session(recv, write)
+                        tg.cancel_scope.cancel()
         except Exception as e:  # noqa: BLE001
             if not ready.done():
                 ready.set_exception(e)
@@ -214,12 +264,222 @@ class McpManager:
             self._sessions.pop(name, None)
 
     # ---- 调用（同步入口，供 McpTool.run 用） -----------------------------
-    def call(self, server: str, tool_name: str, params: dict):
+    def call(self, server: str, tool_name: str, params: dict, stream=None):
+        """调用一个工具。`stream(kind, delta)` 非空时，把 server 的**过程通知**实时推出去。
+
+        MCP 的进度是**按调用**走的（客户端给 progressToken、server 回 notifications/progress），
+        所以能准确归属到这一次调用，不会串台。老 SDK 没有 `progress_callback` 参数就自动跳过，
+        行为退回原样（拿不到过程，但不影响调用本身）。
+        """
         if self._loop is None or server not in self._sessions:
             raise RuntimeError(f"MCP server '{server}' 未连接")
         session = self._sessions[server]
-        fut = self._submit(session.call_tool(tool_name, params))
-        return fut.result(timeout=self.config.call_timeout)
+        kw = {}
+        if stream is not None and self._supports_progress():
+            async def _on_progress(progress, total=None, message=None):
+                text = (message or "").strip()
+                if not text:                      # 没文案就报个进度数字，总比什么都没有强
+                    text = f"…{progress:g}" + (f"/{total:g}" if total else "")
+                try:
+                    stream("progress", text + "\n")
+                except Exception:  # noqa: BLE001 — 推流失败绝不能影响工具调用本身
+                    pass
+            kw["progress_callback"] = _on_progress
+        if stream is not None:
+            with self._ev_lock:
+                self._ev_pending.setdefault(server, []).append(stream)
+        fut = None
+        try:
+            fut = self._submit(session.call_tool(tool_name, params, **kw))
+            with self._ev_lock:
+                self._inflight.add(fut)
+            return fut.result(timeout=self.call_timeout_for(server))
+        except concurrent.futures.CancelledError:
+            # 用户按了停止。**给可读文案**：原样抛 CancelledError 会被上层包成
+            # "MCP 调用失败：CancelledError"，看着像故障而不是"你自己停的"
+            raise ToolError("调用已被用户停止") from None
+        finally:
+            if fut is not None:
+                with self._ev_lock:
+                    self._inflight.discard(fut)
+            if stream is not None:
+                with self._ev_lock:
+                    pend = self._ev_pending.get(server) or []
+                    if stream in pend:
+                        pend.remove(stream)
+                    for k in [k for k, v in self._ev_bound.items() if v is stream]:
+                        self._ev_bound.pop(k, None)
+
+    def _event_bindings(self, server: str) -> dict:
+        """给 `codex/event` 这类**自定义通知**挂一个绑定（SDK 的官方口子）。
+
+        不挂的话它们会在 pydantic 那关直接失败（用户真机见到的 `Field required`），
+        消息连进都进不来——**Codex 一条标准 MCP 通知都不发**，不接就等于没有过程。
+        老 SDK 没有 `notification_bindings` 参数则自动跳过，行为退回原样。
+        """
+        try:
+            import inspect
+
+            from mcp import ClientSession
+            from mcp.client.extension import NotificationBinding
+            from pydantic import BaseModel, ConfigDict
+            if "notification_bindings" not in inspect.signature(ClientSession.__init__).parameters:
+                return self._event_fallback(server)      # 老 SDK：退到 message_handler
+        except Exception:  # noqa: BLE001
+            return {}
+
+        class _AnyParams(BaseModel):
+            """宽松载荷：**不照着某个版本的事件字段建模**——上游一改字段就会全线失效，
+            而这条通道的价值恰恰是"尽量把过程透出来"。校验交给 render_event 做容错。"""
+            model_config = ConfigDict(extra="allow")
+
+        async def _handler(params) -> None:
+            raw = params.model_dump(by_alias=True) if hasattr(params, "model_dump") else params
+            text = render_event(raw.get("msg") if isinstance(raw, dict) else None)
+            if text:
+                self._dispatch_event(server, event_request_id(raw), text)
+
+        return {"notification_bindings": [
+            NotificationBinding(method=CODEX_EVENT, params_type=_AnyParams, handler=_handler)]}
+
+    def cancel_all(self) -> int:
+        """取消所有在飞的工具调用（供 `Conversation.stop()`）。返回取消掉几个。
+
+        取消 future 会连带取消底层协程，SDK 随之给 server 发 `notifications/cancelled`；
+        已经跑完的取消不动（`Future.cancel()` 返回 False）。**已取消的要显式跳过**——
+        `cancel()` 对它仍返回 True，直接累加会让"取消掉几个"虚高。
+        """
+        with self._ev_lock:
+            futs = list(self._inflight)
+        return sum(1 for f in futs if not f.cancelled() and f.cancel())
+
+    async def _tap(self, server: str, source, sink) -> None:
+        """把读流原样转交，顺手把 `codex/event` 挑出来推给实时流（老 SDK 用）。
+
+        **只看不改**：转交的是同一个对象，SDK 那边看到的字节流没有任何变化。
+        偷看失败一律吞掉——过程展示绝不能影响连接本身。
+        """
+        try:
+            async for msg in source:
+                try:
+                    root = getattr(getattr(msg, "message", None), "root", None)
+                    if getattr(root, "method", None) == CODEX_EVENT:
+                        raw = getattr(root, "params", None)
+                        if isinstance(raw, dict):
+                            text = render_event(raw.get("msg"))
+                            if text:
+                                self._dispatch_event(server, event_request_id(raw), text)
+                except Exception:  # noqa: BLE001
+                    pass
+                await sink.send(msg)
+        except Exception:  # noqa: BLE001 — 上游关闭/取消：正常收场
+            pass
+        finally:
+            try:
+                await sink.aclose()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _event_fallback(self, server: str) -> dict:
+        """老 SDK 没有 `notification_bindings` 时的退路：用 `message_handler` 捞。
+
+        老 SDK 把不认识的通知**当校验失败**丢给 message_handler（那就是用户看到的
+        `Field required [type=missing]`），原始报文只能从 ValidationError 的 `input` 里回捞——
+        不优雅，但"有过程"和"没过程"的差别值得这一段。捞不到就安静放弃，绝不刷屏。
+        """
+        try:
+            import inspect
+
+            from mcp import ClientSession
+            if "message_handler" not in inspect.signature(ClientSession.__init__).parameters:
+                return {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+        async def _handler(message) -> None:
+            params = None
+            meth = getattr(getattr(message, "root", message), "method", None)
+            if meth == CODEX_EVENT:
+                params = getattr(getattr(message, "root", message), "params", None)
+            elif isinstance(message, Exception):
+                params = _raw_event_params(message)
+            if params is None:
+                return
+            raw = params.model_dump(by_alias=True) if hasattr(params, "model_dump") else params
+            if not isinstance(raw, dict):
+                return
+            text = render_event(raw.get("msg"))
+            if text:
+                self._dispatch_event(server, event_request_id(raw), text)
+
+        return {"message_handler": _handler}
+
+    def _elicitation_hook(self, server: str) -> dict:
+        """接住 server 的审批请求（标准 `elicitation/create`）。
+
+        **只能拒绝**：应答里"同意"该填什么，用真会话逐个试过仍未确定（见 render_elicitation）。
+        但接住它本身就有价值——不接就是 SDK 默认拒绝，用户只看到"写操作被拒"、查不到原因。
+        接住之后至少能把**请求的命令与出路**打进工具块。
+        """
+        try:
+            import inspect
+
+            import mcp_types as _t
+            from mcp import ClientSession
+            if "elicitation_callback" not in inspect.signature(ClientSession.__init__).parameters:
+                return {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+        async def _cb(context, params):
+            raw = params.model_dump(by_alias=True) if hasattr(params, "model_dump") else params
+            self._dispatch_event(server, self._only_inflight_rid(server), render_elicitation(raw))
+            return _t.ElicitResult(action="decline")
+
+        return {"elicitation_callback": _cb}
+
+    def _only_inflight_rid(self, server: str):
+        """审批请求不带我们的 requestId——只有**唯一在飞**时才认得出归属，认不出就不显示。"""
+        with self._ev_lock:
+            bound = [k[1] for k in self._ev_bound if k[0] == server]
+            return bound[0] if len(bound) == 1 else None
+
+    def _dispatch_event(self, server: str, rid, text: str) -> None:
+        """把一条事件文本投给**发起它的那次调用**的实时流。"""
+        with self._ev_lock:
+            cb = self._ev_bound.get((server, rid))
+            if cb is None:
+                pend = self._ev_pending.get(server) or []
+                if rid is None or len(pend) != 1:
+                    return          # 认不出归属：宁可不显示，也不要挂到别人的调用上
+                cb = pend[0]
+                self._ev_bound[(server, rid)] = cb
+        try:
+            cb("codex", text)
+        except Exception:  # noqa: BLE001 — 推流失败绝不能影响工具调用本身
+            pass
+
+    @staticmethod
+    def _supports_progress() -> bool:
+        """装的 mcp SDK 认不认 `progress_callback`（pyproject 只写 mcp>=1.2，新旧机器都可能遇到）。"""
+        try:
+            import inspect
+
+            from mcp import ClientSession
+            return "progress_callback" in inspect.signature(ClientSession.call_tool).parameters
+        except Exception:  # noqa: BLE001
+            return False
+
+    def call_timeout_for(self, server: str) -> float:
+        """该 server 的单次调用超时：server 级覆盖优先，否则跟随全局（纯逻辑）。
+
+        agent 型 server（如 `codex mcp-server`）一次调用＝跑完一整个会话，分钟级；
+        而全局默认是按"一次工具调用"定的 60s。**超时该按 server 定**，
+        不该为了一个慢 server 把所有 server 一起放松。
+        """
+        sc = self.config.servers.get(server)
+        override = getattr(sc, "call_timeout", None) if sc else None
+        return float(override) if override else float(self.config.call_timeout)
 
     # ---- 关闭 -----------------------------------------------------------
     def _cleanup_errbufs(self) -> None:

@@ -253,6 +253,15 @@ class McpServerConfig(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     cwd: str | None = None                    # 子进程工作目录
     trust: bool = False                       # true -> 该 server 工具免权限 gate（默认逐次确认）
+    always_confirm: bool = False              # true -> **每次调用都问**，且不吃「本会话全部允许」。
+                                              # 给 agent 型 server（codex mcp-server）用：一次调用
+                                              # 就是一个自主 agent 跑几分钟、可能改一堆文件，
+                                              # 不该和 read_file 共用同一档权限。
+    call_timeout: float | None = None         # 覆盖全局 `mcp.call_timeout`（秒）；None = 跟随全局。
+                                              # **为 agent 型 server 而加**：codex mcp-server 那类
+                                              # 一次调用要跑完一整个 agent 会话（分钟级），而全局
+                                              # 60s 是按"一次工具调用"定的。调高全局会把
+                                              # Playwright 之类的也一起放松——超时该按 server 定。
 
 
 class MCPConfig(BaseModel):
@@ -871,17 +880,36 @@ def write_user_mcp(servers: dict, path: "Path | None" = None) -> None:
 
 
 def set_user_mcp_server(name: str, spec: dict, path: "Path | None" = None) -> dict:
-    """新增/改一个 MCP server（spec: command/args/env/trust/enabled）。返回全量 servers。"""
+    """新增/改一个 MCP server（spec: command/args/env/trust/enabled/cwd/call_timeout）。
+
+    `cwd` 与 `call_timeout` **空值一律不落盘**（不是写 ""/0）：留空的语义是"跟随默认"，
+    写成空串会让子进程 cwd 变成空路径、写成 0 会被读成"立刻超时"。
+    这两个字段是给 **agent 型 server**（`codex mcp-server`）用的——它一次调用要跑完一整个
+    会话（分钟级，全局 60s 必超时），且必须把工作目录钉在项目上，否则它在 hermes 自己的
+    安装目录里干活。此前面板是白名单式落盘，这两项**填了也会被静默丢掉**。
+    """
     name = (name or "").strip()
     servers = read_user_mcp(path)
     if name:
-        servers[name] = {
-            "command": str((spec or {}).get("command") or "").strip(),
-            "args": [str(a) for a in ((spec or {}).get("args") or [])],
-            "env": {str(k): str(v) for k, v in ((spec or {}).get("env") or {}).items()},
-            "trust": bool((spec or {}).get("trust", False)),
-            "enabled": bool((spec or {}).get("enabled", True)),
+        spec = spec or {}
+        one = {
+            "command": str(spec.get("command") or "").strip(),
+            "args": [str(a) for a in (spec.get("args") or [])],
+            "env": {str(k): str(v) for k, v in (spec.get("env") or {}).items()},
+            "trust": bool(spec.get("trust", False)),
+            "always_confirm": bool(spec.get("always_confirm", False)),
+            "enabled": bool(spec.get("enabled", True)),
         }
+        cwd = str(spec.get("cwd") or "").strip()
+        if cwd:
+            one["cwd"] = cwd
+        try:
+            ct = float(spec.get("call_timeout") or 0)
+        except (TypeError, ValueError):
+            ct = 0.0
+        if ct > 0:
+            one["call_timeout"] = ct
+        servers[name] = one
         write_user_mcp(servers, path)
     return servers
 
@@ -947,8 +975,21 @@ def _apply_user_mcp(data: dict, user: dict) -> dict:
         command, args = spec["command"], list(spec.get("args") or [])
         if os.name == "nt" and command in _WIN_SHIM_CMDS:
             command, args = "cmd", ["/c", spec["command"], *args]
-        servers[name] = {"command": command, "args": args,
-                         "env": dict(spec.get("env") or {}), "trust": bool(spec.get("trust", False))}
+        one = {"command": command, "args": args,
+               "env": dict(spec.get("env") or {}), "trust": bool(spec.get("trust", False)),
+               "always_confirm": bool(spec.get("always_confirm", False))}
+        # cwd / call_timeout 也要带过来——**写入侧存了、这里不合并等于白存**
+        # （2026-08-20 自查发现：面板存进 user_mcp.json 了，加载时被这里丢掉，
+        #  于是 codex 仍然拿全局 60s、且在 hermes 自己的目录里干活）。
+        if spec.get("cwd"):
+            one["cwd"] = str(spec["cwd"])
+        try:
+            ct = float(spec.get("call_timeout") or 0)
+        except (TypeError, ValueError):
+            ct = 0.0
+        if ct > 0:
+            one["call_timeout"] = ct
+        servers[name] = one
         any_on = True
     if any_on:
         m["enabled"] = True

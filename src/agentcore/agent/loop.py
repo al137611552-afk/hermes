@@ -838,14 +838,16 @@ class AgentLoop:
             executor = ThreadPoolExecutor(max_workers=min(self._PARALLEL_CAP, len(parallel_ids)))
             for c in calls:
                 if c.id in parallel_ids:
-                    emit("tool_use", {"id": c.id, "name": c.name, "input": c.input})
+                    emit("tool_use", {"id": c.id, "name": c.name, "input": c.input,
+                                      "agentic": self._is_agentic(c.name)})
                     futures[c.id] = executor.submit(
                         self._exec_tool_with_retry, c.name, c.input, emit=emit, call=c)
         try:
             for c in calls:  # 串行组照旧（与并行组并发进行）
                 if c.id in futures:
                     continue
-                emit("tool_use", {"id": c.id, "name": c.name, "input": c.input})
+                emit("tool_use", {"id": c.id, "name": c.name, "input": c.input,
+                                  "agentic": self._is_agentic(c.name)})
                 outputs[c.id] = self._exec_tool_with_retry(c.name, c.input, emit=emit, call=c)
                 self._emit_result(emit, c, outputs[c.id])
             for c in calls:  # 收并行组结果（按原序等待/上报）
@@ -904,6 +906,17 @@ class AgentLoop:
             ev["diff"] = {"path": d["path"], "text": d["diff"]}
         emit("tool_result", ev)
 
+    def _is_agentic(self, name: str) -> bool:
+        """这次调用是不是**委派给另一个 agent**（codex 那类：一次调用跑几分钟、会改一堆文件）。
+
+        由代码判定后随事件下发，**不让前端按工具名猜**——名字是 server 起的，猜必然漏。
+        """
+        try:
+            tool = self.registry.get(name)
+        except Exception:  # noqa: BLE001
+            return False
+        return bool(getattr(tool, "_takes_cwd", False))
+
     def _exec_tool_with_retry(self, name: str, params: dict, *, emit=None, call=None
                               ) -> tuple[str, bool, list[dict]]:
         """块D：在 `_exec_tool` 外包一层瞬时 IO 自动重试。
@@ -959,7 +972,16 @@ class AgentLoop:
                 return (msg or "操作被 PreToolUse hook 拦截。"), False, []
             pre_warn = msg
 
-        if tool.dangerous and not self.gate.confirm(name, params):
+        # 调用前补参（MCP 的 cwd / 续话 id）。**必须在 gate 之前**：确认条上要显示的是
+        # 真正会执行的参数——cwd 决定它在哪儿干活，看不到就等于没确认。
+        if hasattr(tool, "prepare"):
+            try:
+                params = tool.prepare(params)
+            except Exception:  # noqa: BLE001 — 补参失败就按原样走，别把调用带崩
+                pass
+        # always_confirm：agent 型 MCP server（codex 那类）每次都问，不吃「全部允许」
+        if tool.dangerous and not self.gate.confirm(
+                name, params, always_ask=bool(getattr(tool, "always_confirm", False))):
             return _DENIED, False, []
 
         try:

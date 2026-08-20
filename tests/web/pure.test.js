@@ -14,7 +14,8 @@ const {
   reviewGateLabel, decisionsByStatus, decisionNeedsUser,
   DEBATE_ROLES, DEBATE_ROLE_LABELS, DEBATE_MAIN, DEBATE_MAIN_LABEL, debateMainRoundLabel,
   splitVerdictProse, verdictTally, debateConvergedText,
-  shouldShowUpdate, updateBannerHtml,
+  shouldShowUpdate, updateBannerHtml, summarizeKeyParams,
+  delegationGoal, formatElapsed, tailLines,
 } = require("../../web/pure.js");
 
 test("shouldShowUpdate 仅在有新版且 ok 时为真", () => {
@@ -950,4 +951,58 @@ test("用量面板纯逻辑：总计/命中率/分币种/可信度提示（ADR 0
   // 一切都实测、都有价 → 不出提示（满屏警告等于没有警告）
   assert.deepEqual(usageCaveats({ total: { estimated_rows: 0 }, unpriced_rows: 0 }), []);
   assert.deepEqual(usageCaveats(null), []);
+});
+
+
+// —— 高影响力工具确认条的参数摘要（agent 型 MCP server）——
+// 默认 summarize 是 JSON 截 80 字；codex 的 prompt 一长，sandbox/cwd 就被截没了——
+// 而那两个恰恰决定"它能不能改文件、在哪儿改"，是这条确认条唯一值得看的东西。
+
+test("summarizeKeyParams 把短标量排在长文本前面", () => {
+  const out = summarizeKeyParams({
+    prompt: "请通读整个仓库并写一份详细的架构说明，逐个模块核对，不要臆测".repeat(4),
+    sandbox: "read-only",
+    cwd: "C:/proj",
+  });
+  assert.ok(out.indexOf("sandbox=read-only") < out.indexOf("prompt="), out);
+  assert.ok(out.includes("cwd=C:/proj"), out);
+});
+
+test("summarizeKeyParams 截断长值但保留键名", () => {
+  const out = summarizeKeyParams({ prompt: "x".repeat(500) });
+  assert.ok(out.startsWith("prompt=") && out.length < 300, out);
+});
+
+test("summarizeKeyParams 跳过空值与内部标记、非对象退回 summarize", () => {
+  assert.equal(summarizeKeyParams({ a: "", b: null, c: "ok" }), "c=ok");
+  // 下划线开头是 hermes 自己塞的标记（如自动接续），不该出现在确认条上
+  assert.equal(summarizeKeyParams({ _hermes_resumed: "T-1", cwd: "/w" }), "cwd=/w");
+  assert.equal(summarizeKeyParams("字符串"), summarize("字符串"));
+});
+
+
+// —— 委派卡（agent 型 MCP 调用）——
+// 一次调用＝一个自主 agent 跑几分钟、可能改一堆文件，抬头要给的是**目标**和**用时**，
+// 不是一串 JSON 参数（JSON 一截就把 prompt 截没了）。
+
+test("delegationGoal 取 prompt 的首句而不是 JSON 摘要", () => {
+  assert.equal(delegationGoal({ prompt: "重构 web.py 的检索逻辑。要求逐个函数核对。", cwd: "/w" }),
+               "重构 web.py 的检索逻辑");
+  assert.equal(delegationGoal({ prompt: "第一行\n第二行" }), "第一行");
+  assert.equal(delegationGoal({ cwd: "/w" }), "（未给目标）");
+  assert.equal(delegationGoal(null), "（未给目标）");
+  assert.ok(delegationGoal({ prompt: "很长".repeat(200) }).endsWith("…"));
+});
+
+test("formatElapsed 秒/分钟都可读", () => {
+  assert.equal(formatElapsed(0), "0s");
+  assert.equal(formatElapsed(8400), "8s");
+  assert.equal(formatElapsed(60000), "1m");
+  assert.equal(formatElapsed(95000), "1m35s");
+  assert.equal(formatElapsed(-5), "0s");          // 时钟回拨也不能出负数
+});
+
+test("tailLines 只留最后几行、跳过空行", () => {
+  assert.equal(tailLines("a\n\nb\nc\nd", 2), "c\nd");
+  assert.equal(tailLines("", 3), "");
 });
