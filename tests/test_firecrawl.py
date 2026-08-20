@@ -19,9 +19,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from agentcore.tools.base import ToolError  # noqa: E402
 from agentcore.tools.web import (  # noqa: E402
-    FIRECRAWL_KEY_ENV, FIRECRAWL_MODES, FIRECRAWL_READ_BUDGET, WebFetchTool, WebSearchTool,
-    firecrawl_gain, firecrawl_key, parse_firecrawl, parse_firecrawl_page, render_items,
-    upgrade_reason,
+    FIRECRAWL_KEY_ENV, FIRECRAWL_MODES, FIRECRAWL_READ_BUDGET, FirecrawlQuotaError, WebFetchTool,
+    WebSearchTool, firecrawl_gain, firecrawl_key, firecrawl_quota_exhausted, parse_firecrawl,
+    parse_firecrawl_page, render_items, reset_firecrawl_quota, upgrade_reason,
 )
 from agentcore.tools import web as web_mod  # noqa: E402
 
@@ -186,9 +186,92 @@ def test_unknown_mode_degrades_to_off():
             assert mode == "off", (bad, mode)
 
 
-def test_modes_are_exactly_three():
-    assert FIRECRAWL_MODES == ("off", "fallback", "always")
+def test_modes_are_exactly_four():
+    assert FIRECRAWL_MODES == ("off", "fallback", "primary", "always")
     assert WebSearchTool()._firecrawl == "off"          # 构造器默认＝老行为，零变化
+
+
+# ================= primary：主搜档（2026-08-20 起的默认） ========================
+# 改默认的理由是**实测**：fallback 那三条判据在真机上几乎从不触发，于是用户给的 key
+# 什么也没买到。既然给了更好的源，就该默认用它——而不是等免 key 链路先失败。
+
+def test_primary_uses_firecrawl_first_and_skips_free_chain():
+    """主源够用时，免 key 链路一次都不该跑（省时间；它本来也不花钱，省的是延迟）。"""
+    free = []
+    with _FakeKey(), _Patch(_http_get=_fake_get()):
+        tool = WebSearchTool(firecrawl="primary", max_results=5)
+        tool._search_firecrawl = lambda q, n: _items(5, "fc")
+        tool._gather = lambda engines, q: (free.append(engines) or ([], []))
+        out = tool.run({"query": "q"})
+    assert not free, "主源够用还去跑免 key 链路"
+    assert "[搜索结果·firecrawl]" in out, out[:120]
+
+
+def test_primary_tops_up_from_free_chain_when_thin():
+    """主源有货但不够 n 条 → 免 key 链路补齐一起进 RRF（补这趟不额外花钱）。"""
+    with _FakeKey(), _Patch(_http_get=_fake_get()):
+        tool = WebSearchTool(firecrawl="primary", max_results=5)
+        tool._search_firecrawl = lambda q, n: _items(1, "fc")
+        tool._gather = lambda engines, q: ([("bing", _items(5, "b"))], [])
+        out = tool.run({"query": "q"})
+    assert "firecrawl" in out and "bing" in out, out[:160]
+
+
+def test_primary_without_key_is_plain_free_chain():
+    """没 key＝这档不存在。不带凭据也能搜是底线能力，绝不能因此失败。"""
+    with _NoKey(), _Patch(_http_get=_fake_get()):
+        tool = WebSearchTool(firecrawl="primary")
+        tool._gather = lambda engines, q: ([("bing", _items(5, "b"))], [])
+        out = tool.run({"query": "q"})
+    assert "[搜索结果·bing]" in out and "已退回" not in out
+
+
+def test_quota_exhausted_degrades_and_says_so():
+    """402＝配额用尽：本次退回免 key 链路，且**说出来**——否则"结果变差"会被归到模型头上。"""
+    reset_firecrawl_quota()
+    def boom(q, n):
+        raise FirecrawlQuotaError("Firecrawl 配额用尽（HTTP 402）")
+
+    try:
+        with _FakeKey(), _Patch(_http_get=_fake_get()):
+            tool = WebSearchTool(firecrawl="primary")
+            tool._search_firecrawl = boom
+            tool._gather = lambda engines, q: ([("bing", _items(5, "b"))], [])
+            out = tool.run({"query": "q"})
+        assert "[已退回]" in out and "配额用尽" in out, out[:200]
+        assert firecrawl_quota_exhausted(), "配额用尽必须粘住"
+    finally:
+        reset_firecrawl_quota()
+
+
+def test_quota_exhausted_is_sticky_no_second_attempt():
+    """粘住之后不再重试：每次都先撞一次 402 才退回，白等一个往返、日志还刷屏。"""
+    reset_firecrawl_quota()
+    calls = []
+    def boom(q, n):
+        calls.append(q)
+        raise FirecrawlQuotaError("Firecrawl 配额用尽（HTTP 402）")
+
+    try:
+        with _FakeKey(), _Patch(_http_get=_fake_get()):
+            tool = WebSearchTool(firecrawl="primary")
+            tool._search_firecrawl = boom
+            tool._gather = lambda engines, q: ([("bing", _items(5, "b"))], [])
+            tool.run({"query": "一"})
+            tool.run({"query": "二"})
+        assert len(calls) == 1, f"配额用尽后又打了 {len(calls)} 次"
+    finally:
+        reset_firecrawl_quota()
+
+
+def test_rate_limit_is_not_treated_as_quota():
+    """429 是限流（瞬时，退避后能恢复）。把它当配额用尽会**永久关掉**付费链路——
+    误报比漏报贵，这条与块V 决策 6 同一条立场。"""
+    from agentcore.tools.web import _looks_like_quota
+    assert _looks_like_quota(402, "") is True
+    assert _looks_like_quota(429, "Rate limit exceeded") is False
+    assert _looks_like_quota(500, "") is False
+    assert _looks_like_quota(400, "insufficient credits") is True
 
 
 # ---- 渲染：两处共用一份 -------------------------------------------------------

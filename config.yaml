@@ -301,13 +301,15 @@ web:
   read_top_n: 3           # 搜完顺带抓前几条正文、按查询摘录直接回给模型（0 = 关，只回标题+摘要）。
                           # 治"只看摘要就下结论"；代价是每次搜索多 K 次并发抓取（慢几秒）
   read_chars: 1500        # 每条正文摘录的字符预算；完整正文超限会落产物（ADR 0021）可下钻
-  firecrawl: fallback     # 托管源（需 .env 里的 FIRECRAWL_API_KEY，没 key 自动等于 off）。
+  firecrawl: primary      # 托管源（需 .env 里的 FIRECRAWL_API_KEY，没 key 自动等于 off）。
                           # **一个开关管两跳**：搜索召回 + 读页兜底。
                           #   off      = 只用免 key 链路（bing + ddg + HTTP 直读）
-                          #   fallback = 免 key 链路不达标时（零结果/召回太少/预算等约束没满足）
-                          #              **代码自动**换 Firecrawl 补搜并重新融合（默认，省配额）
-                          #   always   = 三路并发一起进 RRF（召回最好，但每次搜索都计费；
-                          #              且 RRF 会让"多引擎都有"的上浮，独家好结果未必占优）
+                          #   fallback = 免 key 链路不达标时才升级换源（省配额，但实测几乎从不触发）
+                          #   primary  = **Firecrawl 主搜**（默认）；它没结果/给不够/不可用时，
+                          #              免 key 链路兜底。配额用尽（HTTP 402）自动退回并在结果里
+                          #              标 [已退回]，本进程内不再重试（换 key 或下周期重启恢复）
+                          #   always   = 三路并发一起进 RRF（RRF 会让"多引擎都有"的上浮，
+                          #              Firecrawl 独家的好结果只有一票，未必占优）
                           # 读页兜底在 fallback / always 下**行为相同**：都只在 HTTP 直读失败或
                           # 读到空壳时才用（同一个 URL 读两遍只会得到同一份正文，主动多打一次
                           # 付费 API 买不到任何东西）。实测单价：search 2 credits、scrape 1 credit。

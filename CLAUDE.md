@@ -140,6 +140,15 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   ②命中登录墙**直接跳过它**（没登录态＝稳定的必然失败），只有浏览器有戏；
   ③降级阶梯是 **HTTP → Firecrawl → 浏览器**，越往后越重、越有侵入性。
   **别在批量评测里开 `always`**：一个研究型任务搜 7~8 次，一个月配额只够 60~70 个任务。
+  **默认档是 `primary`（主搜）不是 `fallback`**——2026-08-20 真机反馈"全程没触发过"，
+  说明 fallback 的判据在真实使用里几乎不成立，省下的配额纯属闲置。配额用尽（**只认 402，
+  429 是限流不算**）自动退回免 key 链路并粘住，本进程内不再重试。
+- **推理模型长考中途断线时，`thinking` 不该封锁重试**（`providers/base.py:blocks_retry`）。
+  瞬时错误的重试门槛是"还没吐出**答案内容**"；旧口径写的是"yield 过任何事件"，而推理模型
+  先吐 thinking，那道门当场被踩掉——**这层保护对推理模型等于不存在**。
+  2026-08-20 真机：DeepSeek V4-FLASH 打开已有项目续开发，长考中
+  `RemoteProtocolError: incomplete chunked read`，一断就整轮作废。
+  封锁重试的只有 `text`/`tool_use`/`done`（重来会重复输出给用户），thinking 重复一段无所谓。
 - **mcp SDK 2.0 改了字段名**：`Tool.inputSchema` → `input_schema`。`manager.tool_input_schema()` 两名都认——
   别"清理"成只读一个，`pyproject` 写的是 `mcp>=1.2`，新旧机器都可能遇到。踩过的坑是所有 MCP server
   一起连不上（`AttributeError`），而纯 mock 单测全绿——**MCP 相关改动要连真 server 跑一次**。

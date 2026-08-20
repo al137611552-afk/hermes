@@ -13,7 +13,7 @@ from agentcore.providers import StreamEvent  # noqa: E402
 from agentcore.providers import anthropic_p  # noqa: E402
 from agentcore.providers.anthropic_p import AnthropicProvider  # noqa: E402
 from agentcore.providers.base import (  # noqa: E402
-    backoff_delay, is_transient_error, retry_stream,
+    backoff_delay, blocks_retry, explain_stream_failure, is_transient_error, retry_stream,
 )
 
 
@@ -167,6 +167,77 @@ def test_anthropic_cache_degrade_then_retry():
     assert "cache_control" in str(state["kwargs"][0])
     assert "cache_control" not in str(state["kwargs"][-1])
     anthropic_p._CACHE_UNSUPPORTED.clear()
+
+
+# ---- 长考中途断线：thinking 不该封锁重试（2026-08-20 真机） ---------------------
+# DeepSeek V4-FLASH 打开已有项目接着开发时"陷入长考"，然后
+# `RemoteProtocolError: peer closed connection without sending complete message body`。
+# 该错本来就在瞬时清单里，但旧口径是"yield 过任何事件就不重试"——推理模型先吐 thinking，
+# 那道门当场被踩掉，于是**这层保护对推理模型形同虚设**，一断就整轮作废。
+
+class _RemoteProtocolError(Exception):
+    """httpx 那个类的替身（不引 httpx 依赖）。"""
+
+
+def test_thinking_does_not_block_retry():
+    calls = {"n": 0}
+
+    def make():
+        calls["n"] += 1
+        yield StreamEvent("thinking", "让我想想…")     # 长考中
+        if calls["n"] < 2:
+            raise _RemoteProtocolError(
+                "peer closed connection without sending complete message body "
+                "(incomplete chunked read)")
+        yield StreamEvent("text", "答案")
+        yield StreamEvent("done")
+
+    import agentcore.providers.base as base
+    base.time.sleep = lambda s: None
+    out = list(retry_stream(make, max_retries=3))
+    assert calls["n"] == 2, "thinking 之后断线仍应重试"
+    assert [e.type for e in out] == ["thinking", "thinking", "text", "done"], [e.type for e in out]
+
+
+def test_answer_content_still_blocks_retry():
+    """吐过正文/工具调用再断：**不重试**——重来一遍会把答案重复输出给用户。"""
+    for blocking in ("text", "tool_use", "done"):
+        calls = {"n": 0}
+
+        def make(_b=blocking):
+            calls["n"] += 1
+            yield StreamEvent(_b, "x")
+            raise _RemoteProtocolError("peer closed connection")
+
+        import agentcore.providers.base as base
+        base.time.sleep = lambda s: None
+        try:
+            list(retry_stream(make, max_retries=3))
+        except _RemoteProtocolError:
+            pass
+        else:
+            raise AssertionError(f"{blocking} 之后不该重试却没抛")
+        assert calls["n"] == 1, (blocking, calls["n"])
+
+
+def test_blocks_retry_classifies_events():
+    assert not blocks_retry(StreamEvent("thinking", "…"))
+    for t in ("text", "tool_use", "done"):
+        assert blocks_retry(StreamEvent(t, "x")), t
+
+
+def test_error_text_tells_the_user_what_to_do():
+    """原样抛 RemoteProtocolError 对用户等于没说：谁断的、还能怎么办，都得写出来。"""
+    msg = explain_stream_failure(
+        _RemoteProtocolError("peer closed connection without sending complete message body "
+                             "(incomplete chunked read)"), attempt=3)
+    assert "对端" in msg and "重试 3 次" in msg
+    assert "上下文" in msg or "模型档" in msg
+    # 吐过答案那条要说清"为什么没重试"，否则看着像漏了重试
+    assert "重复输出" in explain_stream_failure(_RemoteProtocolError("peer closed"),
+                                                after_answer=True)
+    # 非瞬时错误不该被加戏
+    assert explain_stream_failure(ValueError("invalid api key")) == "ValueError: invalid api key"
 
 
 def _run_all():

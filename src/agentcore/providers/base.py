@@ -43,8 +43,46 @@ def backoff_delay(attempt: int, base: float = 1.0, cap: float = 20.0) -> float:
     return min(cap, base * (2 ** attempt)) * (0.5 + random.random() * 0.5)
 
 
+# **只有答案内容才封锁重试**。thinking 是过程不是答案：重来一遍最坏是思考段重复一次，
+# 而不重试＝整轮作废。2026-08-20 真机踩到的正是这条——推理模型（DeepSeek V4-FLASH）
+# 长考期间对端断开（RemoteProtocolError: incomplete chunked read），旧逻辑因为
+# "已 yield 过事件"（那是 thinking）直接放弃重试，用户看到的就是一轮白跑。
+_ANSWER_EVENTS = ("text", "tool_use", "done")
+
+
+def blocks_retry(ev) -> bool:
+    """这个事件是否让"重来一遍"变得不可接受（会重复输出给用户的东西）。"""
+    return getattr(ev, "type", "") in _ANSWER_EVENTS
+
+
+def explain_stream_failure(e, attempt: int = 0, after_answer: bool = False) -> str:
+    """把流式失败翻成**能照着做点什么**的一句话（纯函数）。
+
+    原样抛 `RemoteProtocolError: peer closed connection without sending complete message body`
+    对用户等于没说——它既不说明谁断的，也不说明还能怎么办。
+    """
+    name = type(e).__name__
+    base = f"{name}: {e}"
+    tail = ""
+    if "incompletechunked" in str(e).replace(" ", "").replace("_", "").lower() \
+            or name == "RemoteProtocolError":
+        tail = ("——**对端在流式过程中断开**（不是本地网络断）。常见于长思考期间中间代理的"
+                "空闲超时：可换个模型档、或把上下文压小些再试")
+    elif is_transient_error(e):
+        tail = "——瞬时故障"
+    if tail:
+        if after_answer:
+            tail += "。已吐出部分答案，故未自动重试（重试会重复输出）"
+        elif attempt:
+            tail += f"。已自动重试 {attempt} 次仍失败"
+    return base + tail
+
+
 def retry_stream(make_stream, *, max_retries: int = MAX_RETRIES, label: str = ""):
-    """重试生成器：**仅在还没 yield 任何事件时**对瞬时错误退避重试（避免重复输出）。
+    """重试生成器：**在还没吐出答案内容时**对瞬时错误退避重试。
+
+    thinking 增量不算答案内容（见 `blocks_retry`）——推理模型长考中途断线是最常见的一种
+    失败，若把它算进去，这层保护对推理模型等于不存在。
 
     make_stream() 每次调用返回一个全新的流（StreamEvent 迭代器）；流中途失败、或非瞬时
     错误、或重试用尽 → 原样抛出，由调用方转成 error 事件。
@@ -54,7 +92,7 @@ def retry_stream(make_stream, *, max_retries: int = MAX_RETRIES, label: str = ""
         yielded = False
         try:
             for ev in make_stream():
-                yielded = True
+                yielded = yielded or blocks_retry(ev)
                 yield ev
             return
         except Exception as e:  # noqa: BLE001

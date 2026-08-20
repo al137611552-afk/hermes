@@ -19,7 +19,7 @@ import anthropic
 
 from .base import (
     MAX_RETRIES, BaseProvider, Message, StreamEvent, ToolCall,
-    backoff_delay, is_transient_error,
+    backoff_delay, blocks_retry, is_transient_error,
 )
 
 # 实测不支持 cache_control 的端点（base_url, model）；进程级记账，避免每轮白付一次失败
@@ -136,14 +136,16 @@ class AnthropicProvider(BaseProvider):
         cache_key = (self.base_url or "", self.model)
         use_cache = self.prompt_cache and cache_key not in _CACHE_UNSUPPORTED
         # 统一循环：cache_control 不被端点接受 → 摘掉缓存断点重试（不计入退避预算）；
-        # 网络抖动/429/5xx → 指数退避重试；**仅在还没吐内容前**重试，否则照常报错（FR-12.1）。
+        # 网络抖动/429/5xx → 指数退避重试；**在还没吐出答案内容前**重试，否则照常报错（FR-12.1）。
+        # "答案内容"不含 thinking（`blocks_retry`）：推理模型长考中途断线时，旧口径
+        # （任何事件都算）会让这层保护对推理模型形同虚设——2026-08-20 真机踩到。
         attempt = 0
         while True:
             variant = apply_cache_breakpoints(kwargs) if use_cache else kwargs
             yielded = False
             try:
                 for ev in self._stream(variant):
-                    yielded = True
+                    yielded = yielded or blocks_retry(ev)
                     yield ev
                 return
             except Exception as e:  # noqa: BLE001
@@ -156,7 +158,7 @@ class AnthropicProvider(BaseProvider):
                     if not yielded:
                         continue
                 if yielded or attempt >= MAX_RETRIES or not is_transient_error(e):
-                    yield StreamEvent("error", f"{type(e).__name__}: {e}")
+                    yield StreamEvent("error", explain_stream_failure(e, attempt, yielded))
                     return
                 delay = backoff_delay(attempt)
                 print(f"[provider {self.model}] 瞬时错误，{delay:.1f}s 后重试"

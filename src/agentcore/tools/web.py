@@ -20,6 +20,7 @@ import html as html_mod
 import json
 import re
 import threading
+import urllib.error
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
@@ -304,7 +305,72 @@ def canonical_url(url: str) -> str:
 # Firecrawl 独有的好结果只有一票，可能反被压下去。哪个默认更好该用评测测，不该拍脑袋。
 FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search"
 FIRECRAWL_KEY_ENV = "FIRECRAWL_API_KEY"
-FIRECRAWL_MODES = ("off", "fallback", "always")
+# 四档。**默认 primary**（2026-08-20 用户拍板改的，原默认是 fallback）：
+#   off      只用免 key 链路
+#   fallback 免 key 链路不达标才升级（省配额，但真机实测**几乎从不触发**——
+#            于是那把 key 什么也没买到，这正是改默认的直接原因）
+#   primary  **Firecrawl 主搜**，免 key 链路只在它没结果/给不够/不可用时兜底
+#   always   三路并发一起进 RRF
+FIRECRAWL_MODES = ("off", "fallback", "primary", "always")
+
+# 配额耗尽的**进程内**记忆。为什么要记：配额用尽后每次搜索都先撞一次 402 才退回，
+# 白等一个往返、日志还刷屏。402 本身不计费，所以重启后重试一次的代价可以忽略——
+# 故**只记在内存、不落盘**（落盘要处理计费周期、换 key、多进程，不值当）。
+_QUOTA_LOCK = threading.Lock()
+_QUOTA = {"why": ""}
+
+
+class FirecrawlQuotaError(ToolError):
+    """配额用尽（HTTP 402）。**与一般失败分开**：这一类要粘住不再重试，
+    而超时/限流那类是瞬时的，粘住等于把付费源永久关掉。"""
+
+
+def firecrawl_quota_exhausted() -> str:
+    """配额已耗尽则返回原因（真值），否则空串。"""
+    with _QUOTA_LOCK:
+        return _QUOTA["why"]
+
+
+def mark_firecrawl_exhausted(why: str) -> None:
+    with _QUOTA_LOCK:
+        _QUOTA["why"] = why or "配额用尽"
+
+
+def reset_firecrawl_quota() -> None:
+    """换了 key / 新的计费周期 / 测试之间清状态。"""
+    with _QUOTA_LOCK:
+        _QUOTA["why"] = ""
+
+
+def _looks_like_quota(code: int, body: str) -> bool:
+    """**只认 402**。429 是限流（瞬时，退避后能恢复），把它当配额用尽会误关整条付费链路——
+    这是"误报比漏报贵"在这里的具体形态（同块V 决策 6）。"""
+    return code == 402 or bool(re.search(r"insufficient\s+credits|out\s+of\s+credits", body or "", re.I))
+
+
+def _firecrawl_post(url: str, payload: dict, timeout: int):
+    """Firecrawl 的两个端点共用的 POST（受控 IO）。把"配额用尽"从一般失败里分出来。"""
+    key = firecrawl_key()
+    if not key:
+        raise ToolError(f"没有 {FIRECRAWL_KEY_ENV}")
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                 "User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", "replace")[:300]
+        except Exception:  # noqa: BLE001
+            pass
+        if _looks_like_quota(e.code, body):
+            raise FirecrawlQuotaError(f"Firecrawl 配额用尽（HTTP {e.code}）") from None
+        raise ToolError(f"Firecrawl 请求失败：HTTP {e.code} {body[:120]}") from None
+    except Exception as e:  # noqa: BLE001 — 网络错误统一转可读，交给各处的降级路径
+        raise ToolError(f"Firecrawl 请求失败：{type(e).__name__}: {str(e)[:120]}") from e
 
 
 def firecrawl_key() -> str:
@@ -410,19 +476,9 @@ def firecrawl_scrape(url: str, timeout: int = _FC_READ_TIMEOUT) -> str:
     `onlyMainContent` 交给它做主正文提取——我们自己的 `extract_main_text` 吃的是 HTML，
     而这里拿回来的已经是 markdown，两边不重复干活。
     """
-    key = firecrawl_key()
-    if not key:
-        raise ToolError(f"没有 {FIRECRAWL_KEY_ENV}")
-    body = json.dumps({"url": url, "formats": ["markdown"], "onlyMainContent": True})
-    req = urllib.request.Request(
-        FIRECRAWL_SCRAPE_URL, data=body.encode("utf-8"),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-                 "User-Agent": UA})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode("utf-8", "replace"))
-    except Exception as e:  # noqa: BLE001 — 统一转可读错误，交给各处的降级路径
-        raise ToolError(f"Firecrawl 抓取失败：{type(e).__name__}: {str(e)[:120]}") from e
+    payload = _firecrawl_post(
+        FIRECRAWL_SCRAPE_URL,
+        {"url": url, "formats": ["markdown"], "onlyMainContent": True}, timeout)
     return parse_firecrawl_page(payload)
 
 
@@ -1025,19 +1081,9 @@ class WebSearchTool(Tool):
 
     def _search_firecrawl(self, query: str, limit: int) -> list[dict]:
         """Firecrawl `/v2/search`（受控 IO）。没 key 直接抛错，由调用方按"这个源没用上"处理。"""
-        key = firecrawl_key()
-        if not key:
-            raise ToolError(f"没有 {FIRECRAWL_KEY_ENV}")
-        body = json.dumps({"query": query, "limit": max(1, min(int(limit), MAX_RESULTS_CAP))})
-        req = urllib.request.Request(
-            FIRECRAWL_SEARCH_URL, data=body.encode("utf-8"),
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-                     "User-Agent": UA})
-        try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
-                payload = json.loads(resp.read().decode("utf-8", "replace"))
-        except Exception as e:  # noqa: BLE001 — 统一转可读错误，交给多引擎容错那条路
-            raise ToolError(f"Firecrawl 请求失败：{type(e).__name__}: {str(e)[:120]}") from e
+        payload = _firecrawl_post(
+            FIRECRAWL_SEARCH_URL,
+            {"query": query, "limit": max(1, min(int(limit), MAX_RESULTS_CAP))}, self._timeout)
         return parse_firecrawl(payload)
 
     def _search_one(self, engine: str, query: str) -> list[dict]:
@@ -1124,9 +1170,35 @@ class WebSearchTool(Tool):
         n = max(1, min(n, MAX_RESULTS_CAP))
 
         engines = _ENGINES if self._engine == "auto" else (self._engine,)
-        if self._firecrawl == "always" and firecrawl_key():
-            engines = (*engines, "firecrawl")   # 并发跑，与别的引擎一视同仁地进 RRF
-        per, errors = self._gather(engines, query)
+        # 配额用尽后**不再重试**：每次都先撞一次 402 才退回，白等一个往返
+        quota = firecrawl_quota_exhausted()
+        fc_on = self._firecrawl != "off" and bool(firecrawl_key()) and not quota
+        degraded = quota or ""      # 退回免 key 链路的原因（**要说出来**）
+
+        # primary（默认）：**Firecrawl 主搜**。用户给了更好的源与 key，就该默认用它——
+        # 而不是等免 key 链路先失败（fallback 那套真机实测几乎从不触发，那把 key 白给）。
+        # 主源没结果 / 给不够 / 不可用时，免 key 链路照样兜底：**不带凭据也能搜是底线能力**。
+        fc_first = []
+        if self._firecrawl == "primary" and fc_on:
+            try:
+                fc_first = self._search_firecrawl(query, n)
+            except FirecrawlQuotaError as e:
+                mark_firecrawl_exhausted(str(e))   # 粘住：本进程内不再打 Firecrawl
+                degraded = str(e)
+            except ToolError as e:
+                degraded = f"Firecrawl 不可用（{e}）"
+
+        if fc_first and not _too_few(fc_first, n):
+            per, errors = [("firecrawl", fc_first)], []      # 主源够用，免 key 链路不必跑
+        else:
+            if self._firecrawl == "always" and fc_on:
+                engines = (*engines, "firecrawl")   # 并发跑，与别的引擎一视同仁地进 RRF
+            per, errors = self._gather(engines, query)
+            if fc_first:
+                # 主源有货但不够 n 条：免 key 链路补齐，一起进 RRF（补这一趟不额外花钱）
+                per = [("firecrawl", fc_first), *per]
+            elif degraded:
+                errors.append(f"firecrawl: {degraded}")
         got = [(e, rs) for e, rs in per if rs]
         fused = fuse_results(got) if got else []
 
@@ -1159,6 +1231,11 @@ class WebSearchTool(Tool):
         if upgraded:
             # **动用了付费源要说出来**：省得事后对不上账，也让模型知道这批结果换过源
             head += f"\n[已换源] {upgraded} → 已用 Firecrawl 补搜并重新融合"
+        if degraded and self._firecrawl in ("primary", "always"):
+            # 退回也要说出来：否则"结果变差了"会被归到模型头上，查不到真原因
+            head += (f"\n[已退回] {degraded} → 本次改用免 key 链路"
+                     + ("（本进程内不再重试；换 key 或下个计费周期后重启即恢复）"
+                        if firecrawl_quota_exhausted() else ""))
         if errors:
             head += f"\n[注] 部分来源未用上：{'；'.join(errors)}"
         bodies = self._read_bodies(ranked[:self._read_top_n], query) if self._read_top_n else {}
