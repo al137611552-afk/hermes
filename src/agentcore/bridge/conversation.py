@@ -464,6 +464,14 @@ class Conversation:
     def stop(self) -> None:
         """请求中止本对话当前运行/排队的任务（回合间生效，不打断当前回合内的模型流）。"""
         self._cancel.set()
+        # 在飞的 MCP 工具调用也要停：agent 型 server（codex）一次调用几分钟，
+        # 不取消的话"停止"按了也得干等到 call_timeout（真机 900s）才回来
+        try:
+            mcp = getattr(self.res, "mcp", None)
+            if mcp is not None and hasattr(mcp, "cancel_all"):
+                mcp.cancel_all()
+        except Exception:  # noqa: BLE001 — 取消失败不该阻断停止本身
+            pass
         with self.lock:  # 停止：连待注入的执行中追加一起清掉
             self._inject = []
         # 清掉尚未开始的排队任务

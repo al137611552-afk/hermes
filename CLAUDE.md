@@ -156,6 +156,12 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
   同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
   **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
+- **「停止」会取消在飞的 MCP 调用**（`Conversation.stop()` → `McpManager.cancel_all()`）。
+  不接的话 agent 型 server 一次调用几分钟，按了停止仍要干等到 `call_timeout`（真机 900s）。
+  取消后给的是**可读文案**「调用已被用户停止」——原样抛 `CancelledError` 会被包成
+  "MCP 调用失败：CancelledError"，看着像故障而不是"你自己停的"；`McpTool.run` 里
+  `ToolError` 直接放行、不再套第二层。计数时**已取消的要显式跳过**：
+  `Future.cancel()` 对它仍返回 True，直接累加会虚高。
 - **agent 型 MCP 调用会附一份 `git status` 的客观改动**（`mcp_client/gitwatch.py`）。
   agent 回来的是自然语言自述（"我修好了 X"），**动了哪些文件只有 git 说了算**——
   同评测那条「判分优先程序化」。取**调用前后的差集**，不是事后一把梭：工作区本来就可能是脏的，

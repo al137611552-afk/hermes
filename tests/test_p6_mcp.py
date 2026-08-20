@@ -228,6 +228,61 @@ def test_cwd_follows_the_session_workspace():
     assert "cwd" not in seen[-1]
 
 
+def test_cancel_all_stops_inflight_calls():
+    """agent 型 server 一次调用几分钟，没有出口就只能干等到 call_timeout（真机 900s）——
+    「停止」必须真的能停。"""
+    import concurrent.futures
+
+    from agentcore.config import MCPConfig
+    from agentcore.mcp_client.manager import McpManager
+
+    m = McpManager(MCPConfig(enabled=True))
+    running = concurrent.futures.Future()
+    done = concurrent.futures.Future()
+    done.set_result("已经跑完了")
+    m._inflight = {running, done}
+    assert m.cancel_all() == 1          # 只取消得动没跑完的那个
+    assert running.cancelled() and done.result() == "已经跑完了"
+    assert m.cancel_all() == 0          # 再来一次不会重复计数
+
+
+def test_cancelled_call_reads_as_user_stop_not_as_failure():
+    """原样抛 CancelledError 会被上层包成"MCP 调用失败：CancelledError"——
+    看着像故障，而不是"你自己停的"。"""
+    import concurrent.futures
+
+    from agentcore.config import MCPConfig
+    from agentcore.mcp_client.manager import McpManager
+    from agentcore.tools.base import ToolError as _TE
+
+    m = McpManager(MCPConfig(enabled=True, servers={"s": {"command": "x"}}))
+    class _Sess:                       # call_tool 只是被 _submit 吞掉，不会真跑
+        def call_tool(self, *a, **k):
+            return None
+
+    m._loop = object()
+    m._sessions["s"] = _Sess()
+    cancelled = concurrent.futures.Future()
+    cancelled.cancel()
+    m._submit = lambda coro: cancelled
+    try:
+        m.call("s", "t", {})
+    except _TE as e:
+        assert "用户停止" in str(e), e
+    else:
+        raise AssertionError("取消后应抛可读的 ToolError")
+    assert not m._inflight          # 登记表要清干净，别泄漏
+
+
+def test_stop_forwards_to_mcp():
+    """Conversation.stop() 必须把停止传到 MCP，否则按了停止仍要等 call_timeout。"""
+    import inspect
+
+    from agentcore.bridge import conversation as conv_mod
+    src = inspect.getsource(conv_mod.Conversation.stop)
+    assert "cancel_all" in src
+
+
 def test_agentic_is_decided_by_cwd_not_by_thread_key():
     """**「schema 收 cwd」＝agent 型**。别用 thread key 当判据——`codex__codex` 的 schema 里
     根本没有 threadId（只有 codex-reply 有），用它当门会让起始那次既不补 cwd、也不记改动。
@@ -357,6 +412,18 @@ def test_mcptool_run_error_raises_toolerror():
         assert False, "应抛 ToolError"
     except ToolError as e:
         assert "权限不足" in str(e)
+
+
+def test_readable_toolerror_is_not_wrapped_twice():
+    """"调用已被用户停止"再套一层"MCP 调用失败：ToolError: …"就看不出是自己停的了。"""
+    def caller(*a, **k):
+        raise ToolError("调用已被用户停止")
+
+    t = McpTool("codex", "codex", "d", {}, caller=caller)
+    try:
+        t.run({})
+    except ToolError as e:
+        assert str(e) == "调用已被用户停止", e
 
 
 def test_mcptool_run_exception_raises_toolerror():

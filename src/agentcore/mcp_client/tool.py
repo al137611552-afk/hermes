@@ -212,6 +212,8 @@ class McpTool(Tool):
         before = status_lines(watch_cwd) if watch_cwd else None
         try:
             result = self._caller(self.server, self.tool_name, params, stream)
+        except ToolError:
+            raise           # 已经是可读文案（如"调用已被用户停止"），别再套一层"MCP 调用失败"
         except Exception as e:  # 连接断开 / 超时 / 子进程已退出等
             raise ToolError(
                 f"MCP 调用失败（{self.server}.{self.tool_name}）：{type(e).__name__}: {e}"

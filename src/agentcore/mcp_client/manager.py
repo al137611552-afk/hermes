@@ -19,6 +19,7 @@ import threading
 import time
 
 from ..config import MCPConfig, McpServerConfig
+from ..tools.base import ToolError
 from .events import CODEX_EVENT, event_request_id, render_elicitation, render_event
 from .tool import McpTool, ThreadMemory
 
@@ -100,6 +101,9 @@ class McpManager:
         self._ev_lock = threading.Lock()
         self._ev_pending: dict = {}          # server -> [stream 回调]
         self._ev_bound: dict = {}            # (server, requestId) -> stream 回调
+        # 在飞的工具调用（供「停止」取消）。agent 型 server 一次调用几分钟，
+        # 没有出口就只能干等到 call_timeout——**长任务的基本尊严**。
+        self._inflight: set = set()
 
     @property
     def errors(self) -> dict:
@@ -251,10 +255,20 @@ class McpManager:
         if stream is not None:
             with self._ev_lock:
                 self._ev_pending.setdefault(server, []).append(stream)
+        fut = None
         try:
             fut = self._submit(session.call_tool(tool_name, params, **kw))
+            with self._ev_lock:
+                self._inflight.add(fut)
             return fut.result(timeout=self.call_timeout_for(server))
+        except concurrent.futures.CancelledError:
+            # 用户按了停止。**给可读文案**：原样抛 CancelledError 会被上层包成
+            # "MCP 调用失败：CancelledError"，看着像故障而不是"你自己停的"
+            raise ToolError("调用已被用户停止") from None
         finally:
+            if fut is not None:
+                with self._ev_lock:
+                    self._inflight.discard(fut)
             if stream is not None:
                 with self._ev_lock:
                     pend = self._ev_pending.get(server) or []
@@ -294,6 +308,17 @@ class McpManager:
 
         return {"notification_bindings": [
             NotificationBinding(method=CODEX_EVENT, params_type=_AnyParams, handler=_handler)]}
+
+    def cancel_all(self) -> int:
+        """取消所有在飞的工具调用（供 `Conversation.stop()`）。返回取消掉几个。
+
+        取消 future 会连带取消底层协程，SDK 随之给 server 发 `notifications/cancelled`；
+        已经跑完的取消不动（`Future.cancel()` 返回 False）。**已取消的要显式跳过**——
+        `cancel()` 对它仍返回 True，直接累加会让"取消掉几个"虚高。
+        """
+        with self._ev_lock:
+            futs = list(self._inflight)
+        return sum(1 for f in futs if not f.cancelled() and f.cancel())
 
     def _elicitation_hook(self, server: str) -> dict:
         """接住 server 的审批请求（标准 `elicitation/create`）。
