@@ -149,6 +149,10 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   2026-08-20 真机：DeepSeek V4-FLASH 打开已有项目续开发，长考中
   `RemoteProtocolError: incomplete chunked read`，一断就整轮作废。
   封锁重试的只有 `text`/`tool_use`/`done`（重来会重复输出给用户），thinking 重复一段无所谓。
+- **MCP 工具会实时推过程**（`McpTool.wants_stream=True` → `manager.call(stream=)` →
+  `session.call_tool(progress_callback=)`）。**agent 型 server 没有它就是黑箱**：codex 一次调用
+  跑几分钟，中途什么都看不到、错了也只能等到最后。走的是 hermes 早有的 `tool_stream` 管子
+  （前台 shell 用的同一条），**前端不用改**。老 SDK 没有 `progress_callback` 参数会自动跳过。
 - **MCP 的 `call_timeout` 要按 server 定，不是全局一个数**（`McpServerConfig.call_timeout`）。
   **agent 型 server**（`codex mcp-server` 那类）一次调用＝跑完一整个 agent 会话，分钟级；
   而全局默认 60s 是按"一次工具调用"定的。为了它调高全局，会把 Playwright 之类的一起放松，

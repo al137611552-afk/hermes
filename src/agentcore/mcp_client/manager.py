@@ -200,7 +200,7 @@ class McpManager:
                             server=name, tool_name=t.name,
                             description=t.description or "",
                             input_schema=tool_input_schema(t),
-                            caller=self.call, trusted=sc.trust,
+                            caller=self.call, trusted=sc.trust,   # call(server, tool, params, stream)
                         )
                         for t in listed.tools
                     ]
@@ -214,12 +214,40 @@ class McpManager:
             self._sessions.pop(name, None)
 
     # ---- 调用（同步入口，供 McpTool.run 用） -----------------------------
-    def call(self, server: str, tool_name: str, params: dict):
+    def call(self, server: str, tool_name: str, params: dict, stream=None):
+        """调用一个工具。`stream(kind, delta)` 非空时，把 server 的**过程通知**实时推出去。
+
+        MCP 的进度是**按调用**走的（客户端给 progressToken、server 回 notifications/progress），
+        所以能准确归属到这一次调用，不会串台。老 SDK 没有 `progress_callback` 参数就自动跳过，
+        行为退回原样（拿不到过程，但不影响调用本身）。
+        """
         if self._loop is None or server not in self._sessions:
             raise RuntimeError(f"MCP server '{server}' 未连接")
         session = self._sessions[server]
-        fut = self._submit(session.call_tool(tool_name, params))
+        kw = {}
+        if stream is not None and self._supports_progress():
+            async def _on_progress(progress, total=None, message=None):
+                text = (message or "").strip()
+                if not text:                      # 没文案就报个进度数字，总比什么都没有强
+                    text = f"…{progress:g}" + (f"/{total:g}" if total else "")
+                try:
+                    stream("progress", text + "\n")
+                except Exception:  # noqa: BLE001 — 推流失败绝不能影响工具调用本身
+                    pass
+            kw["progress_callback"] = _on_progress
+        fut = self._submit(session.call_tool(tool_name, params, **kw))
         return fut.result(timeout=self.call_timeout_for(server))
+
+    @staticmethod
+    def _supports_progress() -> bool:
+        """装的 mcp SDK 认不认 `progress_callback`（pyproject 只写 mcp>=1.2，新旧机器都可能遇到）。"""
+        try:
+            import inspect
+
+            from mcp import ClientSession
+            return "progress_callback" in inspect.signature(ClientSession.call_tool).parameters
+        except Exception:  # noqa: BLE001
+            return False
 
     def call_timeout_for(self, server: str) -> float:
         """该 server 的单次调用超时：server 级覆盖优先，否则跟随全局（纯逻辑）。

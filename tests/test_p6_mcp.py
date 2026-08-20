@@ -105,18 +105,18 @@ def test_convert_empty():
 
 
 def test_mcptool_metadata():
-    t = McpTool("fs", "read_file", "读取文件", {"type": "object"}, caller=lambda *a: None)
+    t = McpTool("fs", "read_file", "读取文件", {"type": "object"}, caller=lambda *a, **k: None)
     assert t.name == "fs__read_file"
     assert t.dangerous is True               # 默认危险
     assert "MCP:fs" in t.description
-    t2 = McpTool("fs", "ls", "", {}, caller=lambda *a: None, trusted=True)
+    t2 = McpTool("fs", "ls", "", {}, caller=lambda *a, **k: None, trusted=True)
     assert t2.dangerous is False             # trust 的 server 免 gate
     assert t2.input_schema == {"type": "object", "properties": {}}  # 空 schema 兜底
 
 
 def test_mcptool_run_text():
     calls = []
-    def caller(server, name, params):
+    def caller(server, name, params, stream=None):
         calls.append((server, name, params))
         return _Result([_Text("ok 内容")])
     t = McpTool("fs", "read_file", "d", {}, caller=caller)
@@ -125,15 +125,35 @@ def test_mcptool_run_text():
     assert calls == [("fs", "read_file", {"path": "a.txt"})]  # 用原始名调用
 
 
+def test_mcptool_forwards_stream_callback():
+    """agent 型 server（codex）一次调用要跑几分钟——没有过程推送就是**黑箱**。
+
+    hermes 早有 `wants_stream` 这条管子（前台 shell 用它边跑边看），MCP 工具接上即可，
+    前端一行不用改。不发通知的 server 自然没增量，行为不变。
+    """
+    seen = {}
+    def caller(server, name, params, stream=None):
+        seen["stream"] = stream
+        if stream:
+            stream("progress", "正在读文件…\n")
+        return _Result([_Text("done")])
+    t = McpTool("fs", "read_file", "d", {}, caller=caller)
+    assert t.wants_stream is True          # 不声明的话 loop 根本不会给回调
+    got = []
+    assert t.run({}, stream=lambda kind, delta: got.append((kind, delta))) == "done"
+    assert got == [("progress", "正在读文件…\n")]
+    assert seen["stream"] is not None
+
+
 def test_mcptool_run_image_returns_tooloutput():
-    t = McpTool("cam", "snap", "d", {}, caller=lambda *a: _Result([_Image("IMG")]))
+    t = McpTool("cam", "snap", "d", {}, caller=lambda *a, **k: _Result([_Image("IMG")]))
     out = t.run({})
     assert isinstance(out, ToolOutput)
     assert out.blocks[0]["type"] == "image" and out.blocks[0]["source"]["data"] == "IMG"
 
 
 def test_mcptool_run_error_raises_toolerror():
-    t = McpTool("fs", "boom", "d", {}, caller=lambda *a: _Result([_Text("权限不足")], is_error=True))
+    t = McpTool("fs", "boom", "d", {}, caller=lambda *a, **k: _Result([_Text("权限不足")], is_error=True))
     try:
         t.run({})
         assert False, "应抛 ToolError"
@@ -142,7 +162,7 @@ def test_mcptool_run_error_raises_toolerror():
 
 
 def test_mcptool_run_exception_raises_toolerror():
-    def caller(*a):
+    def caller(*a, **k):
         raise ConnectionError("管道已断")
     t = McpTool("fs", "x", "d", {}, caller=caller)
     try:
@@ -202,8 +222,8 @@ def test_zero_call_timeout_falls_back_to_global():
 
 def test_registry_includes_mcp_tools_and_marks_dangerous(tmp: Path):
     mcp_tools = [
-        McpTool("fs", "read_file", "d", {}, caller=lambda *a: None),
-        McpTool("fs", "ls", "d", {}, caller=lambda *a: None, trusted=True),
+        McpTool("fs", "read_file", "d", {}, caller=lambda *a, **k: None),
+        McpTool("fs", "ls", "d", {}, caller=lambda *a, **k: None, trusted=True),
     ]
     reg = build_registry(tmp, screenshot=False, memory_store=None, mcp_tools=mcp_tools)
     names = reg.names()

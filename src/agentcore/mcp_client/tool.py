@@ -75,9 +75,15 @@ class McpTool(Tool):
         self.dangerous = not trusted  # trust 的 server 免 gate
         self._caller = caller
 
-    def run(self, params: dict):
+    # 要实时流（loop 会给 stream 回调，前端把增量追加到运行中的工具块）。
+    # **agent 型 server 没有它就是黑箱**：codex 一次调用要跑几分钟，中途什么都看不到，
+    # 出错也只能等到最后。Codex 的 MCP server 本来就在发 notifications/progress，
+    # 之前只是没人接（2026-08-20 真机反馈）。不发进度的 server 不受影响——没通知就没增量。
+    wants_stream = True
+
+    def run(self, params: dict, stream=None):
         try:
-            result = self._caller(self.server, self.tool_name, params or {})
+            result = self._caller(self.server, self.tool_name, params or {}, stream)
         except Exception as e:  # 连接断开 / 超时 / 子进程已退出等
             raise ToolError(
                 f"MCP 调用失败（{self.server}.{self.tool_name}）：{type(e).__name__}: {e}"
