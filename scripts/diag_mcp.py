@@ -51,6 +51,9 @@ def _all_matches(cmd: str) -> list:
     return out
 
 
+_CFG = None
+
+
 def probe(name: str, spec: dict, call_timeout: float) -> None:
     print(f"\n{'=' * 62}\n■ server: {name}")
     command = spec.get("command") or ""
@@ -61,6 +64,10 @@ def probe(name: str, spec: dict, call_timeout: float) -> None:
     print(f"  工作目录 : {cwd!r}" + ("   ⚠ 未设，会用 hermes 自己的目录" if not cwd else ""))
     print(f"  调用超时 : {spec.get('call_timeout') or call_timeout} 秒"
           + ("   ⚠ 跟随全局；agent 型 server（codex）几乎必超时" if not spec.get("call_timeout") else ""))
+    trust = bool(spec.get("trust", False))
+    print(f"  免确认   : {trust}"
+          + ("   ⚠ 该 server 的工具**不过权限确认**（它会自主写文件/跑命令）" if trust else
+             "（每次调用都会弹确认）"))
     if " " in command:
         print("  ⚠ **启动命令里带空格**——参数要放「参数」框、一行一个，不能写进命令框")
     print(f"  解析到   : {_which(command)}")
@@ -104,6 +111,10 @@ def probe(name: str, spec: dict, call_timeout: float) -> None:
                 break
         if tools:
             print(f"  ✅ 连上了，工具：{tools}")
+            try:
+                perm_note(_CFG, name, tools)
+            except Exception as e:  # noqa: BLE001 — 诊断信息拿不到不影响主结论
+                print(f"  （权限判定跳过：{type(e).__name__}）")
         else:
             print("  ❌ 握手没拿到工具清单")
     finally:
@@ -118,9 +129,25 @@ def probe(name: str, spec: dict, call_timeout: float) -> None:
                       "或这个可执行文件的版本没有该子命令（对 codex 应是 `mcp-server` 一行）")
 
 
+def perm_note(cfg, server: str, tools: list) -> None:
+    """除了 trust，还有两条路会让它不弹确认——一起报出来，省得对着"怎么没弹"猜。"""
+    from agentcore.permissions import evaluate
+    allow = list(getattr(cfg.agent, "permissions", None).allow or []) if getattr(
+        cfg.agent, "permissions", None) else []
+    deny = list(getattr(cfg.agent, "permissions", None).deny or []) if getattr(
+        cfg.agent, "permissions", None) else []
+    hit = [t for t in tools if evaluate(allow, deny, f"{server}__{t}", {}) == "allow"]
+    if hit:
+        print(f"  ⚠ permissions.allow 里有规则命中 {hit} —— 这些也不会弹确认")
+    print("  提示：本会话点过「全部允许」、或在 /crazy 免确认模式下，同样不弹确认"
+          "（那是会话状态，不在配置里，本脚本看不到）")
+
+
 def main() -> int:
     only = sys.argv[1] if len(sys.argv) > 1 else ""
     cfg = load_config()
+    global _CFG
+    _CFG = cfg
     print(f"hermes 目录 : {APP_DIR}")
     f = APP_DIR / USER_MCP_FILE
     print(f"面板存盘    : {f}  {'（存在）' if f.is_file() else '（不存在——面板还没存过）'}")
