@@ -217,7 +217,7 @@ class McpManager:
                    and "errlog" in _inspect.signature(stdio_client).parameters else {})
             bindings = self._event_bindings(name)
             bindings.update(self._elicitation_hook(name))
-            async with stdio_client(params, **_kw) as (read, write):
+            async def _session(read, write):
                 async with ClientSession(read, write, **bindings) as session:
                     await session.initialize()
                     listed = await session.list_tools()
@@ -236,6 +236,20 @@ class McpManager:
                     if not ready.done():
                         ready.set_result(tools)
                     await self._stop_event.wait()  # 保活直到 close()
+
+            async with stdio_client(params, **_kw) as (read, write):
+                if bindings.get("notification_bindings"):
+                    await _session(read, write)      # 新 SDK：官方通道够用
+                else:
+                    # **老 SDK（1.x）连口子都没有**：它把不认识的通知 log 一句就丢，
+                    # `message_handler` 也拿不到（2026-08-20 在 mcp 1.27.2 上实测确认）。
+                    # 所以在**流上**加一层旁路：先偷看一眼再原样转交，与 SDK 版本无关。
+                    import anyio
+                    send, recv = anyio.create_memory_object_stream(64)
+                    async with anyio.create_task_group() as tg:
+                        tg.start_soon(self._tap, name, read, send)
+                        await _session(recv, write)
+                        tg.cancel_scope.cancel()
         except Exception as e:  # noqa: BLE001
             if not ready.done():
                 ready.set_exception(e)
@@ -331,6 +345,33 @@ class McpManager:
         with self._ev_lock:
             futs = list(self._inflight)
         return sum(1 for f in futs if not f.cancelled() and f.cancel())
+
+    async def _tap(self, server: str, source, sink) -> None:
+        """把读流原样转交，顺手把 `codex/event` 挑出来推给实时流（老 SDK 用）。
+
+        **只看不改**：转交的是同一个对象，SDK 那边看到的字节流没有任何变化。
+        偷看失败一律吞掉——过程展示绝不能影响连接本身。
+        """
+        try:
+            async for msg in source:
+                try:
+                    root = getattr(getattr(msg, "message", None), "root", None)
+                    if getattr(root, "method", None) == CODEX_EVENT:
+                        raw = getattr(root, "params", None)
+                        if isinstance(raw, dict):
+                            text = render_event(raw.get("msg"))
+                            if text:
+                                self._dispatch_event(server, event_request_id(raw), text)
+                except Exception:  # noqa: BLE001
+                    pass
+                await sink.send(msg)
+        except Exception:  # noqa: BLE001 — 上游关闭/取消：正常收场
+            pass
+        finally:
+            try:
+                await sink.aclose()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _event_fallback(self, server: str) -> dict:
         """老 SDK 没有 `notification_bindings` 时的退路：用 `message_handler` 捞。

@@ -32,9 +32,15 @@ def all_in_path(cmd: str) -> list:
     for d in os.environ.get("PATH", "").split(os.pathsep):
         for e in [""] + exts:
             p = Path(d) / (cmd + e)
-            if p.is_file() and str(p) not in seen:
-                seen.add(str(p))
-                out.append(str(p))
+            if not p.is_file():
+                continue
+            # Windows 路径**大小写不敏感**，且 PATH 里同一目录常出现多次——
+            # 不归一就会把同一个文件报成"有多份同名命令"（真机误报过）
+            key = str(p).lower() if sys.platform == "win32" else str(p)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(str(p))
     return out
 
 
@@ -76,6 +82,21 @@ def sdk_capabilities() -> dict:
     return out
 
 
+def inside_hermes_dir(cwd: str) -> bool:
+    """cwd 是不是落在 hermes 自己的安装目录里（纯逻辑，只比路径）。
+
+    真机踩到：面板模板把"当前工作区"填成了 `data/workspaces/_scratch`——那是 hermes 的
+    临时工作区，不是用户的项目，agent 会在那儿建文件而**不报错**。
+    """
+    try:
+        from ..config import APP_DIR
+        here = str(APP_DIR).replace("\\", "/").rstrip("/").lower()
+        target = str(cwd).replace("\\", "/").rstrip("/").lower()
+        return bool(here) and (target == here or target.startswith(here + "/"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def analyze_spec(spec: dict, global_timeout: float, *, resolved: str = "",
                  candidates=None, cwd_exists=None) -> list:
     """只看配置本身能发现的问题（**纯函数**）。返回 [{level, text}]。
@@ -111,11 +132,19 @@ def analyze_spec(spec: dict, global_timeout: float, *, resolved: str = "",
         out.append({"level": WARN, "text": "没设工作目录：agent 型 server 会在 hermes 自己的目录里干活"})
     elif cwd_exists is False:
         out.append({"level": BAD, "text": f"工作目录不存在：{cwd}"})
+    elif inside_hermes_dir(cwd):
+        out.append({"level": BAD,
+                    "text": f"工作目录指向 hermes 自己的目录（{cwd}）——agent 会在**那儿**干活，"
+                            "不是你的项目。改成你的项目路径"})
     if not spec.get("call_timeout"):
         out.append({"level": WARN,
                     "text": f"单次调用超时跟随全局（{global_timeout:g}s）：agent 型 server "
                             "一次调用是跑完一整个会话，分钟级，几乎必超时"})
-    if spec.get("trust"):
+    if spec.get("trust") and spec.get("always_confirm"):
+        out.append({"level": BAD,
+                    "text": "「免确认」与「每次都问」**同时开着**（矛盾）。现在以更严的为准"
+                            "（每次都问），但请把「免确认」关掉——否则看配置根本判断不出会不会弹确认"})
+    elif spec.get("trust"):
         out.append({"level": WARN, "text": "已开「免确认」：该 server 的工具不过权限确认"})
     elif not spec.get("always_confirm"):
         out.append({"level": WARN,
@@ -135,8 +164,16 @@ def probe_connect(spec: dict, timeout: float = 30.0) -> dict:
     args = [str(a) for a in (spec.get("args") or [])]
     cwd = spec.get("cwd") or None
     res = {"ok": False, "tools": [], "error": "", "stderr": ""}
+    # **先解析成真实路径再起**：Windows 上 CreateProcess 只补 .exe，
+    # npm 装的 `codex` 其实是 `codex.CMD`，直接 spawn 必然 WinError 2；
+    # 而 hermes 真正连接时走的是 SDK（它自己会认 .cmd），于是体检报"起不来"、面板却连得上——
+    # **体检说错话比不说更糟**（2026-08-20 真机误报）。
+    exe = resolve_command(command) or command
+    argv = [exe, *args]
+    if sys.platform == "win32" and exe.lower().endswith((".cmd", ".bat")):
+        argv = ["cmd", "/c", exe, *args]      # 垫片得经 cmd 起
     try:
-        p = subprocess.Popen([command, *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True, bufsize=1, cwd=cwd,
                              encoding="utf-8", errors="replace")
     except Exception as e:  # noqa: BLE001

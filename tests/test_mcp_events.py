@@ -119,6 +119,54 @@ def test_dispatch_binds_by_request_id_and_refuses_to_guess():
     assert got_b == []
 
 
+def test_stream_tap_forwards_everything_and_sniffs_events():
+    """老 SDK（1.x）**连口子都没有**：不认识的通知 log 一句就丢，`message_handler` 也拿不到
+    （mcp 1.27.2 实测确认）。所以在**流上**加旁路：只看不改、原样转交。
+
+    这条测的是"转交"必须一条不落——旁路要是吞了消息，整个连接就废了。
+    """
+    import anyio
+
+    from agentcore.config import MCPConfig
+    from agentcore.mcp_client.manager import McpManager
+
+    class _Root:
+        def __init__(self, method, params):
+            self.method, self.params = method, params
+
+    class _Msg:
+        def __init__(self, method, params=None):
+            self.message = type("M", (), {"root": _Root(method, params)})()
+
+    got = []
+    m = McpManager(MCPConfig(enabled=True))
+    m._ev_pending["codex"] = [lambda kind, text: got.append(text)]
+
+    async def main():
+        src_send, src_recv = anyio.create_memory_object_stream(16)
+        out_send, out_recv = anyio.create_memory_object_stream(16)
+        msgs = [
+            _Msg("codex/event", {"_meta": {"requestId": 1},
+                                 "msg": {"type": "agent_message_content_delta", "delta": "起"}}),
+            _Msg("notifications/progress", {"progress": 1}),      # 别的通知照样转交
+            _Msg("codex/event", {"_meta": {"requestId": 1},
+                                 "msg": {"type": "task_complete"}}),
+        ]
+        for x in msgs:
+            await src_send.send(x)
+        await src_send.aclose()
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(m._tap, "codex", src_recv, out_send)
+            forwarded = []
+            async for msg in out_recv:
+                forwarded.append(msg)
+            return forwarded
+
+    forwarded = anyio.run(main)
+    assert len(forwarded) == 3, "旁路必须一条不落地转交"
+    assert got == ["起", "✓ 完成\n"], got
+
+
 def test_raw_event_recovered_from_validation_error():
     """老 SDK 把不认识的通知**当校验失败**丢过来（用户真机见到的 `Field required`）。
     原始报文只能从 ValidationError 的 `input` 里回捞——捞不到就安静放弃。"""

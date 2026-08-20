@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from .diag import inside_hermes_dir as _in_hermes
 from .gitwatch import diff_status, render_changes, status_lines
 from ..tools.base import Tool, ToolError, ToolOutput
 
@@ -150,10 +151,12 @@ class McpTool(Tool):
         self.name = qualified_name(server, tool_name)
         self.description = f"[MCP:{server}] {(description or '').strip()}".strip()
         self.input_schema = input_schema or {"type": "object", "properties": {}}
-        self.dangerous = not trusted  # trust 的 server 免 gate
-        # 高影响力（agent 型 server）：即便本会话点过「全部允许」也每次都问。
-        # trust=True 时本来就不过 gate，二者互斥——由配置侧保证别同时开。
-        self.always_confirm = bool(always_confirm) and not trusted
+        # **两个都开时以「更严」的为准**：`always_confirm` 压过 `trust`。
+        # 2026-08-20 真机：用户配里 trust=true + always_confirm=true，按原先"trust 优先"
+        # 的写法，"每次都问"被**静默作废**、一次确认都没弹。权限上宁可多问一次，
+        # 也不能让两个开关打架的结果是"谁都没拦住"。面板已改成两者互斥，这里是兜底。
+        self.always_confirm = bool(always_confirm)
+        self.dangerous = self.always_confirm or not trusted
         # 续话记忆（ThreadMemory）：None＝不接续，行为同以前
         self._threads = threads
         self._thread_key = thread_param(self.input_schema)
@@ -210,6 +213,18 @@ class McpTool(Tool):
         # 事后取一次会把用户自己没提交的改动算到 agent 头上——那种"自信的错数"比没有更糟。
         watch_cwd = str(params.get("cwd") or "") if self._takes_cwd else ""
         before = status_lines(watch_cwd) if watch_cwd else None
+        # **在 hermes 自己的目录里干活**几乎不会是本意（真机踩到：模板把"当前工作区"填成了
+        # hermes 的临时工作区 `data/workspaces/_scratch`）。它不报错、结果也看着正常，
+        # 只是全干在了错地方——所以调用时就喊出来，别等用户自己发现。
+        misplaced = ""
+        if watch_cwd and _in_hermes(watch_cwd):
+            misplaced = (f"⚠ 工作目录是 hermes 自己的目录（{watch_cwd}）——不是你的项目。"
+                         "在 hermes 里打开项目工作区，或在调用参数里显式给 cwd。\n")
+            if stream is not None:
+                try:
+                    stream("warn", misplaced)
+                except Exception:  # noqa: BLE001
+                    pass
         try:
             result = self._caller(self.server, self.tool_name, params, stream)
         except ToolError:
@@ -230,6 +245,6 @@ class McpTool(Tool):
         tail = f"\n\n[{self._thread_key or 'thread'}] {tid}（追问同一件事时带上它）" if tid else ""
         # **改了什么由 git 说，不由 agent 自述说**（同评测那条「判分优先程序化」）
         changed = render_changes(diff_status(before, status_lines(watch_cwd))) if watch_cwd else ""
-        text = f"{note}{text}{tail}{changed}"
+        text = f"{misplaced}{note}{text}{tail}{changed}"
         return ToolOutput(text=text, blocks=blocks) if blocks else text
 

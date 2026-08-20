@@ -196,6 +196,20 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   `model_provider="deepseek"` + `[model_providers.deepseek] base_url="https://api.deepseek.com/v1"`、
   `wire_api="responses"`（0.148 起 `wire_api="chat"` 已被移除）。**顶层键必须写在任何
   `[table]` 之前**，否则会被并进上一张表（踩过）。有了它，Codex 相关的东西不必再等 Windows。
+- **mcp 1.x 拿不到自定义通知，只能在流上加旁路**（`McpManager._tap`）。1.27.2 实测：
+  不认识的通知**只 log 一句就丢**，`message_handler` 也拿不到——所以 `notification_bindings`
+  （2.x 才有）不可用时，改成包一层读流、先偷看再原样转交。**只看不改**、一条不落地转交，
+  否则整个连接就废了。两版都验过：1.27.2 与 2.0.0 都能出实时流。
+- **权限两个开关矛盾时以「更严」为准**：`always_confirm` 压过 `trust`。真机踩到用户配里
+  两个都为 true，按原先"trust 优先"的写法，"每次都问"被**静默作废**、一次确认都没弹。
+  面板已改成两者互斥，代码侧是兜底（手编 config.yaml 仍可能写出矛盾），体检会把矛盾报成 BAD。
+- **别在 hermes 自己的目录里派活**：面板模板会把"当前工作区"填进 `cwd`，而没打开项目时
+  那是 `data/workspaces/_scratch`——agent 会全干在那儿，**不报错、结果也看着正常**。
+  调用时会喊一句（`inside_hermes_dir`），体检也报 BAD。
+- **Windows 上 `.CMD` 垫片不能直接 spawn**：npm 装的 `codex` 其实是 `codex.CMD`，
+  `subprocess.Popen(["codex", …])` 必然 WinError 2（体检因此误报"起不来"，而面板明明连得上）。
+  先 `resolve_command()` 拿真实路径，`.cmd/.bat` 要经 `cmd /c` 起。PATH 候选去重也要
+  **大小写归一**，否则同一个文件会被报成"有多份同名命令"。
 - **Codex 一条标准 MCP 通知都不发**（2026-08-20 探针实测：全程只有自定义的 `codex/event`）。
   所以 `progress_callback` 那条标准通道对它**收不到任何东西**——要拿过程必须挂
   `NotificationBinding(method="codex/event")`；不挂的话消息在 pydantic 那关就失败

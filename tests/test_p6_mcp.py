@@ -312,6 +312,25 @@ def test_stop_forwards_to_mcp():
     assert "cancel_all" in src
 
 
+def test_working_inside_hermes_own_dir_is_called_out_loudly():
+    """真机踩到：面板模板把"当前工作区"填成了 hermes 的临时工作区
+    `data/workspaces/_scratch`，于是 Codex 全干在了 hermes 自己的目录里。
+    **它不报错、结果也看着正常**——所以必须在调用时就喊出来。"""
+    from agentcore.config import APP_DIR
+
+    warned = []
+    t = McpTool("codex", "codex", "d", {"properties": {"prompt": {}, "cwd": {}}},
+                caller=lambda *a, **k: _Result([_Text("ok")]))
+    out = t.run({"prompt": "x", "cwd": str(APP_DIR / "data" / "workspaces" / "_scratch")},
+                stream=lambda kind, text: warned.append(text))
+    assert out.startswith("⚠ 工作目录是 hermes 自己的目录"), out[:60]
+    assert warned and "不是你的项目" in warned[0]      # 流里也要出现，别只藏在结果里
+
+    # 正常项目目录不该被打扰
+    quiet = t.run({"prompt": "x", "cwd": "/tmp"}, stream=lambda k, x: warned.append(x))
+    assert not quiet.startswith("⚠")
+
+
 def test_agentic_is_decided_by_cwd_not_by_thread_key():
     """**「schema 收 cwd」＝agent 型**。别用 thread key 当判据——`codex__codex` 的 schema 里
     根本没有 threadId（只有 codex-reply 有），用它当门会让起始那次既不补 cwd、也不记改动。
@@ -395,16 +414,23 @@ def test_tools_without_thread_key_are_untouched():
     assert seen[-1] == {"path": "a.txt"} and "[thread]" not in out
 
 
-def test_always_confirm_flag_and_trust_are_mutually_exclusive():
-    """agent 型 server 每次都问；trust=True 时本来就不过 gate，两者同时开只会自相矛盾——
-    以 trust 为准（不过 gate），always_confirm 归 False，别让配置矛盾变成运行期悬念。"""
+def test_conflicting_permission_flags_resolve_to_the_stricter_one():
+    """两个开关都开时**以更严的为准**（每次都问压过免确认）。
+
+    **口径改过一次**（2026-08-20）：原先写的是"trust 优先"，真机上用户配里
+    `trust=true` + `always_confirm=true`，于是"每次都问"被**静默作废**、一次确认都没弹。
+    权限上宁可多问一次，也不能让两个开关打架的结果是"谁都没拦住"。
+    面板已改成两者互斥，这里是兜底（手编 config.yaml 仍可能写出矛盾）。
+    """
     t = McpTool("codex", "codex", "d", {}, caller=lambda *a, **k: None, always_confirm=True)
     assert t.dangerous is True and t.always_confirm is True
-    t2 = McpTool("codex", "codex", "d", {}, caller=lambda *a, **k: None,
-                 trusted=True, always_confirm=True)
-    assert t2.dangerous is False and t2.always_confirm is False
-    t3 = McpTool("fs", "ls", "d", {}, caller=lambda *a, **k: None)
-    assert t3.always_confirm is False        # 默认不打扰
+    both = McpTool("codex", "codex", "d", {}, caller=lambda *a, **k: None,
+                   trusted=True, always_confirm=True)
+    assert both.dangerous is True and both.always_confirm is True, "矛盾时该按更严的走"
+    only_trust = McpTool("fs", "ls", "d", {}, caller=lambda *a, **k: None, trusted=True)
+    assert only_trust.dangerous is False and only_trust.always_confirm is False
+    plain = McpTool("fs", "ls", "d", {}, caller=lambda *a, **k: None)
+    assert plain.dangerous is True and plain.always_confirm is False   # 默认危险但不强制每次
 
 
 def test_mcptool_forwards_stream_callback():

@@ -4064,6 +4064,15 @@ async function renderMcpPane() {
   });
 
   // 「体检」：连不上时别让人对着一句 Connection closed 干瞪眼——把每一层都摊开
+  // 「免确认」与「每次都问」是**相反**的意思，同时勾会让配置自相矛盾——
+  // 真机踩到：两个都为 true，结果一次确认都没弹（trust 让工具压根不过 gate）。
+  const trustBox = provDetailEl.querySelector("#mcp-f-trust");
+  const alwaysBox = provDetailEl.querySelector("#mcp-f-always");
+  if (trustBox && alwaysBox) {
+    trustBox.addEventListener("change", () => { if (trustBox.checked) alwaysBox.checked = false; });
+    alwaysBox.addEventListener("change", () => { if (alwaysBox.checked) trustBox.checked = false; });
+  }
+
   provDetailEl.querySelectorAll(".mcp-diag").forEach((b) => {
     b.addEventListener("click", async () => {
       const row = b.closest(".mcp-row");
