@@ -970,8 +970,20 @@ def _apply_user_mcp(data: dict, user: dict) -> dict:
         command, args = spec["command"], list(spec.get("args") or [])
         if os.name == "nt" and command in _WIN_SHIM_CMDS:
             command, args = "cmd", ["/c", spec["command"], *args]
-        servers[name] = {"command": command, "args": args,
-                         "env": dict(spec.get("env") or {}), "trust": bool(spec.get("trust", False))}
+        one = {"command": command, "args": args,
+               "env": dict(spec.get("env") or {}), "trust": bool(spec.get("trust", False))}
+        # cwd / call_timeout 也要带过来——**写入侧存了、这里不合并等于白存**
+        # （2026-08-20 自查发现：面板存进 user_mcp.json 了，加载时被这里丢掉，
+        #  于是 codex 仍然拿全局 60s、且在 hermes 自己的目录里干活）。
+        if spec.get("cwd"):
+            one["cwd"] = str(spec["cwd"])
+        try:
+            ct = float(spec.get("call_timeout") or 0)
+        except (TypeError, ValueError):
+            ct = 0.0
+        if ct > 0:
+            one["call_timeout"] = ct
+        servers[name] = one
         any_on = True
     if any_on:
         m["enabled"] = True

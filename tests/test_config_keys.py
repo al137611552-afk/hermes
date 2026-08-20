@@ -59,6 +59,20 @@ def test_user_mcp_omits_empty_cwd_and_timeout():
     assert "call_timeout" not in read_user_mcp(p)["fs2"]
 
 
+def test_apply_user_mcp_carries_cwd_and_timeout():
+    """写入侧存了、合并侧不带过来＝白存。**这两处必须成对**（2026-08-20 自查踩到）。
+
+    漏了的后果不报错、只是静默失效：codex 仍拿全局 60s 超时、且在 hermes 自己的目录里干活。
+    """
+    data = _apply_user_mcp({}, {"codex": {"command": "codex", "args": ["mcp-server"],
+                                          "cwd": "D:/proj", "call_timeout": 900}})
+    one = data["mcp"]["servers"]["codex"]
+    assert one["cwd"] == "D:/proj" and one["call_timeout"] == 900.0
+    # 没配的 server 不该凭空长出这两个键（None/0 与"没有"是不同语义）
+    plain = _apply_user_mcp({}, {"fs": {"command": "npx"}})["mcp"]["servers"]["fs"]
+    assert "cwd" not in plain and "call_timeout" not in plain
+
+
 def test_collect_dedup_and_group():
     models = {
         "ark-kimi": {"api_key_env": "ARK_API_KEY"},
