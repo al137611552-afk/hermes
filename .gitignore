@@ -12,7 +12,19 @@ data/
 .playwright-mcp/
 *.zip
 
-# 用户本地模型/Provider 档案（设置面板生成，APP_DIR=仓库根时会落在这里）。
-# 不入库：它是每台机器各自的配置，且项目立场是「开箱不预设任何 provider」。
+# 设置面板/GUI 在 APP_DIR 写的运行时状态档（APP_DIR=仓库根时会落在这里）。
+# 不入库：每台机器各自的配置，且项目立场是「开箱不预设任何 provider」。
+# 新增同类文件（config.py 里的 *_FILE 常量）请一并加到这里——
+# tests/test_paths.py::test_runtime_state_files_are_gitignored 会盯着。
 user_models.yaml
 providers.yaml
+mcp_browser.json
+feature_flags.json
+user_permissions.json
+limits.json
+choices.json
+user_mcp.json
+user_skill_markets.json
+user_hooks.json
+skill_installs.json
+commands/
