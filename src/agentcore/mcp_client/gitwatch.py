@@ -43,10 +43,15 @@ def diff_status(before, after) -> list:
     return [l for l in after if l not in seen]
 
 
-def render_changes(lines) -> str:
-    """改动行 → 附在工具结果后的一段（纯函数）。没改动就返回空串，不占地方。"""
+def render_changes(lines, measurable: bool = True) -> str:
+    """改动行 → 附在工具结果后的一段（纯函数）。
+
+    **"没有改动"要说出来**（`measurable=True` 时）：agent 自述"已创建 xxx"而工作区毫无改动，
+    是最值得当场看见的一种矛盾——2026-08-21 真机就是这么被漏过去的（它在别处建了整个项目）。
+    测不了（不是 git 仓库/没装 git）则保持安静，别把"没测"说成"没改"。
+    """
     if not lines:
-        return ""
+        return "\n\n[本次改动·git status] 工作区无改动" if measurable else ""
     head = lines[:MAX_LINES]
     more = len(lines) - len(head)
     body = "\n".join("  " + l for l in head)
