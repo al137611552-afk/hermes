@@ -347,8 +347,10 @@ def test_batch2_tasks_are_wired_consistently():
         if t.network:
             assert not t.replayable and t.unreplayable_why, f"{name}: 真网任务必须挡在回放门外"
         else:
-            # 桩世界任务 + 压 max_tokens 那个（它压根不联网）都必须可回放
-            assert t.replayable and not t.unreplayable_why, name
+            # 桩世界任务 + 压 max_tokens 那个（它压根不联网）本该都可回放；
+            # **例外必须写明理由**——`pos_truncation_big_file` 里模型用 `node --check` 验语法，
+            # 报错带 Node 内部行号与版本串，跟着 Node 版本走，开发机与 CI 必然不同（2026-08-21）。
+            assert t.replayable or t.unreplayable_why, f"{name}：不可回放就得写明为什么"
             assert t.world in WORLDS or (not t.world and t.max_tokens > 0), (name, t.world)
 
 
