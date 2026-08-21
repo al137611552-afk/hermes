@@ -95,6 +95,27 @@ def extract_thread_id(result) -> str:
     return ""
 
 
+def sandbox_hint(input_schema: dict) -> str:
+    """给收 `sandbox` 参数的 agent 型工具补一段**选权限的规则**（纯函数）。
+
+    **沙箱在会话创建时定死**：`codex-reply` 的 schema 里根本没有 sandbox（实测只有
+    threadId/conversationId/prompt），所以只读会话之后**无法升级**——要改文件只能重开会话、
+    **丢掉全部上下文**（2026-08-21 真机：先只读问建议，追问让它改东西就卡死了）。
+
+    代价不对称，所以默认该给写权限：一开始给了写、后来只想看，无非是它不改；
+    一开始给只读、后来要改，就得推倒重来。写权限在 hermes 这边有三道防线兜着
+    （每次确认、cwd 夹在工作区、git 客观改动），不是裸奔。
+    """
+    props = (input_schema or {}).get("properties") or {}
+    if "sandbox" not in props:
+        return ""
+    return ("\n【hermes 用法】默认给 sandbox=\"workspace-write\"："
+            "**沙箱在会话创建时定死**，只读会话之后无法升级（codex-reply 不收 sandbox），"
+            "要改文件只能重开会话、丢掉上下文。仅在明确只看不改（如代码审查）时才用 \"read-only\"。"
+            "另：approval-policy 给 \"never\"——它的审批请求 hermes 目前只能拒绝，"
+            "影响范围交给 sandbox 控制。")
+
+
 def thread_param(input_schema: dict) -> str:
     """这个工具**接不接**续话 id；接的话用哪个键（纯函数）。不接返回空串。
 
@@ -180,6 +201,7 @@ class McpTool(Tool):
         self.tool_name = tool_name  # server 上的原始名（调用时用）
         self.name = qualified_name(server, tool_name)
         self.description = f"[MCP:{server}] {(description or '').strip()}".strip()
+        self.description += sandbox_hint(input_schema or {})
         self.input_schema = input_schema or {"type": "object", "properties": {}}
         # **两个都开时以「更严」的为准**：`always_confirm` 压过 `trust`。
         # 2026-08-20 真机：用户配里 trust=true + always_confirm=true，按原先"trust 优先"

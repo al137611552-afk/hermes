@@ -206,6 +206,11 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - **MCP 子进程继承 hermes 自己的环境**（`{**os.environ, **sc.env}`）。SDK 默认只给一份
   **白名单**环境，代理变量（HTTPS_PROXY…）、CODEX_HOME、区域设置全被滤掉——真机表现是
   codex 在子进程里反复 `Reconnecting… / request timed out`，而同一条命令在用户终端里好好的。
+- **Codex 的沙箱在会话创建时定死**：`codex-reply` 的 schema 里没有 sandbox，
+  所以**只读会话之后无法升级**——要改文件只能重开会话、丢掉全部上下文
+  （真机：先只读问建议，追问让它改东西就卡死）。代价不对称，故**默认给 workspace-write**，
+  `read-only` 只留给明确"只看不改"的场合。这条规则写在**工具说明里**（`sandbox_hint`），
+  让模型第一次就选对——写权限有三道防线兜着（每次确认 / cwd 夹在工作区 / git 客观改动），不是裸奔。
 - **贴进对话的图片会落盘到工作区** `.hermes/attachments/`（`multimodal/store.py`），
   并在消息里附上路径。**子 agent 只认文件**：Codex 的 MCP 工具 schema 里没有图片入参
   （2026-08-21 实测），CLI 是 `codex exec -i <FILE>`——所以"用户贴图 → 子 agent 看图"

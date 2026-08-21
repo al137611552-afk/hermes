@@ -314,6 +314,31 @@ def test_stop_forwards_to_mcp():
     assert "cancel_all" in src
 
 
+def test_sandbox_rule_is_written_into_the_tool_description():
+    """**沙箱在会话创建时定死**：`codex-reply` 的 schema 里根本没有 sandbox，
+    所以只读会话之后无法升级——要改文件只能重开会话、**丢掉全部上下文**
+    （2026-08-21 真机：先只读问建议，追问让它改东西就卡死了）。
+
+    代价不对称 → 默认该给写权限。规则写进**工具说明**里，让模型第一次就选对；
+    不收 sandbox 的工具不该被塞这段话。
+    """
+    from agentcore.mcp_client.tool import sandbox_hint
+
+    with_sandbox = McpTool("codex", "codex", "Run a Codex session.",
+                           {"properties": {"prompt": {}, "cwd": {}, "sandbox": {}}},
+                           caller=lambda *a, **k: None)
+    assert "workspace-write" in with_sandbox.description
+    assert "会话创建时定死" in with_sandbox.description
+    assert "read-only" in with_sandbox.description          # 什么时候才用只读也要说
+    assert "approval-policy" in with_sandbox.description    # 顺带把那条已知限制的出路写上
+
+    without = McpTool("codex", "codex-reply", "Continue.",
+                      {"properties": {"prompt": {}, "threadId": {}}},
+                      caller=lambda *a, **k: None)
+    assert "workspace-write" not in without.description
+    assert sandbox_hint({}) == "" and sandbox_hint({"properties": {"path": {}}}) == ""
+
+
 def test_cwd_is_forced_into_the_workspace():
     """**"它只可能在这个工作区里干活"这条保证，比让模型自由选目录值钱得多。**
 
