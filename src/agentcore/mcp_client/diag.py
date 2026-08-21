@@ -58,6 +58,42 @@ def resolve_command(cmd: str) -> str:
     return ""
 
 
+PROXY_VARS = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy")
+
+
+def mask_proxy(url: str) -> str:
+    """代理地址里可能带 `user:pass@`，显示前抹掉（纯函数）。"""
+    s = str(url or "")
+    if "@" not in s:
+        return s
+    head, _, tail = s.rpartition("@")
+    scheme, sep, _cred = head.partition("://")
+    return f"{scheme}{sep}***@{tail}" if sep else f"***@{tail}"
+
+
+def proxy_finding(spec: dict, environ: dict) -> dict:
+    """子进程到底有没有代理可用（纯函数）。返回一条 finding。
+
+    **这条比看上去重要**：模型服务在墙外时，子进程没代理就是每次先撞 5 次 WebSocket 重试
+    再降级 HTTPS——用户感受到的"委派卡一分多钟还没开始干活"就是它（2026-08-21 真机）。
+    而"终端里 codex 好使"**不能推出**"hermes 起的子进程也好使"：终端的代理变量是那个终端的，
+    hermes 若从没设代理的窗口启动，继承链上游本来就是空的。
+    """
+    own = {k: v for k, v in (spec.get("env") or {}).items() if k in PROXY_VARS and v}
+    if own:
+        k, v = next(iter(own.items()))
+        return {"level": OK, "text": f"代理：server 配置里已指定（{k}={mask_proxy(v)}）"}
+    inherited = {k: v for k, v in (environ or {}).items() if k in PROXY_VARS and v}
+    if inherited:
+        k, v = next(iter(inherited.items()))
+        return {"level": OK, "text": f"代理：继承自 hermes 进程（{k}={mask_proxy(v)}）"}
+    return {"level": WARN,
+            "text": "代理：hermes 进程与 server 配置里都没有代理变量。若模型服务需要代理，"
+                    "子进程会反复 WebSocket 重试再降级（每次多等几十秒）——"
+                    "**终端里能用不代表这里能用**。在面板的环境变量框里填 "
+                    "HTTPS_PROXY / ALL_PROXY 即可"}
+
+
 def sdk_capabilities() -> dict:
     """装的 mcp SDK 支不支持两条关键通道（受控 IO：只读版本与函数签名）。
 
@@ -248,6 +284,8 @@ def diagnose(name: str, spec: dict, global_timeout: float, probe: bool = True) -
         resolved=resolve_command(command) if command else "",
         candidates=all_in_path(command) if command else [],
         cwd_exists=(Path(cwd).is_dir() if cwd else None))
+    import os as _os
+    findings.append(proxy_finding(spec, dict(_os.environ)))
     caps = sdk_capabilities()
     if not caps["events"] and not caps["message_handler"]:
         findings.append({"level": WARN,
