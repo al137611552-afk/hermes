@@ -206,6 +206,11 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
 - **MCP 子进程继承 hermes 自己的环境**（`{**os.environ, **sc.env}`）。SDK 默认只给一份
   **白名单**环境，代理变量（HTTPS_PROXY…）、CODEX_HOME、区域设置全被滤掉——真机表现是
   codex 在子进程里反复 `Reconnecting… / request timed out`，而同一条命令在用户终端里好好的。
+- **贴进对话的图片会落盘到工作区** `.hermes/attachments/`（`multimodal/store.py`），
+  并在消息里附上路径。**子 agent 只认文件**：Codex 的 MCP 工具 schema 里没有图片入参
+  （2026-08-21 实测），CLI 是 `codex exec -i <FILE>`——所以"用户贴图 → 子 agent 看图"
+  这条路上落盘是唯一通路，不是偷懒。落工作区而不是 /tmp：agent 被夹在工作区里，放外面够不着。
+  文件名带时间戳（同名覆盖会让"上一张图"凭空失效）且只留安全字符（要拼进命令行）。
 - **agent 型 MCP 的 `cwd` 是强制夹回工作区的**（`clamp_cwd`），不是"模型没给才补"。
   2026-08-21 真机：Codex 在别的目录里建了整个项目、还从那儿起了服务，工作区一个文件都没有，
   用户翻进程列表才发现。**"它只可能在这个工作区里干活"这条保证，比让模型自由选目录值钱得多**；

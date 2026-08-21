@@ -36,7 +36,8 @@ from ..longmem import (
     build_transcript,
     parse_memories,
 )
-from ..multimodal import Limits, build_user_content, describe_image, preprocess_vision
+from ..multimodal import (Limits, build_user_content, describe_image, preprocess_vision,
+                          render_saved_note, save_images)
 from ..paths import APP_DIR, BUNDLE_DIR
 from ..skills import Skill, build_skills_block, discover_skills, skill_dirs
 from ..providers import Message, build_provider
@@ -561,8 +562,14 @@ class Conversation:
         if (not text or not text.strip()) and not attachments:
             return {"ok": False, "error": "空消息"}
 
-        content = build_user_content(text or "", attachments, res.limits)
-        content = self._maybe_preprocess_vision(content, text or "")
+        # 贴进来的图**同时落盘到工作区**，并把路径写进这条消息。
+        # 子 agent（codex 那类）只认文件路径——它的 MCP 工具没有图片入参，CLI 是 `-i <FILE>`，
+        # 所以"用户贴图 → agent 看图"这条路上落盘是唯一通路。落工作区而不是 /tmp：
+        # agent 的活动范围被夹在工作区里（clamp_cwd），放外面它够不着。
+        saved = save_images(attachments, self.workspace)
+        text = (text or "") + render_saved_note(saved)
+        content = build_user_content(text, attachments, res.limits)
+        content = self._maybe_preprocess_vision(content, text)
 
         self._reset_turn_checkpoint(text)
 
