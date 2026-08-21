@@ -136,6 +136,25 @@ def test_taxonomy_has_nine_classes_with_unknown():
     assert "UNKNOWN" in names and len(names) == 9
 
 
+def test_windows_command_not_found_is_not_found():
+    """**Windows 的"命令找不到"跟 POSIX 一个字都不一样**，而 Windows 才是主力平台。
+
+    漏了这批措辞，死路分类在真机上等于不存在——rc≠0 却一条都没归类，
+    模型看不到"这条路走不通"的信号（2026-08-21 由 Windows CI 暴露）。
+    英文/中文两种 locale 都钉住：CI 的 windows runner 是 cp1252，用户真机是 cp936。
+    """
+    for text in (
+        "acme-build : The term 'acme-build' is not recognized as the name of a cmdlet, "
+        "function, script file, or operable program.",
+        '无法将"acme-build"项识别为 cmdlet、函数、脚本文件或可运行程序的名称。',
+        "'acme-build' is not recognized as an internal or external command, "
+        "operable program or batch file.",
+        "'acme-build' 不是内部或外部命令，也不是可运行的程序或批处理文件。",
+        "bash: line 1: acme-build: command not found",
+    ):
+        assert ErrorClass.NOT_FOUND in classify_text(text), text
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()

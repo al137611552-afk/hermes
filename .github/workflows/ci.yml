@@ -50,8 +50,41 @@ jobs:
       - name: 决策内核回归门（Golden）
         run: python tests/golden/runner.py
 
+  # **主力平台的门要前移**。原先 Windows 只在推 tag 时（release.yml）才跑，
+  # 于是平台相关的缺陷一路潜到发版那一刻才炸——2026-08-21 一次撞到两个：
+  # ① `fold_workspace` 只折一种分隔符形态（Windows 上 `str(Path(...))` 全是反斜杠）；
+  # ② 错误分类器不认 Windows 的"命令找不到"措辞，死路分类在真机上等于不存在。
+  # 两个都是**真机行为缺陷**，不是测试的毛病，却因为"CI 只跑 ubuntu"晚发现了好几版。
+  # 这里只跑测试、不打包（打包仍由 release.yml 守）；公开仓库的 windows runner 不额外计费。
+  windows:
+    runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8     # runner 是英文 locale（cp1252），测试文案是中文
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: 装依赖
+        run: pip install -e . -c build-constraints.txt
+      - name: Python 全回归（Windows）
+        shell: pwsh
+        run: |
+          $failed = @()
+          Get-ChildItem tests\test_*.py | ForEach-Object {
+            python $_.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) { $failed += $_.Name }
+          }
+          if ($failed.Count -ne 0) {
+            Write-Host "::error::以下测试文件未通过：$($failed -join ', ')"
+            exit 1
+          }
+      - name: 决策内核回归门（Golden）
+        run: python tests/golden/runner.py
+
   test:
-    runs-on: ubuntu-latest      # 回放不需要 Windows；平台相关的那部分仍由 release.yml 在 windows 上守
+    runs-on: ubuntu-latest      # 回放门不需要 Windows；平台相关的由上面的 windows job 守
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

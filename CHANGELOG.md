@@ -9,6 +9,28 @@
 这一版没有新功能，全是**让"验证"这件事本身站得住**：CI 的回放门终于不再依赖"在哪台机器上跑"，
 以及 Firecrawl 的默认档位第一次有了实测数据支撑，而不是推理。
 
+定版推 tag 时，Windows 侧的 release 门当场逮到两个**真机行为缺陷**（见下）——
+这正好说明了下面那条改动的必要性：主力平台的门原先只在发版那一刻才跑。
+
+### 修复（Windows 真机行为）
+
+- **错误分类器不认 Windows 的"命令找不到"**。POSIX 是 `command not found`，
+  而 PowerShell 说 `The term 'x' is not recognized as...`／「无法将"x"项识别为…」，
+  cmd 说 `is not recognized as an internal or external command`／「不是内部或外部命令」。
+  一个都没匹配上——**死路分类在主力平台上等于不存在**：命令失败了，
+  模型却收不到"这条路走不通"的信号。英文/中文两种 locale 都补上并加了回归钉。
+- **`fold_workspace` 只折一种分隔符形态**。Windows 上 `str(Path(...))` 一律给反斜杠，
+  而消息历史里的同一路径未必是同一形态（bash/git 的输出、模型自己复述都常写正斜杠）。
+  漏折＝指纹又变回"跟这台机器有关"，正是这一版刚修完的那类问题。
+
+### 变更
+
+- **CI 增加 windows job**：主力平台的门从"推 tag 时"前移到"每次 push"。
+  上面两个缺陷都潜了好几版才在发版那一刻炸出来。只跑测试、不打包（打包仍由 release.yml 守）。
+- 测试不再写死 `bash`：Windows 上 PATH 里的 `bash.exe` 常是 **WSL 存根**，
+  没装发行版时 rc=1 却只说"没有已安装的分发版"，跟"命令找不到"一个字都不沾。
+  改成用**本平台的 shell**（Windows 走 PowerShell，也正是 hermes 真机用的那个）。
+
 ### 新增
 
 - **`--network-only`：只跑真网任务**，与 `--offline` 对称。做 Firecrawl 档位 A/B 需要

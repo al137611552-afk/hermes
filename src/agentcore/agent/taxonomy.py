@@ -49,6 +49,13 @@ _RULES: "list[tuple[ErrorClass, re.Pattern]]" = [
     (ErrorClass.NOT_FOUND, re.compile(
         r"no such file|not found|\b404\b|未找到|找不到|不存在|无命中|无匹配文件|返回 0 条|"
         r"ModuleNotFoundError|ImportError|cannot find module|command not found|可执行程序|"
+        # Windows 的"命令找不到"跟 POSIX 一个字都不一样，而 Windows 才是主力平台：
+        # PowerShell 英文 `The term 'x' is not recognized as the name of a cmdlet...`、
+        # 中文「无法将"x"项识别为 cmdlet、函数、脚本文件或可运行程序的名称」；
+        # cmd 则是 `'x' is not recognized as an internal or external command`
+        # /「'x' 不是内部或外部命令」。缺了这一行，死路分类在真机上等于不存在
+        # （2026-08-21 Windows CI 才暴露：rc≠0 但一条都没归类）。
+        r"is not recognized|不是内部或外部命令|无法将.{0,40}识别为|"
         r"缺失|未安装|需(?:安装|装)\b", re.I)),
     (ErrorClass.SYNTAX, re.compile(
         r"SyntaxError|IndentationError|parse error|unexpected token|编译(?:错误|失败|报错)|"

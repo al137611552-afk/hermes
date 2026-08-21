@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,19 @@ FAIL_TASKS = ("fail_missing_toolchain", "fail_syntax_modules", "fail_resource_oo
 class _R:
     def __init__(self, answer=""):
         self.answer = answer
+
+
+def _shell(line):
+    """用**本平台的 shell** 跑一行命令。
+
+    别写死 `bash`：Windows 上 PATH 里的 `bash.exe` 往往是 **WSL 存根**——没装发行版时
+    它 rc=1、却只说"没有已安装的分发版"，跟"命令找不到"一个字都不沾，
+    于是这条用例在 Windows CI 上恒红而在 Linux 上恒绿（2026-08-21 踩到）。
+    而 hermes 在 Windows 上的 shell 本来就是 PowerShell，用它才是贴着真机测。
+    """
+    if os.name == "nt":
+        return ("powershell", "-NoProfile", "-NonInteractive", "-Command", line)
+    return ("bash", "-c", line)
 
 
 def _run(ws, *argv):
@@ -60,8 +74,8 @@ def test_missing_toolchain_yields_not_found():
     """
     d, ws = _ws(_setup_missing_toolchain)
     with d:
-        for cmd in (("bash", "-c", "acme-build --release"),
-                    ("bash", "-c", "acme-verify --strict"),
+        for cmd in (_shell("acme-build --release"),
+                    _shell("acme-verify --strict"),
                     (sys.executable, "tools/report.py")):
             rc, cls = _classes(ws, *cmd)
             assert rc != 0 and ErrorClass.NOT_FOUND.value in cls, (cmd, rc, cls)

@@ -152,11 +152,15 @@ def fold_workspace(text: str, ws: "str | None" = None) -> str:
     ws = ws if ws is not None else (os.getenv(WS_ENV) or "")
     if not ws:
         return text
-    cands = {str(Path(ws))}
+    cands = {ws, str(Path(ws))}
     try:
         cands.add(str(Path(ws).resolve()))
     except OSError:
         pass
+    # 两种分隔符形态都折。Windows 上 `str(Path(...))` 一律给反斜杠，而消息历史里的路径
+    # 未必是同一形态——bash/git/一些工具输出正斜杠，模型自己复述时也常写正斜杠。
+    # 只折一种＝换个形态就漏折，指纹又变回"跟这台机器有关"（2026-08-21 Windows CI 暴露）。
+    cands |= {c.replace("\\", "/") for c in tuple(cands)}
     for pre in sorted((c for c in cands if c), key=len, reverse=True):
         text = text.replace(pre, "<ws>")
     return text

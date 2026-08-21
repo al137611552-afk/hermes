@@ -90,6 +90,15 @@ def test_workspace_path_is_folded_out_of_the_key():
     assert k1 == k2, "折了工作区路径后，两跑应得同一个 key"
 
 
+def test_fold_workspace_folds_both_separator_forms():
+    """**同一个工作区在消息历史里会以两种分隔符形态出现**：Windows 上 `str(Path(...))`
+    一律给反斜杠，而 bash/git/一些工具的输出、以及模型自己复述路径时常写正斜杠。
+    只折一种＝换个形态就漏折，指纹又变回"跟这台机器有关"（2026-08-21 Windows CI 暴露）。
+    """
+    assert fold_workspace("看 D:/x/ws/calc.py", "D:\\x\\ws") == "看 <ws>/calc.py"
+    assert fold_workspace("看 D:\\x\\ws\\calc.py", "D:\\x\\ws") == "看 <ws>\\calc.py"
+
+
 def test_fold_workspace_is_a_pure_function():
     assert fold_workspace("a /w/p/x.py b", "/w/p") == "a <ws>/x.py b"
     assert fold_workspace("无路径", "/w/p") == "无路径"
