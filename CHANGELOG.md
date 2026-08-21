@@ -4,7 +4,10 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [3.73.1] - 2026-08-21
+
+这一版没有新功能，全是**让"验证"这件事本身站得住**：CI 的回放门终于不再依赖"在哪台机器上跑"，
+以及 Firecrawl 的默认档位第一次有了实测数据支撑，而不是推理。
 
 ### 新增
 
