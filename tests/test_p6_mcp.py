@@ -219,9 +219,11 @@ def test_cwd_follows_the_session_workspace():
     bound = t.bind_workspace("D:/proj")
     bound.run({"prompt": "做事"})
     assert seen[-1]["cwd"] == "D:/proj"
-    # 模型显式给了就不覆盖
+    # **口径改过一次**（2026-08-21）：原先是"模型显式给了就不覆盖"，
+    # 真机上 Codex 因此整场在别的目录里干活、还起了服务，工作区一个文件都没有。
+    # 现在一律夹回工作区（工作区内的子目录仍照用，见 test_cwd_is_forced_into_the_workspace）。
     bound.run({"prompt": "做事", "cwd": "D:/other"})
-    assert seen[-1]["cwd"] == "D:/other"
+    assert seen[-1]["cwd"] == "D:/proj"
     # 原实例不受影响（同一批工具被所有会话共用，改自己会串台）
     assert t.workspace is None
     t.run({"prompt": "做事"})
@@ -310,6 +312,46 @@ def test_stop_forwards_to_mcp():
     from agentcore.bridge import conversation as conv_mod
     src = inspect.getsource(conv_mod.Conversation.stop)
     assert "cancel_all" in src
+
+
+def test_cwd_is_forced_into_the_workspace():
+    """**"它只可能在这个工作区里干活"这条保证，比让模型自由选目录值钱得多。**
+
+    2026-08-21 真机：Codex 在别的目录里建了整个项目、还从那儿起了服务，
+    工作区里一个文件都没有，用户翻进程列表才发现。原先是"模型没给才补"——
+    给错一个目录就整场跑偏，而且全程无声。
+    """
+    from agentcore.mcp_client.tool import clamp_cwd
+
+    # 工作区内的子目录是正当需求，照用
+    assert clamp_cwd("/ws/proj/sub", "/ws/proj") == ("/ws/proj/sub", "")
+    assert clamp_cwd("/ws/proj", "/ws/proj")[0] == "/ws/proj"
+    assert clamp_cwd("", "/ws/proj") == ("/ws/proj", "")
+    # 工作区外 → 改回根，并**说明**（不说明就又变成一次静默纠偏）
+    got, why = clamp_cwd("/somewhere/else", "/ws/proj")
+    assert got == "/ws/proj" and "工作区之外" in why
+    # 没绑工作区时不干预（存量调用方零变化）
+    assert clamp_cwd("/anywhere", "") == ("/anywhere", "")
+
+    seen = []
+    t = McpTool("codex", "codex", "d", {"properties": {"prompt": {}, "cwd": {}}},
+                caller=lambda s_, n, p, st=None: seen.append(p) or _Result([_Text("ok")]),
+                ).bind_workspace("/ws/proj")
+    out = t.run({"prompt": "x", "cwd": "/etc"})
+    assert seen[-1]["cwd"] == "/ws/proj", seen[-1]
+    assert out.startswith("[已改回工作区]"), out[:40]
+    # 内部标记不能混进真正发给 server 的参数
+    assert not [k for k in seen[-1] if k.startswith("_hermes")]
+
+
+def test_no_change_is_stated_not_silent():
+    """agent 自述"已创建 xxx"而工作区毫无改动，是最值得当场看见的一种矛盾——
+    真机就是这么被漏过去的。但**测不了要保持安静**，别把"没测"说成"没改"。"""
+    from agentcore.mcp_client.gitwatch import render_changes
+
+    assert "工作区无改动" in render_changes([], measurable=True)
+    assert render_changes([], measurable=False) == ""
+    assert "?? a.py" in render_changes(["?? a.py"])
 
 
 def test_effective_cwd_is_echoed_in_the_result():

@@ -34,8 +34,12 @@ def test_unmeasurable_is_not_the_same_as_clean():
     assert diff_status([], []) == []
 
 
-def test_render_is_silent_when_nothing_changed():
-    assert render_changes([]) == ""
+def test_render_states_no_change_but_stays_silent_when_unmeasurable():
+    """**"没有改动"要说出来**：agent 自述"已创建 xxx"而工作区毫无改动，
+    是最值得当场看见的矛盾（2026-08-21 真机就是这么漏过去的）。
+    但测不了（不是 git 仓库/没装 git）要保持安静——别把"没测"说成"没改"。"""
+    assert "工作区无改动" in render_changes([], measurable=True)
+    assert render_changes([], measurable=False) == ""
     out = render_changes(["?? a.py", " M b.py"])
     assert "2 处" in out and "?? a.py" in out
 

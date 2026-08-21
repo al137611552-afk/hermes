@@ -76,6 +76,7 @@ THREAD_KEYS = ("threadId", "thread_id", "conversationId", "sessionId")
 # prepare() 用它把"这次是自动接续的"传给 run()。**放在 params 里而不是实例上**：
 # 同一个 McpTool 被所有会话共用，放实例上会在并发调用之间串台。
 RESUMED_KEY = "_hermes_resumed"
+CLAMPED_KEY = "_hermes_clamped"      # prepare 把"目录被改回来了"传给 run()，同样不进请求
 
 
 def extract_thread_id(result) -> str:
@@ -104,6 +105,35 @@ def thread_param(input_schema: dict) -> str:
         if k in props:
             return k
     return ""
+
+
+def clamp_cwd(requested: str, workspace: str) -> tuple:
+    """把 agent 请求的工作目录**夹回工作区之内**（纯函数）。返回 (最终目录, 说明)。
+
+    规则与 hermes 文件工具同源（`Tool.resolve` 限工作区）：
+      - 没给 / 给了工作区本身 → 用工作区，无说明；
+      - 给了工作区**内**的子目录 → 照用（子目录是正当需求）；
+      - 给了工作区**外**的路径 → **改回工作区根**并说明。
+
+    为什么强制而不是"没给才补"：2026-08-21 真机——Codex 在别的目录里建了整个项目、
+    还从那儿起了服务，工作区里一个文件都没有，用户翻进程列表才发现。
+    **"它只可能在这个工作区里干活"这条保证，比让模型自由选目录值钱得多。**
+    """
+    ws = str(workspace or "").strip()
+    if not ws:
+        return str(requested or ""), ""          # 没绑工作区：不干预（存量调用方）
+    req = str(requested or "").strip()
+    if not req:
+        return ws, ""
+    try:
+        import os
+        a = os.path.normcase(os.path.abspath(req))
+        b = os.path.normcase(os.path.abspath(ws))
+        if a == b or a.startswith(b + os.sep):
+            return req, ""                        # 工作区内（含子目录）：照用
+    except Exception:  # noqa: BLE001
+        return ws, ""
+    return ws, f"[已改回工作区] 请求的目录在工作区之外（{req}）——agent 只在工作区内干活\n"
 
 
 class ThreadMemory:
@@ -193,22 +223,27 @@ class McpTool(Tool):
         真正会执行的参数（cwd 决定它在哪儿干活，看不到就等于没确认）。
         """
         params = dict(params or {})
-        params.pop(RESUMED_KEY, None)     # 幂等：loop 与 run 会各调一次
+        for k in (RESUMED_KEY, CLAMPED_KEY):
+            params.pop(k, None)           # 幂等：loop 与 run 会各调一次
         key = self._thread_key
         if key and self._threads is not None and not any(params.get(k) for k in THREAD_KEYS):
             last = self._threads.get(self.server)
             if last:
                 params[key] = last
                 params[RESUMED_KEY] = last      # run() 取走，用来在结果里标一句
-        # cwd：schema 收这个参数、模型又没给 → 用当前会话的工作区。
-        # 不补的话它就在 hermes 自己的安装目录里干活（真机踩过），而且**不报错**。
-        if self._takes_cwd and not params.get("cwd") and self.workspace:
-            params["cwd"] = self.workspace
+        # cwd：**强制夹回工作区**（工作区内的子目录照用）。不是"没给才补"——
+        # 模型给错一个目录，agent 就整场在别处干活，而且全程无声（真机踩过）。
+        if self._takes_cwd and self.workspace:
+            fixed, why = clamp_cwd(params.get("cwd"), self.workspace)
+            params["cwd"] = fixed
+            if why:
+                params[CLAMPED_KEY] = why
         return params
 
     def run(self, params: dict, stream=None):
         params = self.prepare(params)
         resumed = params.pop(RESUMED_KEY, "")
+        clamped = params.pop(CLAMPED_KEY, "")
         # agent 型调用（schema 收 cwd 的那种）：**调用前后各取一次 git 状态**。
         # 事后取一次会把用户自己没提交的改动算到 agent 头上——那种"自信的错数"比没有更糟。
         watch_cwd = str(params.get("cwd") or "") if self._takes_cwd else ""
@@ -249,7 +284,10 @@ class McpTool(Tool):
         note = f"[已自动接续 {self._thread_key}={resumed}]\n" if resumed else ""
         tail = f"\n\n[{self._thread_key or 'thread'}] {tid}（追问同一件事时带上它）" if tid else ""
         # **改了什么由 git 说，不由 agent 自述说**（同评测那条「判分优先程序化」）
-        changed = render_changes(diff_status(before, status_lines(watch_cwd))) if watch_cwd else ""
-        text = f"{misplaced}{note}{text}{where}{tail}{changed}"
+        after = status_lines(watch_cwd) if watch_cwd else None
+        changed = (render_changes(diff_status(before, after), measurable=(before is not None
+                                                                         and after is not None))
+                   if watch_cwd else "")
+        text = f"{clamped}{misplaced}{note}{text}{where}{tail}{changed}"
         return ToolOutput(text=text, blocks=blocks) if blocks else text
 
