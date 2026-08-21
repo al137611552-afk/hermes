@@ -228,6 +228,62 @@ class Api:
         os.environ[env_name] = value  # 即时生效，无需重启
         return {"ok": True, "env": env_name, "set": bool(value), "preview": mask_key(value)}
 
+    # ---- 🔍 联网检索（Firecrawl 托管源）------------------------------------
+    # 为什么单独一页：这把 key **不属于任何模型档案**，进不了上面按 api_key_env 收集的 key 列表；
+    # 而"配了 key 却仍走 bing"是真实踩过的坑（2026-08-21）——档位与 key 是**两个**都要对的条件，
+    # 分散在 config.yaml 与 .env 两个文件里，谁也看不出自己缺哪一半。
+    # 所以这一页把两半放在同一屏，并回 `effective`：**没 key 时档位一律等于 off**，直说。
+    def get_web_search(self) -> dict:
+        """「联网检索」面板数据：Firecrawl key 状态（掩码，不回明文）+ 档位 + 候选 + 实际生效档位。"""
+        from ..config import _CHOICES_BY_KEY
+        from ..tools.web import FIRECRAWL_KEY_ENV, firecrawl_key, firecrawl_quota_exhausted
+
+        spec = _CHOICES_BY_KEY["web.firecrawl"]
+        key = firecrawl_key()
+        mode = getattr(self.config.web, "firecrawl", "off")
+        quota = firecrawl_quota_exhausted()
+        return {"ok": True, "env": FIRECRAWL_KEY_ENV, "env_path": str(APP_DIR / ".env"),
+                "key_set": bool(key), "preview": mask_key(key),
+                "mode": mode, "options": [dict(o) for o in spec["options"]],
+                "hint": spec["hint"],
+                # 实际生效档位：没 key 一律 off；配额用尽本进程内也已退回免 key 链路
+                "effective": mode if (key and not quota) else "off",
+                "quota_exhausted": quota}
+
+    def set_web_search(self, updates: dict) -> dict:
+        """面板改 key / 档位：写盘（.env / choices.json）+ 即时生效，返回刷新后的面板数据。
+
+        key 走现成的 set_api_key（同一份 .env 写入逻辑，不另写一遍）；
+        档位改完要**重建工具注册表**——WebSearchTool 在建实例时就把档位吃进去了，不重建下一步还是老档。
+        """
+        from ..config import set_choices, _CHOICES_BY_KEY, _coerce_choice
+        from ..tools.web import FIRECRAWL_KEY_ENV, reset_firecrawl_quota
+
+        updates = updates or {}
+        if "key" in updates:
+            r = self.set_api_key(FIRECRAWL_KEY_ENV, updates["key"])
+            if not r.get("ok"):
+                return r
+            # 换 key 就清掉「配额用尽」的粘滞标记：否则本进程内新 key 也一直被当成已用尽，
+            # 而"配额用尽换把 key"正是会来这一页的主要原因之一。
+            reset_firecrawl_quota()
+        if "mode" in updates:
+            val = _coerce_choice(_CHOICES_BY_KEY["web.firecrawl"], updates["mode"])
+            if val is None:
+                return {"ok": False, "error": f"未知档位 {updates['mode']}"}
+            set_choices({"web.firecrawl": val})
+            self.config.web.firecrawl = val      # 活动 config 是各会话共用的同一引用
+            self._rebuild_registries()
+        return self.get_web_search()
+
+    def _rebuild_registries(self) -> None:
+        """让改过的工具相关配置对所有对话即时生效（单个失败不连累其余）。"""
+        for conv in (*self.conversations.values(), self.active):
+            try:
+                conv._build_registry()
+            except Exception:  # noqa: BLE001
+                pass
+
     # ---- 模型档案管理（产品化②：GUI 增删改模型，不碰 config.yaml 注释）------
     def get_model_profiles(self) -> dict:
         """列出所有模型档案及关键字段，标记内置 / 用户（用户档案可改可删）。"""

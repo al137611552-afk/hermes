@@ -843,6 +843,7 @@
   // 固定面板（非 provider）。顺序即展示顺序；group 决定归到哪一区。
   const SETTINGS_PANES = [
     { key: "__browser__", label: "🌐 浏览器穿透", group: "capabilities" },
+    { key: "__websearch__", label: "🔍 联网检索", group: "capabilities" },
     { key: "__mcp__", label: "🔌 MCP 扩展", group: "capabilities" },
     { key: "__hooks__", label: "🪝 Hooks", group: "capabilities" },
     { key: "__skills__", label: "🧩 技能", group: "capabilities" },
@@ -903,6 +904,18 @@
   function hooksNavBadge(hooks) {
     const n = ((hooks || []).filter((h) => !h || h.enabled !== false)).length;
     return n ? { text: String(n), tone: "muted" } : null;
+  }
+
+  // 联网检索：报的是**实际生效档位**，不是配置里写的那个。
+  // 「配了 primary 但没 key，于是一直走 bing」是真实踩过的坑（2026-08-21）——
+  // 导航上直接说「缺 key」，比让人点进去逐项对账强。
+  function webSearchNavBadge(s) {
+    if (!s || !s.ok) return null;
+    const mode = s.mode || "off";
+    if (mode === "off") return null;              // 只用免 key 链路＝默认态，不用喊
+    if (!s.key_set) return { text: "缺 key", tone: "warn" };
+    if (s.quota_exhausted) return { text: "配额用尽", tone: "warn" };
+    return { text: mode, tone: "ok" };
   }
 
   // 把 provider 列表 + 固定面板拼成分组导航。badges: {面板key: {text,tone}}；空组自动丢掉。
@@ -1044,7 +1057,7 @@
     mergeSlashCommands, findCustomCommand, skillCreatorPrompt, skillScopeAction,
     annotateDiffLines, formatLineFeedback,
     mcpNavBadge, browserNavBadge, skillsNavBadge, hooksNavBadge, commandsNavBadge,
-    permissionsNavBadge,
+    permissionsNavBadge, webSearchNavBadge,
     SKILL_GRADES, skillGradeBadge, installConfirmLevel, filterMarketEntries,
     groupSkillsBySource, SOURCE_LABELS, skillCountLabel,
     UPDATE_STATUS, updateStatusLabel, summarizeUpdateCheck,

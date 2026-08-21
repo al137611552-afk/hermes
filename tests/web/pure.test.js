@@ -523,7 +523,7 @@ test("buildSettingsNav：provider 归模型服务，固定面板按组分到扩�
   assert.deepEqual(models.items.map((i) => i.key), ["ark", "ds"]);
   assert.deepEqual(models.items.map((i) => i.dot), [true, false]);   // 亮灭点＝enabled
   assert.deepEqual(groups[1].items.map((i) => i.key),
-    ["__browser__", "__mcp__", "__hooks__", "__skills__", "__commands__"]);
+    ["__browser__", "__websearch__", "__mcp__", "__hooks__", "__skills__", "__commands__"]);
   assert.deepEqual(groups[2].items.map((i) => i.key),
     ["__appearance__", "__features__", "__permissions__", "__limits__"]);
   assert.ok(groups[1].items.every((i) => i.kind === "pane"));

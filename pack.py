@@ -39,6 +39,9 @@ ENV_TEMPLATE = """# 填入你的 API key 后保存（此文件不要外发）。
 #   OPENAI_API_KEY=
 #   MOONSHOT_API_KEY=
 #   ARK_API_KEY=          # 火山方舟
+#
+# 检索源（不是模型 provider，可留空——免 key 的 bing+ddg 链路永远可用）：
+#   FIRECRAWL_API_KEY=    # 有 key 时 config.yaml 的 web.firecrawl 才生效，没 key 等于 off
 """
 
 

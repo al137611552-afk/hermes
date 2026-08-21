@@ -836,6 +836,85 @@ def merge_limits(data: dict, path: "Path | None" = None) -> dict:
     return data
 
 
+# ── 统一「枚举型设置」（GUI 下拉改档位，免手编 config.yaml）──────────────────
+# 与上面的 limits 三件套同构，只是值域是**有限候选**而不是数字区间：
+# 单一数据源 CHOICES_SPEC 同时驱动 ① 校验/持久化 ② 前端渲染下拉。key = "section.field" 点分路径。
+#
+# 为什么不塞进 feature_flags：那套只覆盖 `agent` 段且值是布尔；也不塞进 limits：那套只吃数字。
+# 档位这类"三四个具名档"两边都放不进，硬塞会把两个机制的语义都搞浑。
+CHOICES_FILE = "choices.json"  # GUI 下拉写它、load_config 据此覆盖各段默认
+CHOICES_SPEC = (
+    {"key": "web.firecrawl", "group": "联网检索", "label": "托管源档位",
+     "hint": "需要 .env 里的 FIRECRAWL_API_KEY；没 key 时这一项一律等于 off",
+     "options": [
+         {"value": "off", "label": "off · 只用免 key 链路",
+          "desc": "bing + DDG + HTTP 直读，一分钱不花"},
+         {"value": "fallback", "label": "fallback · 不达标才升级",
+          "desc": "省配额，但真机实测三条判据几乎从不触发"},
+         {"value": "primary", "label": "primary · Firecrawl 主搜（默认）",
+          "desc": "它没结果/给不够/不可用时，免 key 链路照样兜底"},
+         {"value": "always", "label": "always · 三路并发进 RRF",
+          "desc": "最花配额；RRF 会让「多引擎都有」的上浮，独家好结果未必占优"},
+     ]},
+)
+_CHOICES_BY_KEY = {s["key"]: s for s in CHOICES_SPEC}
+
+
+def _coerce_choice(spec: dict, v):
+    """把值规整成 spec 里的某个候选值；不在候选里返回 None（跳过该项，绝不写脏值）。"""
+    val = str(v or "").strip().lower()
+    return val if any(o["value"] == val for o in spec["options"]) else None
+
+
+def read_choices(path: "Path | None" = None) -> dict:
+    """读 GUI 保存的枚举型设置（点分 key→候选值）。不存在/坏档返回 {}。"""
+    p = path or (APP_DIR / CHOICES_FILE)
+    if not p.is_file():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def set_choices(updates: dict, path: "Path | None" = None) -> dict:
+    """合并写入枚举型设置（只收 CHOICES_SPEC 白名单 key、只收合法候选值），返回合并后全量。"""
+    p = path or (APP_DIR / CHOICES_FILE)
+    cur = read_choices(p)
+    for k, v in (updates or {}).items():
+        spec = _CHOICES_BY_KEY.get(k)
+        if spec is None:
+            continue
+        val = _coerce_choice(spec, v)
+        if val is not None:
+            cur[k] = val
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cur, ensure_ascii=False), encoding="utf-8")
+    return cur
+
+
+def merge_choices(data: dict, path: "Path | None" = None) -> dict:
+    """把 GUI 保存的枚举型设置覆盖到对应 config 段（load_config 用）。key='section.field'。"""
+    saved = read_choices(path)
+    if not saved:
+        return data
+    for k, v in saved.items():
+        spec = _CHOICES_BY_KEY.get(k)
+        if spec is None:
+            continue
+        val = _coerce_choice(spec, v)
+        if val is None:
+            continue
+        section, _, field = k.partition(".")
+        if not field:
+            continue
+        sec = dict(data.get(section) or {})
+        sec[field] = val
+        data[section] = sec
+    return data
+
+
 def merge_browser_mcp(data: dict) -> dict:
     """若 GUI 启用了浏览器穿透，把 Playwright MCP server 合并进 data['mcp']（不动用户手编的其它 server）。"""
     if not browser_mcp_enabled():
@@ -1129,6 +1208,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     data = merge_browser_mcp(data)  # GUI 一键开关启用的浏览器穿透（Playwright MCP；穿透 browser 优先）
     data = merge_feature_flags(data)  # GUI「功能开关」面板保存的 agent 开关（覆盖 config.yaml 默认）
     data = merge_limits(data)         # GUI「限额与预算」面板保存的数值参数（覆盖各段默认）
+    data = merge_choices(data)        # GUI 下拉保存的枚举型设置（如「联网检索」的 Firecrawl 档位）
     data = merge_user_permissions(data)  # 用户放行的权限规则（面板加的 / 点「总是允许这类」记下的）
     _resolve_shell(data)              # shell: auto / 缺省 → 按系统选（Windows→powershell，macOS/Linux→bash）
     return AppConfig(**data)

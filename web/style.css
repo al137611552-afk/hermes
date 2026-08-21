@@ -1981,3 +1981,13 @@ body.plan-on .composer::before {
 .usage-adv .upf { display: inline-flex; flex-direction: column; gap: 3px; margin-top: 7px; }
 .usage-fill { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .usage-fill[hidden] { display: none; }
+
+/* 🔍 联网检索面板（Firecrawl key + 档位）。自带样式、不蹭老类：style.css 后写的同特异性规则永远赢。 */
+.ws-warn { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px;
+  padding: 10px 12px; margin: 0 0 16px; font-size: 12.5px; line-height: 1.65; color: var(--text); }
+.ws-warn b { color: var(--warn); }
+.ws-path { color: var(--muted); font-size: 11.5px; line-height: 1.6; margin-top: 6px; }
+.ws-path code { background: var(--code-bg); color: var(--code-fg); border-radius: 4px;
+  padding: 1px 5px; font-size: 11px; word-break: break-all; }
+.ws-desc { color: var(--text); font-size: 12.5px; line-height: 1.6; margin-top: 8px; }
+.ws-key-clear:hover { border-color: var(--danger); color: var(--danger); }

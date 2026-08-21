@@ -3724,14 +3724,16 @@ function closeSettings() { settingsOverlay.hidden = true; popLayer(settingsOverl
 async function refreshNavBadges() {
   const get = async (fn) => { try { return await fn(); } catch (e) { return null; } };
   const api = window.pywebview.api;
-  const [mcp, br, sk, hk, cmd] = await Promise.all([
+  const [mcp, br, sk, hk, cmd, ws] = await Promise.all([
     get(() => api.get_mcp_servers()), get(() => api.get_browser_mcp_status()),
     get(() => api.get_skills()), get(() => api.get_hooks()), get(() => api.get_commands()),
+    get(() => api.get_web_search()),
   ]);
   const perm = await get(() => api.get_permissions());
   navBadges = {
     __mcp__: mcpNavBadge(mcp),
     __browser__: browserNavBadge(br),
+    __websearch__: webSearchNavBadge(ws),
     __skills__: skillsNavBadge(sk && sk.skills),
     __commands__: commandsNavBadge(cmd && cmd.commands, cmd && cmd.errors),
     __permissions__: permissionsNavBadge(perm && perm.user_allow),
@@ -3877,6 +3879,64 @@ function onBrowserDone(data) {
   if (data && data.ok) showToast(`✅ 浏览器穿透已启用，连上 ${data.tools} 个工具`);
   else showToast("⚠ 浏览器穿透启用失败：" + ((data && data.error) || ""));
   if (provSelected === "__browser__" && settingsOverlay && !settingsOverlay.hidden) renderBrowserPane();
+}
+
+// 🔍 联网检索：Firecrawl 的 key 与档位放同一屏。
+// 分开放过一次的教训（2026-08-21）：key 在 .env、档位在 config.yaml，两个都要对才生效，
+// 而任一边缺了都只表现为"搜索照旧走 bing"——没有任何地方说得出缺的是哪一半。
+async function renderWebSearchPane() {
+  const s = (await window.pywebview.api.get_web_search()) || {};
+  const opts = (s.options || []).map((o) =>
+    `<option value="${escapeHtml(o.value)}"${o.value === s.mode ? " selected" : ""}>${escapeHtml(o.label)}</option>`
+  ).join("");
+  const cur = (s.options || []).find((o) => o.value === s.mode);
+  const keyStatus = s.key_set
+    ? `<span class="key-status set">已配置 ${escapeHtml(s.preview || "")}</span>`
+    : '<span class="key-status unset">未配置</span>';
+  // 配置值 ≠ 实际生效值时必须当场说破，别让人对着「primary」纳闷为什么还是 bing
+  let warn = "";
+  if (s.mode !== "off" && !s.key_set) {
+    warn = `⚠ 档位写着「${escapeHtml(s.mode)}」，但没有 ${escapeHtml(s.env || "")}，` +
+      "所以<b>实际等于 off</b>——现在搜索走的是免 key 的 bing + DDG。填上下面的 Key 即可生效。";
+  } else if (s.quota_exhausted) {
+    warn = `⚠ 本次运行中 Firecrawl 配额已用尽（${escapeHtml(s.quota_exhausted)}），已<b>自动退回免 key 链路</b>。` +
+      "换一把 Key 或下个账期重启应用即可恢复。";
+  }
+  provDetailEl.innerHTML =
+    '<div class="prov-d-head"><span class="prov-d-title">🔍 联网检索</span></div>' +
+    '<p class="settings-hint">免 key 链路（Bing + DuckDuckGo 并发融合 + HTTP 直读）<b>永远可用</b>，' +
+    '不配任何东西也能搜。下面是可选的<b>托管检索源</b> Firecrawl——它买得到增量的主要是 <b>JS 空壳页</b>' +
+    '（直读只有几百字符、正文靠脚本渲染的那种）；<b>强反爬与登录墙它一样打不穿</b>，那种页只有浏览器穿透有戏。</p>' +
+    (warn ? `<div class="ws-warn">${warn}</div>` : "") +
+    `<div class="prov-field"><div class="prov-label">Firecrawl API Key ${keyStatus}</div>` +
+    `<div class="key-edit"><input type="password" class="prov-key ws-key" placeholder="${s.key_set ? "已配置，重填可覆盖…" : "粘贴 Firecrawl API Key（fc-…）"}">` +
+    '<button class="ws-key-save key-save">保存</button></div>' +
+    `<div class="ws-path">保存后写入 <code>${escapeHtml(s.env_path || ".env")}</code> 的 <code>${escapeHtml(s.env || "")}</code>，即时生效、不用重启。</div>` +
+    (s.key_set ? '<div class="model-ops"><button class="ws-key-clear">清除 Key</button></div>' : "") +
+    '</div>' +
+    '<div class="prov-field"><div class="prov-label">托管源档位</div>' +
+    `<select class="feat-input ws-mode">${opts}</select>` +
+    `<div class="ws-desc">${cur ? escapeHtml(cur.desc) : ""}</div>` +
+    `<div class="ws-path">${escapeHtml(s.hint || "")}</div></div>`;
+  const q = (sel) => provDetailEl.querySelector(sel);
+  const save = async (updates, okMsg) => {
+    const r = await window.pywebview.api.set_web_search(updates);
+    if (r && r.ok) { showToast(okMsg); renderWebSearchPane(); refreshNavBadges(); }
+    else showToast("⚠ " + ((r && r.error) || "保存失败"));
+  };
+  const keySave = () => {
+    const v = q(".ws-key").value.trim();
+    if (!v) { showToast("⚠ 先粘贴 Key 再保存（要清除请用「清除 Key」）"); return; }
+    save({ key: v }, "✅ 已保存 Firecrawl Key");
+  };
+  q(".ws-key-save").addEventListener("click", keySave);
+  q(".ws-key").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); keySave(); } });
+  const clr = q(".ws-key-clear");
+  if (clr) clr.addEventListener("click", async () => {
+    if (!await askConfirm("清除 Firecrawl Key？清除后联网检索只走免 key 的 Bing + DDG。", { danger: true })) return;
+    save({ key: "" }, "🗑 已清除 Firecrawl Key");
+  });
+  q(".ws-mode").addEventListener("change", (e) => save({ mode: e.target.value }, "已切换档位，下一次搜索即生效"));
 }
 
 function renderAppearancePane() {
@@ -4827,6 +4887,7 @@ async function renderLimitsPane() {
 
 function renderProviderDetail() {
   if (provSelected === "__browser__") { renderBrowserPane(); return; }
+  if (provSelected === "__websearch__") { renderWebSearchPane(); return; }
   if (provSelected === "__mcp__") { renderMcpPane(); return; }
   if (provSelected === "__hooks__") { renderHooksPane(); return; }
   if (provSelected === "__skills__") { renderSkillsPane(); return; }
