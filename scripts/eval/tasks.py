@@ -1194,6 +1194,10 @@ TASKS: dict[str, Task] = {
         _setup_noop, _check_truncation_file,
         tier="L2", expect_nudges={"truncation_hint": True, "*": False},
         max_tokens=1500, max_steps=16,
+        replayable=False,
+        unreplayable_why="模型会用 `node --check` 验语法，报错里带 Node **内部行号与版本串**"
+                         "（`node:internal/modules/cjs/loader:1763:18` / `Node.js v24.15.0`）——"
+                         "跟着 Node 版本走，开发机与 CI 必然不同。版本是**真信息**、不该归一化",
     ),
 
     # ---------- 批 2：真网（只在真跑时观测，进不了回放门）----------
