@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from harness import run_task  # noqa: E402
 from record import build_record, git_sha, new_run_id, runs_root, write_record  # noqa: E402
 from tasks import TASKS, TIERS, verify_nudges  # noqa: E402
+from agentcore.tools.web import FIRECRAWL_MODES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -93,8 +94,14 @@ def main() -> int:
     ap.add_argument("--no-record", action="store_true", help="不落盘（临时试跑用；正式对比别用）")
     ap.add_argument("--tier", choices=TIERS, help="只跑某一层（L1 冒烟 / L2 能力面 / L3 复合）")
     ap.add_argument("--offline", action="store_true", help="跳过需要联网的任务")
-    ap.add_argument("--firecrawl", default="", choices=("", "off", "fallback", "always"),
-                    help="覆盖 web.firecrawl 三档（默认跟随 config.yaml）。"
+    ap.add_argument("--network-only", action="store_true",
+                    help="只跑需要联网的任务。做 Firecrawl 档位 A/B 用："
+                         "两档各一条命令、各得一个 run_id，才能 report.py 直接对比；"
+                         "用 --task 逐个跑会散成 5 个 run，没法比")
+    # 档位从 FIRECRAWL_MODES 取，别在这儿另写一份：默认档从 fallback 改成 primary 时
+    # 这里没跟着改，于是"默认档"反而是唯一跑不了 A/B 的档（2026-08-21 踩到）
+    ap.add_argument("--firecrawl", default="", choices=("",) + FIRECRAWL_MODES,
+                    help=f"覆盖 web.firecrawl 档位（{'/'.join(FIRECRAWL_MODES)}，默认跟随 config.yaml）。"
                          "**只影响真网任务**——桩世界会关掉 web.enabled，那条路上它不参与。"
                          "两档各跑一轮即 A/B；档位会落进 Run Record 的 web 快照，故两轮可比")
     ap.add_argument("--record", action="store_true",
@@ -141,6 +148,9 @@ def main() -> int:
         names = [n for n in names if not TASKS[n].network]
         if skipped:
             print(f"（--offline 跳过需联网任务：{', '.join(skipped)}）")
+    if args.network_only:
+        names = [n for n in names if TASKS[n].network]
+        print(f"（--network-only 只跑联网任务：{', '.join(names) or '无'}）")
     if not names:
         print("没有符合条件的任务")
         return 0

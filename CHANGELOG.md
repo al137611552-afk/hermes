@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **`--network-only`：只跑真网任务**，与 `--offline` 对称。做 Firecrawl 档位 A/B 需要
+  **两档各得一个 run_id** 才能 `report.py` 直接对比；用 `--task` 逐个跑会散成 5 个 run，没法比。
+
+### 修复
+
+- **`--firecrawl` 的档位漏了 `primary`**。默认档从 `fallback` 改成 `primary` 时这里没跟着改，
+  于是**唯一跑不了 A/B 的恰恰是默认档**。现在档位直接取 `FIRECRAWL_MODES`，不再另写一份。
+
 ### 修复
 
 - **回放门不再依赖"在哪台机器上跑"**。CI 从块 V3 收尾（run #2）起一直红、本地一直绿，

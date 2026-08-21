@@ -4,6 +4,65 @@
 
 ---
 
+## 2026-08-21（收尾）— 回放门可移植 + Firecrawl 档位 A/B 实测
+
+**状态**：✅ 已完成，CI 全绿（run 32450716566，`test` + `floor` 双绿）
+
+### 1. CI 从块 V3 收尾（run #2）起一直红，本地一直绿
+
+根因**不在回放逻辑**，是**机器特有内容漏进了 cassette 指纹**。前后四处：
+
+| # | 漏的东西 | 为什么换台机器就变 | 修法 |
+|---|---|---|---|
+| 1 | 技能附带资源的**绝对路径** | 检出路径不同 | `fold_app_dir` 折成 `<app>` |
+| 2 | shell `time` 的 `real 0m1.8s` | 度量本机快慢 | `normalize_noise` 归一 |
+| 3 | 临时目录的**父目录** | 报错回溯、`<tmp>/eval.db` 落在 ws 的兄弟位置 | 折父目录 |
+| 4 | 技能清单里的 `__pycache__/*.pyc` | **只有跑过技能自检脚本的机器才有**，还分 311/312 | `list_skill_files` 跳过生成物 |
+| 5 | `rglob` 的列举顺序 | 跟文件系统走 | `sorted()` |
+
+第 4 条同时是行为 bug：`.pyc` 不该被当成"可供按需读取的资源"推给模型。
+
+**验证方法本身也修正了**：上一轮我在 `/tmp/wtv` 里只**手抄了部分文件**做异路径验证，
+得出"L2 11/12"的结论 —— 那是抄不全造成的假象。这轮改用 `git worktree` 建**干净检出**，
+并**照搬 CI 的步骤**（`cp tests/cassettes/model.yaml user_models.yaml`，否则报"还没有配置任何模型"）：
+原地 L1 1/1 / L2 12/12 / L3 6/6，异路径**同样**全绿。
+
+> 教训：**改动或重录前先问一句"这段内容换台机器还一样吗"**。
+> 以及：验可移植性要用干净检出，手抄文件的"复现"不算复现。
+
+### 2. Firecrawl `primary` vs `always` A/B（真网实测）
+
+```bash
+# 两档各一条命令，各得一个 run_id 才能对比
+python scripts/eval/run_eval.py --network-only --firecrawl primary --tag fc-primary --model dsv4 --quiet
+python scripts/eval/run_eval.py --network-only --firecrawl always  --tag fc-always  --model dsv4 --quiet
+python scripts/eval/report.py <primary_run_id> <always_run_id>
+# credits 用前后差值实测：
+curl -s -H "Authorization: Bearer $FIRECRAWL_API_KEY" https://api.firecrawl.dev/v2/team/credit-usage
+```
+
+6 个真网任务（`quick_query` + 5 个 `net_*`），各跑 1 轮：
+
+| | primary | always | 差 |
+|---|---|---|---|
+| 通过率 | 6/6 | 6/6 | 无差别 |
+| credits | 39 | 37 | 无差别（噪声内） |
+| 总耗时 | 570s | 868s | **+298s / +52%** |
+
+**结论：维持默认 `primary`，别开 `always`。** 理由变了：原先以为 always 的代价是配额，
+实测**配额几乎没差**——真正的代价是**时间**，而且 **6 个任务无一例外全都变慢**
+（+7.6s ~ +109s）。always 让每次读页都多绕一趟 Firecrawl 渲染，而这些页免 key 链路本来就读得动。
+
+局限：n=1、真网每跑一变。但"6 个全变慢"方向一致，不像随机噪声；要更硬的结论就 `--repeat 3`。
+
+**顺带修掉一个挡路的 bug**：`--firecrawl` 的 choices 里漏了 `primary`
+（默认档改名时没同步），**唯一跑不了 A/B 的恰恰是默认档**。现在直接取 `FIRECRAWL_MODES`。
+
+**新增** `--network-only`（与 `--offline` 对称）：A/B 要两档各一个 run_id 才能 `report.py` 比，
+用 `--task` 逐个跑会散成 5 个 run。
+
+---
+
 ## 2026-08-21（深夜）— v3.73.0：三条真机问题，先定性再动手
 
 **状态**：✅ 已交付并验证，已定版 v3.73.0
