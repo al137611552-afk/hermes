@@ -1,0 +1,110 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:d182d1d682", "msg0:7005da1e4b", "msg1:8287d98cc6", "msg2:bd511fb9ff"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "The"}
+{"type": "thinking", "text": " search"}
+{"type": "thinking", "text": " results"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " not"}
+{"type": "thinking", "text": " good"}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": " they"}
+{"type": "thinking", "text": " returned"}
+{"type": "thinking", "text": " keyboards"}
+{"type": "thinking", "text": " that"}
+{"type": "thinking", "text": " cost"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "129"}
+{"type": "thinking", "text": "9"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "899"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "238"}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": " yuan"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " all"}
+{"type": "thinking", "text": " way"}
+{"type": "thinking", "text": " above"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "500"}
+{"type": "thinking", "text": " yuan"}
+{"type": "thinking", "text": " budget"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " The"}
+{"type": "thinking", "text": " search"}
+{"type": "thinking", "text": " engine"}
+{"type": "thinking", "text": " seems"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " be"}
+{"type": "thinking", "text": " giving"}
+{"type": "thinking", "text": " poor"}
+{"type": "thinking", "text": " results"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "possibly"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " search"}
+{"type": "thinking", "text": " quality"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " bad"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " returning"}
+{"type": "thinking", "text": " expensive"}
+{"type": "thinking", "text": " keyboards"}
+{"type": "thinking", "text": ")."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " try"}
+{"type": "thinking", "text": " different"}
+{"type": "thinking", "text": " search"}
+{"type": "thinking", "text": " terms"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " approaches"}
+{"type": "thinking", "text": ".\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " try"}
+{"type": "thinking", "text": " more"}
+{"type": "thinking", "text": " specific"}
+{"type": "thinking", "text": " searches"}
+{"type": "thinking", "text": " about"}
+{"type": "thinking", "text": " budget"}
+{"type": "thinking", "text": " silent"}
+{"type": "thinking", "text": " mechanical"}
+{"type": "thinking", "text": " keyboards"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " Chinese"}
+{"type": "thinking", "text": "."}
+{"type": "text", "text": "第一次"}
+{"type": "text", "text": "搜索结果"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "理想"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "返回"}
+{"type": "text", "text": "的都是"}
+{"type": "text", "text": "千"}
+{"type": "text", "text": "元"}
+{"type": "text", "text": "级"}
+{"type": "text", "text": "键盘"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "500"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "元"}
+{"type": "text", "text": "预算"}
+{"type": "text", "text": "不符"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "我"}
+{"type": "text", "text": "换"}
+{"type": "text", "text": "更"}
+{"type": "text", "text": "精准"}
+{"type": "text", "text": "的关键"}
+{"type": "text", "text": "词"}
+{"type": "text", "text": "重新"}
+{"type": "text", "text": "搜"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_j4oFr2oHJsMCv63GqbdA3176", "name": "web_search", "input": {"query": "百元 静音机械键盘 推荐 办公室 声音小"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_bWXYcGCii7NAtnXhlntF9224", "name": "web_search", "input": {"query": "RK 狼蛛 达尔优 静音轴 机械键盘 价格 京东"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 979, "output": 209, "cache_read": 7936, "cache_write": 0}}}

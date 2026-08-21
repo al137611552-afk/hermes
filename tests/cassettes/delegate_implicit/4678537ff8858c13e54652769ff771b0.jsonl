@@ -1,0 +1,28 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:fd84f2544b"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "开始"}
+{"type": "thinking", "text": "逐个"}
+{"type": "thinking", "text": "读取"}
+{"type": "thinking", "text": "这些"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "我会"}
+{"type": "thinking", "text": "并行"}
+{"type": "thinking", "text": "读取"}
+{"type": "thinking", "text": "多个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "来提高"}
+{"type": "thinking", "text": "效率"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "读取"}
+{"type": "thinking", "text": "前"}
+{"type": "thinking", "text": "几个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_EHYYY3pIyhOSDf1zVpbL0619", "name": "read_file", "input": {"path": "src/agentcore/tools/git.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_9sCo5tmODMgIs3rgigrr7287", "name": "read_file", "input": {"path": "src/agentcore/tools/search.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_QhMKwLlZ830lFlGbDZCR9082", "name": "read_file", "input": {"path": "src/agentcore/tools/searchcode.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_03_512V2TCV00DuMaMO1kVO3511", "name": "read_file", "input": {"path": "src/agentcore/tools/codesearch.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_04_f8OkvYy3rFwBZyjqsYJU5488", "name": "read_file", "input": {"path": "src/agentcore/tools/screenshot.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 828, "output": 225, "cache_read": 5760, "cache_write": 0}}}

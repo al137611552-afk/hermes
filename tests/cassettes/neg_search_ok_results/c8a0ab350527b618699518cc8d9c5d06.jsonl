@@ -1,0 +1,294 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:40c28ff17b", "msg0:816a4aaff3", "msg1:833bd0f2f2", "msg2:829f1caa8c"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 29, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "已经"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "答案是"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "128"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "三个"}
+{"type": "thinking", "text": "信"}
+{"type": "thinking", "text": "源"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "官方"}
+{"type": "thinking", "text": "文档"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "cp"}
+{"type": "thinking", "text": "ython"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "源码"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "实践"}
+{"type": "thinking", "text": "笔记"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "都"}
+{"type": "thinking", "text": "一致"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "直接"}
+{"type": "thinking", "text": "回答"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "不需要"}
+{"type": "thinking", "text": "再"}
+{"type": "thinking", "text": " fetch"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "结论"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "f"}
+{"type": "text", "text": "unct"}
+{"type": "text", "text": "ools"}
+{"type": "text", "text": ".l"}
+{"type": "text", "text": "ru"}
+{"type": "text", "text": "_cache"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "max"}
+{"type": "text", "text": "size"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "参数"}
+{"type": "text", "text": "默认"}
+{"type": "text", "text": "值是"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "128"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "。**\n\n"}
+{"type": "text", "text": "依据"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "三个"}
+{"type": "text", "text": "信"}
+{"type": "text", "text": "源"}
+{"type": "text", "text": "一致"}
+{"type": "text", "text": "）：\n\n"}
+{"type": "text", "text": "1"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "Python"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "官方"}
+{"type": "text", "text": "文档"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "Python"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "13"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "签名"}
+{"type": "text", "text": "写作"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "@"}
+{"type": "text", "text": "f"}
+{"type": "text", "text": "unct"}
+{"type": "text", "text": "ools"}
+{"type": "text", "text": ".l"}
+{"type": "text", "text": "ru"}
+{"type": "text", "text": "_cache"}
+{"type": "text", "text": "(max"}
+{"type": "text", "text": "size"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "128"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " typed"}
+{"type": "text", "text": "=False"}
+{"type": "text", "text": ")"}
+{"type": "text", "text": "`\n"}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " https"}
+{"type": "text", "text": "://"}
+{"type": "text", "text": "docs"}
+{"type": "text", "text": ".p"}
+{"type": "text", "text": "ython"}
+{"type": "text", "text": ".org"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "zh"}
+{"type": "text", "text": "-c"}
+{"type": "text", "text": "n"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "/library"}
+{"type": "text", "text": "/f"}
+{"type": "text", "text": "unct"}
+{"type": "text", "text": "ools"}
+{"type": "text", "text": ".html"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": "2"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "CP"}
+{"type": "text", "text": "ython"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "源码"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "Lib"}
+{"type": "text", "text": "/f"}
+{"type": "text", "text": "unct"}
+{"type": "text", "text": "ools"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "函数"}
+{"type": "text", "text": "定义"}
+{"type": "text", "text": "就是"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "def"}
+{"type": "text", "text": " l"}
+{"type": "text", "text": "ru"}
+{"type": "text", "text": "_cache"}
+{"type": "text", "text": "(max"}
+{"type": "text", "text": "size"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "128"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " typed"}
+{"type": "text", "text": "=False"}
+{"type": "text", "text": ")"}
+{"type": "text", "text": "`\n"}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " https"}
+{"type": "text", "text": "://"}
+{"type": "text", "text": "github"}
+{"type": "text", "text": ".com"}
+{"type": "text", "text": "/python"}
+{"type": "text", "text": "/c"}
+{"type": "text", "text": "python"}
+{"type": "text", "text": "/blob"}
+{"type": "text", "text": "/main"}
+{"type": "text", "text": "/L"}
+{"type": "text", "text": "ib"}
+{"type": "text", "text": "/f"}
+{"type": "text", "text": "unct"}
+{"type": "text", "text": "ools"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " "}
+{"type": "text", "text": "第三方"}
+{"type": "text", "text": "实践"}
+{"type": "text", "text": "笔记"}
+{"type": "text", "text": "也"}
+{"type": "text", "text": "印证"}
+{"type": "text", "text": "了"}
+{"type": "text", "text": "默认"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "128"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "条"}
+{"type": "text", "text": "这一"}
+{"type": "text", "text": "约定"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "补充"}
+{"type": "text", "text": "几个"}
+{"type": "text", "text": "相关"}
+{"type": "text", "text": "细节"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "方便"}
+{"type": "text", "text": "你"}
+{"type": "text", "text": "参考"}
+{"type": "text", "text": "：\n\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "max"}
+{"type": "text", "text": "size"}
+{"type": "text", "text": "=None"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "设"}
+{"type": "text", "text": "上限"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "淘汰"}
+{"type": "text", "text": "旧"}
+{"type": "text", "text": "条目"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "f"}
+{"type": "text", "text": "unct"}
+{"type": "text", "text": "ools"}
+{"type": "text", "text": ".c"}
+{"type": "text", "text": "ache"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "等价"}
+{"type": "text", "text": "于"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "l"}
+{"type": "text", "text": "ru"}
+{"type": "text", "text": "_cache"}
+{"type": "text", "text": "(max"}
+{"type": "text", "text": "size"}
+{"type": "text", "text": "=None"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": "）。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "max"}
+{"type": "text", "text": "size"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "每次"}
+{"type": "text", "text": "调用"}
+{"type": "text", "text": "都"}
+{"type": "text", "text": "重新"}
+{"type": "text", "text": "计算"}
+{"type": "text", "text": "。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "typed"}
+{"type": "text", "text": "=True"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "不同类型的"}
+{"type": "text", "text": "参数"}
+{"type": "text", "text": "分开"}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "比如"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "1"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "和"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "1"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "视为"}
+{"type": "text", "text": "不同"}
+{"type": "text", "text": "键"}
+{"type": "text", "text": "）。\n\n"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "未"}
+{"type": "text", "text": "做"}
+{"type": "text", "text": "任何"}
+{"type": "text", "text": "改动"}
+{"type": "text", "text": "。"}
+{"type": "done", "meta": {"stop_reason": "end_turn", "usage": {"input": 608, "output": 293, "cache_read": 7936, "cache_write": 0}}}

@@ -211,6 +211,15 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   （真机：先只读问建议，追问让它改东西就卡死）。代价不对称，故**默认给 workspace-write**，
   `read-only` 只留给明确"只看不改"的场合。这条规则写在**工具说明里**（`sandbox_hint`），
   让模型第一次就选对——写权限有三道防线兜着（每次确认 / cwd 夹在工作区 / git 客观改动），不是裸奔。
+- **cassette 指纹要折的不止工作区，还有安装目录**（`fold_app_dir`）。技能的附带资源清单
+  （`list_skill_files`）返回**绝对路径**，它进 `load_skill` 的结果、进消息历史、进指纹——
+  于是同一份录音换个检出路径必然 miss。**CI 从块 V3 收尾（run #2）起一直红、而本地一直绿，
+  就是这个**（本地永远在同一个目录跑）。改动或重录前先想一句：**这段内容换台机器还一样吗**。
+  同源的还有两处：shell `time` 的 `real 0m1.8s`（度量本机快慢，已归一化）、
+  以及临时目录要折**父目录**（报错回溯、`<tmp>/eval.db` 都落在 ws 的兄弟位置）。
+- **机器特有的真信息不该归一化**：`which python` 的路径、`ls -l` 的文件元数据是**真信息**，
+  抹掉等于让回放门对着假输入判定。这类任务走 `replayable=False` + 写明理由
+  （`fail_missing_toolchain` 就是例）。
 - **贴进对话的图片会落盘到工作区** `.hermes/attachments/`（`multimodal/store.py`），
   并在消息里附上路径。**子 agent 只认文件**：Codex 的 MCP 工具 schema 里没有图片入参
   （2026-08-21 实测），CLI 是 `codex exec -i <FILE>`——所以"用户贴图 → 子 agent 看图"

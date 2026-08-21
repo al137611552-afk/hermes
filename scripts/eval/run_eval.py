@@ -179,9 +179,12 @@ def main() -> int:
             with tempfile.TemporaryDirectory(prefix=f"heval_{name}_") as d:
                 ws = Path(d) / "ws"
                 ws.mkdir()
-                # 工具输出里的工作区路径每跑都不同，会污染 cassette 的请求指纹——告诉它折掉
+                # 工具输出里的临时目录路径每跑都不同，会污染 cassette 的请求指纹——告诉它折掉。
+                # **折父目录而不是 ws 本身**：报错回溯、临时库路径（`<tmp>/eval.db`）等都落在
+                # 父目录下，只折 `<tmp>/ws` 会漏掉它们，于是同一份录音下次就对不上
+                # （2026-08-21 定位 fail_* 系列每跑必 miss 的原因之一）。
                 if args.record or args.replay:
-                    os.environ["HERMES_CASSETTE_WS"] = str(ws)
+                    os.environ["HERMES_CASSETTE_WS"] = str(ws.parent)
                 task.setup(ws)
                 fdb = str(ROOT / "data" / "failures.eval.db") if args.accumulate else None
                 result = run_task(str(ws), task.prompt, model=args.model,

@@ -1,0 +1,32 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:317c475ccb"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": " READ"}
+{"type": "thinking", "text": "ME"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "说的"}
+{"type": "thinking", "text": "方式"}
+{"type": "thinking", "text": "构建"}
+{"type": "thinking", "text": "项目"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "首先"}
+{"type": "thinking", "text": "我需要"}
+{"type": "thinking", "text": "读取"}
+{"type": "thinking", "text": " READ"}
+{"type": "thinking", "text": "ME"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": "构建"}
+{"type": "thinking", "text": "方式"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": "工作"}
+{"type": "thinking", "text": "区"}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": "有什么"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_7r4FxE9iDGYk9Cuto6NL1996", "name": "list_dir", "input": {"path": ""}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 93, "output": 71, "cache_read": 8832, "cache_write": 0}}}

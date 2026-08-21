@@ -1,0 +1,39 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:11379c2ce1", "msg1:6092dc5d48", "msg2:a48785d2df", "msg3:1618fe9b28", "msg4:825d1b5edc", "msg5:c77104beeb", "msg6:3f4a77b167", "msg7:7872be61c6", "msg8:032604144d", "msg9:8dc36b5073", "msg10:237ab83851", "msg11:6256ec837f", "msg12:fe96f0610f", "msg13:a00d7aaed0", "msg14:ce9758f84b"], "model": "deepseek-v4-flash", "n_messages": 15, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "果然"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "round"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "49"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "995"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "不是"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "50"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "实际"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "果然"}
+{"type": "text", "text": "撞"}
+{"type": "text", "text": "上"}
+{"type": "text", "text": "浮"}
+{"type": "text", "text": "点"}
+{"type": "text", "text": "舍"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "实际"}
+{"type": "text", "text": "值"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_DQzP9LuftwMP6vLFVXVS9383", "name": "run_bash", "input": {"command": "python -c \"print(repr(99.99/2), round(99.99/2, 2))\""}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 316, "output": 105, "cache_read": 11648, "cache_write": 0}}}

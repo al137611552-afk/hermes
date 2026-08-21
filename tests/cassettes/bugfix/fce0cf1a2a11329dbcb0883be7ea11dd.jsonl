@@ -1,3 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:5ad58e5b78", "msg1:ec148df539", "msg2:994f88afd6", "msg3:4b919ad07d", "msg4:7867a67706", "msg5:d482b5c915", "msg6:329c404d35"], "model": "deepseek-v4-flash", "n_messages": 7, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_NainwvoLmRh2yYLVtZ3K7370", "name": "run_bash", "input": {"command": "python3 test_calc.py 2>&1; echo \"---exit: $?\""}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 128, "output": 62, "cache_read": 10624, "cache_write": 0}}}

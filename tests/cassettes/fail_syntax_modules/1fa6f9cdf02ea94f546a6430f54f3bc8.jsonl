@@ -1,3 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:c11c3415c8", "msg1:41292818de", "msg2:3997db1bce", "msg3:a620550254", "msg4:c7e1a52e23", "msg5:036e9240c5", "msg6:18f5440d67", "msg7:c7f873a39f", "msg8:ef0185ae30"], "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_hw1toczbQLwTY3z4V37s4074", "name": "run_bash", "input": {"command": "python run_tests.py"}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 144, "output": 49, "cache_read": 10240, "cache_write": 0}}}

@@ -1,0 +1,165 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:eacfd95c0c", "msg1:28d5676bfd", "msg2:4995da0de9", "msg3:d03688b17e", "msg4:3ddfbc5b3b", "msg5:fa82ebf94d", "msg6:1b8b8e2600", "msg7:7c72445dc3", "msg8:4d314cd675", "msg9:a9e1f26177", "msg10:4128d8b309", "msg11:7be2894151", "msg12:6d5b7d36f2", "msg13:e5289e2e3b", "msg14:d4b1b53cd3", "msg15:886c8a189c", "msg16:c37b66efd1"], "model": "deepseek-v4-flash", "n_messages": 17, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Now"}
+{"type": "thinking", "text": " I"}
+{"type": "thinking", "text": " have"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " good"}
+{"type": "thinking", "text": " understanding"}
+{"type": "thinking", "text": " of"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " gate"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " M"}
+{"type": "thinking", "text": "CP"}
+{"type": "thinking", "text": " integration"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " few"}
+{"type": "thinking", "text": " more"}
+{"type": "thinking", "text": " things"}
+{"type": "thinking", "text": ":\n\n"}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " How"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " converts"}
+{"type": "thinking", "text": " sche"}
+{"type": "thinking", "text": "mas"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "Open"}
+{"type": "thinking", "text": "AI"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " converting"}
+{"type": "thinking", "text": " Anthrop"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": " native"}
+{"type": "thinking", "text": " format"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " briefly"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " providers"}
+{"type": "thinking", "text": ".\n"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " How"}
+{"type": "thinking", "text": " bridge"}
+{"type": "thinking", "text": " resolve"}
+{"type": "thinking", "text": "_per"}
+{"type": "thinking", "text": "mission"}
+{"type": "thinking", "text": " works"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "bridge"}
+{"type": "thinking", "text": "/api"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " or"}
+{"type": "thinking", "text": " conversation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " front"}
+{"type": "thinking", "text": "end"}
+{"type": "thinking", "text": " callback"}
+{"type": "thinking", "text": " path"}
+{"type": "thinking", "text": ".\n"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Role"}
+{"type": "thinking", "text": "-based"}
+{"type": "thinking", "text": " filtering"}
+{"type": "thinking", "text": " (`"}
+{"type": "thinking", "text": "role"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "allow"}
+{"type": "thinking", "text": "_all"}
+{"type": "thinking", "text": "`,"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "role"}
+{"type": "thinking", "text": ".all"}
+{"type": "thinking", "text": "ows"}
+{"type": "thinking", "text": "`)"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " roles"}
+{"type": "thinking", "text": " definition"}
+{"type": "thinking", "text": ".\n"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " H"}
+{"type": "thinking", "text": "ooks"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "Pre"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": "Use"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "Post"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": "Use"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " hooks"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " briefly"}
+{"type": "thinking", "text": ".\n"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " The"}
+{"type": "thinking", "text": " Permission"}
+{"type": "thinking", "text": "Gate"}
+{"type": "thinking", "text": " emit"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " it"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " created"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " conversation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " audit"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " done"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "tool"}
+{"type": "thinking", "text": "_call"}
+{"type": "thinking", "text": " events"}
+{"type": "thinking", "text": " emitted"}
+{"type": "thinking", "text": ").\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " roles"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " permission"}
+{"type": "thinking", "text": " gate"}
+{"type": "thinking", "text": " wiring"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " conversation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " plus"}
+{"type": "thinking", "text": " hook"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "runner"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " schema"}
+{"type": "thinking", "text": " conversion"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_cZzOtb7YOirL51QKnBMd9127", "name": "grep_search", "input": {"path": "src/agentcore/bridge/conversation.py", "pattern": "PermissionGate|gate\\.|resolve_permission|hook_runner|roles|self\\._roles|allow_all"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_2m9932GGR5ZBiFENTQPU9692", "name": "grep_search", "input": {"path": "src/agentcore/bridge/api.py", "pattern": "resolve_permission|permission|PermissionGate|gate"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 3620, "output": 317, "cache_read": 36096, "cache_write": 0}}}

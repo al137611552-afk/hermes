@@ -1,0 +1,8 @@
+{
+ "passed": true,
+ "tool_calls": 11,
+ "steps": 6,
+ "subagents": 0,
+ "nudges": {},
+ "why": "关键标识符命中 5/5：['compress', '_budget', 'context.py', 'keep_recent_turns', 'tool_result']"
+}

@@ -1,3 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:11379c2ce1", "msg1:31c2249e32", "msg2:2675d5c87f", "msg3:f1cb05c7d9", "msg4:95fcfdd8b3", "msg5:39d1d0cb93", "msg6:daf18edaef", "msg7:3a78f284b3", "msg8:5b37eee4b4", "msg9:f07e559ac1", "msg10:559e8863c7", "msg11:bde8a7aa4a", "msg12:71bc6dfbdc", "msg13:2596f8a49e", "msg14:00f67585c2", "msg15:f26cd3ff81", "msg16:524ed08d9c"], "model": "deepseek-v4-flash", "n_messages": 17, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_8Ck3bQVGhNv7hTwdvAqB6563", "name": "git_status", "input": {}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 186, "output": 28, "cache_read": 11392, "cache_write": 0}}}

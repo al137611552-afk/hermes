@@ -1,0 +1,32 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:fd84f2544b", "msg1:03f6848c52", "msg2:29afcc3b11"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "我已经"}
+{"type": "thinking", "text": "读了"}
+{"type": "thinking", "text": "前"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "剩下的"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "继续"}
+{"type": "text", "text": "读取"}
+{"type": "text", "text": "剩余"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_LtJApen82H3xydOQKBkP2934", "name": "read_file", "input": {"path": "src/agentcore/tools/memory.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_17StTttsSzE1Vf1Watrn3528", "name": "read_file", "input": {"path": "src/agentcore/tools/recall.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_EsKAGWuNsCUluXHeS0D25779", "name": "read_file", "input": {"path": "src/agentcore/tools/ask.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_03_mr94KzD6L0KB6k320qUF6457", "name": "read_file", "input": {"path": "src/agentcore/tools/handoff.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_04_v93lUwYK9V2GNpV9XgGp3510", "name": "read_file", "input": {"path": "src/agentcore/tools/notes.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_05_JCMp1oIgG4icNeACBQcw6736", "name": "read_file", "input": {"path": "src/agentcore/tools/skills.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_06_ovFQHzk5LxqqZUFg71TG8125", "name": "read_file", "input": {"path": "src/agentcore/tools/tasks.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 5222, "output": 305, "cache_read": 6784, "cache_write": 0}}}

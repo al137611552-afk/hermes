@@ -1,0 +1,40 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:b249f54d53", "msg1:42dd6b3ba6", "msg2:65281b9036", "msg3:65f61e4409", "msg4:20648ec620", "msg5:1979153c36", "msg6:280ab50a63", "msg7:ec712ad8fc", "msg8:713ba1e817", "msg9:62509f6339", "msg10:c2dbd74e02", "msg11:d6ce0ee92a", "msg12:e2f17bd9f1", "msg13:33651cd940", "msg14:b58507ed2b"], "model": "deepseek-v4-flash", "n_messages": 15, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "我已经"}
+{"type": "thinking", "text": "收集"}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": "足够"}
+{"type": "thinking", "text": "信息"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "再看"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "中"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": "_result"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "回"}
+{"type": "thinking", "text": "灌"}
+{"type": "thinking", "text": "的具体"}
+{"type": "thinking", "text": "格式"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "680"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "之后"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": " results"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "如何"}
+{"type": "thinking", "text": "转"}
+{"type": "thinking", "text": "成"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": "_result"}
+{"type": "thinking", "text": " blocks"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_6wEQUYwvDS2P4pYludbb4156", "name": "read_file", "input": {"limit": 40, "offset": 680, "path": "src/agentcore/agent/loop.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 2100, "output": 121, "cache_read": 26880, "cache_write": 0}}}

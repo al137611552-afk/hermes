@@ -1,0 +1,8 @@
+{
+ "passed": true,
+ "tool_calls": 9,
+ "steps": 7,
+ "subagents": 0,
+ "nudges": {},
+ "why": "分支/提交/测试/树干净 全部达标"
+}

@@ -1,0 +1,87 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:eacfd95c0c", "msg1:28d5676bfd", "msg2:4995da0de9", "msg3:d03688b17e", "msg4:3ddfbc5b3b", "msg5:fa82ebf94d", "msg6:1b8b8e2600", "msg7:7c72445dc3", "msg8:4d314cd675", "msg9:a9e1f26177", "msg10:4128d8b309"], "model": "deepseek-v4-flash", "n_messages": 11, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Now"}
+{"type": "thinking", "text": " let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": " at"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " agent"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " wired"}
+{"type": "thinking", "text": " up"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " where"}
+{"type": "thinking", "text": " build"}
+{"type": "thinking", "text": "_reg"}
+{"type": "thinking", "text": "istry"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " called"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " sche"}
+{"type": "thinking", "text": "mas"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " sent"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " model"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "provider"}
+{"type": "thinking", "text": "),"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " M"}
+{"type": "thinking", "text": "CP"}
+{"type": "thinking", "text": " tools"}
+{"type": "thinking", "text": " flow"}
+{"type": "thinking", "text": " into"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": " at"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " app"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " construction"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " plus"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " Mc"}
+{"type": "thinking", "text": "p"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " m"}
+{"type": "thinking", "text": "cp"}
+{"type": "thinking", "text": "_client"}
+{"type": "thinking", "text": "/t"}
+{"type": "thinking", "text": "ool"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " bridge"}
+{"type": "thinking", "text": "/con"}
+{"type": "thinking", "text": "vers"}
+{"type": "thinking", "text": "ation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " understand"}
+{"type": "thinking", "text": " bridge"}
+{"type": "thinking", "text": " resolve"}
+{"type": "thinking", "text": "_per"}
+{"type": "thinking", "text": "mission"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_1GxEHcT3IpV3tmjByEr15110", "name": "read_file", "input": {"path": "src/agentcore/mcp_client/tool.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_Nj4M0YmGkrGinvQ6PuVA9263", "name": "grep_search", "input": {"path": "src/agentcore", "pattern": "build_registry|McpManager|ToolRegistry"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 8608, "output": 195, "cache_read": 18560, "cache_write": 0}}}

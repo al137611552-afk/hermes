@@ -1,7 +1,7 @@
 {
  "passed": true,
  "tool_calls": 15,
- "steps": 7,
+ "steps": 11,
  "subagents": 0,
  "nudges": {},
  "why": "三个模块都改到位、补了测试、全绿"

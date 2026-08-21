@@ -1,0 +1,22 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:1d746b61f5", "msg1:42ccc42915", "msg2:8e9a9b5ab6"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": "相关"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "p"}
+{"type": "thinking", "text": "ricing"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "run"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ests"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "README"}
+{"type": "thinking", "text": ".md"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_yvoVKrH6qDiIaLqvsPh06762", "name": "read_file", "input": {"path": "shop/pricing.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_FjFt38rUQR3ZTXbIwTvf4635", "name": "read_file", "input": {"path": "run_tests.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_u4dSHlr92d2lWpNOWms36421", "name": "read_file", "input": {"path": "README.md"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 615, "output": 128, "cache_read": 9088, "cache_write": 0}}}

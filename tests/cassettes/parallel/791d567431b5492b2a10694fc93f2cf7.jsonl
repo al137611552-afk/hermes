@@ -1,0 +1,83 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:b249f54d53", "msg1:42dd6b3ba6", "msg2:65281b9036", "msg3:65f61e4409", "msg4:20648ec620"], "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "现在我"}
+{"type": "thinking", "text": "了解了"}
+{"type": "thinking", "text": "接口"}
+{"type": "thinking", "text": "设计"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "接下来"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "两个"}
+{"type": "thinking", "text": "实现"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "open"}
+{"type": "thinking", "text": "ai"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " anthrop"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "还有"}
+{"type": "thinking", "text": " cassette"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "可能"}
+{"type": "thinking", "text": "不是"}
+{"type": "thinking", "text": "重点"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "可以"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "还要"}
+{"type": "thinking", "text": "看"}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": " Model"}
+{"type": "thinking", "text": "Config"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的定义"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": " open"}
+{"type": "thinking", "text": "ai"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " anthrop"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "它们"}
+{"type": "thinking", "text": "可能"}
+{"type": "thinking", "text": "比较"}
+{"type": "thinking", "text": "长"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "并行"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "接口"}
+{"type": "text", "text": "和"}
+{"type": "text", "text": "工厂"}
+{"type": "text", "text": "已"}
+{"type": "text", "text": "清楚"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "现在"}
+{"type": "text", "text": "读"}
+{"type": "text", "text": "两个"}
+{"type": "text", "text": "具体"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_GbL8YyQ3wySDrSfl0Uf28412", "name": "read_file", "input": {"path": "src/agentcore/providers/openai_p.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_sXeTlj0kGswOQCtlSWRh9502", "name": "read_file", "input": {"path": "src/agentcore/providers/anthropic_p.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 2816, "output": 173, "cache_read": 6656, "cache_write": 0}}}

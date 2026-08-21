@@ -1,0 +1,93 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:41a6018d18", "msg1:001717c7d0", "msg2:3f8440ae61", "msg3:e16db1ff67", "msg4:959b69f429", "msg5:7cb7127b31", "msg6:1c85118665", "msg7:364948b7fc", "msg8:e2add56d31"], "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "我已经"}
+{"type": "thinking", "text": "有了"}
+{"type": "thinking", "text": "关键"}
+{"type": "thinking", "text": "信息"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "再看"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": " conversation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "600"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "650"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "附近"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "bud"}
+{"type": "thinking", "text": "get"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "在"}
+{"type": "thinking", "text": "消息"}
+{"type": "thinking", "text": "发送"}
+{"type": "thinking", "text": "主"}
+{"type": "thinking", "text": "流程"}
+{"type": "thinking", "text": "中的"}
+{"type": "thinking", "text": "位置"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "send"}
+{"type": "thinking", "text": "_message"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " stream"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "以及"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "700"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "710"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "附近"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "compact"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " None"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的重"}
+{"type": "thinking", "text": "置"}
+{"type": "thinking", "text": "条件"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "这样"}
+{"type": "thinking", "text": "能"}
+{"type": "thinking", "text": "完整"}
+{"type": "thinking", "text": "回答"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "从哪里"}
+{"type": "thinking", "text": "触发"}
+{"type": "thinking", "text": "\"。"}
+{"type": "text", "text": "最后"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "bud"}
+{"type": "text", "text": "get"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "所在"}
+{"type": "text", "text": "的主"}
+{"type": "text", "text": "流程"}
+{"type": "text", "text": "上下文"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "600"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "650"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "和"}
+{"type": "text", "text": "摘要"}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": "失效"}
+{"type": "text", "text": "逻辑"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "700"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "710"}
+{"type": "text", "text": "）。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_WoCjkMiby8tSGdyhBtZu2470", "name": "read_file", "input": {"limit": 50, "offset": 605, "path": "src/agentcore/bridge/conversation.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_0vBjppg59tV3dILYIUDN2074", "name": "read_file", "input": {"limit": 25, "offset": 695, "path": "src/agentcore/bridge/conversation.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 1459, "output": 244, "cache_read": 19584, "cache_write": 0}}}

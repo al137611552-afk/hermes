@@ -1,7 +1,7 @@
 {
  "passed": true,
- "tool_calls": 11,
- "steps": 11,
+ "tool_calls": 14,
+ "steps": 14,
  "subagents": 0,
  "nudges": {},
  "why": "三个函数都加上且测试全绿"

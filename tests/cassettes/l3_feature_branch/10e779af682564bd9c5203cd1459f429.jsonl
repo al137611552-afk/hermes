@@ -1,0 +1,49 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:11379c2ce1", "msg1:6092dc5d48", "msg2:a48785d2df", "msg3:1618fe9b28", "msg4:825d1b5edc", "msg5:c77104beeb", "msg6:3f4a77b167", "msg7:7872be61c6", "msg8:032604144d", "msg9:8dc36b5073", "msg10:237ab83851", "msg11:6256ec837f", "msg12:fe96f0610f", "msg13:a00d7aaed0", "msg14:ce9758f84b", "msg15:29e66ccdce", "msg16:b81f58f9f7", "msg17:eb10c4406d", "msg18:51afb2fcbf", "msg19:52299293d8", "msg20:5331785e6e"], "model": "deepseek-v4-flash", "n_messages": 21, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "全"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "要求"}
+{"type": "thinking", "text": " Conventional"}
+{"type": "thinking", "text": " Comm"}
+{"type": "thinking", "text": "its"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "fe"}
+{"type": "thinking", "text": "at"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "新增"}
+{"type": "thinking", "text": "优惠"}
+{"type": "thinking", "text": "券"}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": " apply"}
+{"type": "thinking", "text": "_c"}
+{"type": "thinking", "text": "ou"}
+{"type": "thinking", "text": "pon"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": " diff"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "改动"}
+{"type": "thinking", "text": "内容"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "全"}
+{"type": "text", "text": "绿"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "查看"}
+{"type": "text", "text": "改动"}
+{"type": "text", "text": "后"}
+{"type": "text", "text": "提交"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_OXhOFXFANmgAfXcYgaed1298", "name": "git_diff", "input": {}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 60, "output": 73, "cache_read": 12672, "cache_write": 0}}}

@@ -1,0 +1,132 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:eacfd95c0c", "msg1:28d5676bfd", "msg2:4995da0de9", "msg3:d03688b17e", "msg4:3ddfbc5b3b", "msg5:fa82ebf94d", "msg6:1b8b8e2600", "msg7:7c72445dc3", "msg8:4d314cd675", "msg9:a9e1f26177", "msg10:4128d8b309", "msg11:7be2894151", "msg12:6d5b7d36f2", "msg13:e5289e2e3b", "msg14:d4b1b53cd3", "msg15:886c8a189c", "msg16:c37b66efd1", "msg17:26b4333ca6", "msg18:9975f6924d", "msg19:120ba67935", "msg20:3ce9b9d4e6", "msg21:120935bba5", "msg22:08b0de1688"], "model": "deepseek-v4-flash", "n_messages": 23, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "The"}
+{"type": "thinking", "text": " roles"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " built"}
+{"type": "thinking", "text": " via"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "build"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "roles"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " imported"}
+{"type": "thinking", "text": " from"}
+{"type": "thinking", "text": " somewhere"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " import"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " conversation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " line"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "54"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " hooks"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " plus"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " converts"}
+{"type": "thinking", "text": " sche"}
+{"type": "thinking", "text": "mas"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Also"}
+{"type": "thinking", "text": " let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " audit"}
+{"type": "thinking", "text": "/t"}
+{"type": "thinking", "text": "ra"}
+{"type": "thinking", "text": "ject"}
+{"type": "thinking", "text": "ory"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": "_result"}
+{"type": "thinking", "text": " events"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " emitted"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " whether"}
+{"type": "thinking", "text": " there"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " an"}
+{"type": "thinking", "text": " audit"}
+{"type": "thinking", "text": " log"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": " at"}
+{"type": "thinking", "text": " trajectory"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " emit"}
+{"type": "thinking", "text": "(\""}
+{"type": "thinking", "text": "tool"}
+{"type": "thinking", "text": "_result"}
+{"type": "thinking", "text": "\")"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "around"}
+{"type": "thinking", "text": " line"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "900"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " already"}
+{"type": "thinking", "text": " seen"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "emit"}
+{"type": "thinking", "text": "(\""}
+{"type": "thinking", "text": "tool"}
+{"type": "thinking", "text": "_result"}
+{"type": "thinking", "text": "\","}
+{"type": "thinking", "text": " ev"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": ")."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": " emits"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": "_result"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " events"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " front"}
+{"type": "thinking", "text": "end"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Also"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "on"}
+{"type": "thinking", "text": "_per"}
+{"type": "thinking", "text": "mission"}
+{"type": "thinking", "text": "_request"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " at"}
+{"type": "thinking", "text": " line"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "386"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_UPM0CF1ZikfHiw0idoZ11706", "name": "read_file", "input": {"limit": 55, "offset": 380, "path": "src/agentcore/bridge/conversation.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_4I5CN3ohKPr5aGElNQP75887", "name": "read_file", "input": {"limit": 20, "offset": 40, "path": "src/agentcore/bridge/conversation.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_dgB1YunpJF65hVZByum39530", "name": "grep_search", "input": {"path": "src/agentcore/providers/openai_p.py", "pattern": "tool|schema|input_schema"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 354, "output": 346, "cache_read": 44800, "cache_write": 0}}}

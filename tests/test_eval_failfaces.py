@@ -181,7 +181,11 @@ def test_fail_tasks_are_wired_consistently():
     for name in FAIL_TASKS:
         t = TASKS[name]
         assert t.tier == "L2", name
-        assert t.replayable and not t.network and not t.world, name
+        # 可回放是这一族的常态（它们就是为进 CI 门而写的）；**例外必须写明理由**——
+        # `fail_missing_toolchain` 里模型会去探测本机工具链（`which python` / `ls -l`），
+        # 输出含机器特有路径与文件元数据，那是真信息、不该归一化（2026-08-21）。
+        assert (t.replayable or t.unreplayable_why), f"{name}：不可回放就得写明为什么"
+        assert not t.network and not t.world, name
         assert t.max_steps > 0, name
         # 这几题里死路提示**本就该响**（那条路确实走不通），故是软观测、不是硬断言
         assert t.expect_nudges == {"deadend_hint": True}, (name, t.expect_nudges)

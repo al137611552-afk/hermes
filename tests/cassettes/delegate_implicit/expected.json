@@ -1,0 +1,8 @@
+{
+ "passed": true,
+ "tool_calls": 10,
+ "steps": 6,
+ "subagents": 4,
+ "nudges": {},
+ "why": "自发委派 4 个子任务（目标 ≥2；prompt 未显式要求委派）"
+}

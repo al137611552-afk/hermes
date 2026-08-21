@@ -1012,6 +1012,24 @@ def _check_parallel(ws: Path, result) -> "tuple[bool, str]":
     return ok, why
 
 
+def _net_answer_has(result, needles, *, need_link: bool = False, why: str = ""):
+    """真网任务的判据：**只认可程序化的硬事实**（答案里有没有关键词/链接）。
+
+    真网结果每跑一变，模糊判据（"答得好不好"）会把噪声当信号——那正是评测最容易骗自己的地方。
+    联网失败与"答错"要分开报：前者是环境问题，不该记成模型的账。
+    """
+    err = getattr(result, "error", "")
+    if err:
+        return False, f"运行出错（可能联网失败）：{str(err)[:60]}"
+    ans = (getattr(result, "answer", "") or "").lower()
+    missing = [n for n in needles if n.lower() not in ans]
+    if missing:
+        return False, f"{why or '答案缺关键要素'}：缺 {missing}"
+    if need_link and "http" not in ans:
+        return False, "答案里没有任何来源链接"
+    return True, why or "答案含关键要素与来源"
+
+
 def _setup_noop(ws: Path) -> None:
     pass
 
@@ -1181,6 +1199,51 @@ TASKS: dict[str, Task] = {
     # ---------- 批 2：真网（只在真跑时观测，进不了回放门）----------
     # 桩世界证明的是"给定这种输入，detector 与模型会怎么走"；这条证明的是
     # **真实检索链路本身**（parse_bing / RRF 融合 / 反爬识别）在真网下还活着。
+    # ---- 真网检索一组（FR-11.1d 的 A/B 底座）------------------------------
+    # **为什么要一组而不是一条**：`primary` vs `always` 的差别是几个百分点，
+    # 一个任务 × 三次重复分不出来（2026-08-20 立项时算过）。这几条刻意压不同的召回面：
+    # 报错原文（长串、噪声多）、非英文一手资料、时效性事实、带约束的选型。
+    # 判据一律**只认可程序化的硬事实**（答案里有没有那个串/数字/域名），不做模型判分——
+    # 真网结果每跑一变，模糊判据会把噪声当信号。
+
+    "net_error_lookup": Task(
+        "net_error_lookup", "真网：小众报错原文 → 能不能找到一手出处",
+        "查一下 Python 里这个报错是什么原因、怎么修："
+        "`RuntimeError: Event loop is closed`（asyncio 场景）。给出结论和来源链接。"
+        "不要修改任何文件。",
+        _setup_noop, lambda ws, r: _net_answer_has(
+            r, ("asyncio", "event loop"), need_link=True,
+            why="答案要点到 asyncio/事件循环并给出来源"),
+        tier="L2", expect_nudges={"research_hint": True},   # 软观测：真网结果每跑一变，不能硬断
+        network=True, max_steps=14, deny_tools=("shell",),
+    ),
+    "net_cn_primary_source": Task(
+        "net_cn_primary_source", "真网：中文一手资料（非英文语料的召回面）",
+        "查一下「深度求索 DeepSeek 开放平台」的接口计费单位是什么（按什么计价）、"
+        "以及它的 API 基础地址。给出结论和来源链接。不要修改任何文件。",
+        _setup_noop, lambda ws, r: _net_answer_has(
+            r, ("token",), need_link=True, why="答案要点到按 token 计价并给出来源"),
+        tier="L2", expect_nudges={"research_hint": True},   # 软观测：真网结果每跑一变，不能硬断
+        network=True, max_steps=14, deny_tools=("shell",),
+    ),
+    "net_recency_fact": Task(
+        "net_recency_fact", "真网：时效性事实 → 不许凭记忆答",
+        "Python 最新的稳定版本号是多少？发布日期是哪天？给出来源链接。不要修改任何文件。",
+        _setup_noop, lambda ws, r: _net_answer_has(
+            r, ("python", "3."), need_link=True, why="要给出具体版本号与来源"),
+        tier="L2", expect_nudges={"research_hint": True},   # 软观测：真网结果每跑一变，不能硬断
+        network=True, max_steps=12, deny_tools=("shell",),
+    ),
+    "net_constrained_pick": Task(
+        "net_constrained_pick", "真网：带约束的选型（约束能不能被满足）",
+        "帮我找 2 个**免费额度**可用的向量数据库托管服务，说明各自免费档的具体限制"
+        "（条数/存储/QPS 任一）和来源链接。不要修改任何文件。",
+        _setup_noop, lambda ws, r: _net_answer_has(
+            r, ("免费",), need_link=True, why="要说清免费档限制并给出来源"),
+        tier="L2", expect_nudges={"research_hint": True},   # 软观测：真网结果每跑一变，不能硬断
+        network=True, max_steps=16, deny_tools=("shell",),
+    ),
+
     "net_shopping_budget": Task(
         "net_shopping_budget", "真网购物检索（带预算约束）",
         "帮我在网上找 2 款 300 元以内的机械键盘，列出型号、价格和来源链接。不要修改任何文件。",
@@ -1202,6 +1265,11 @@ TASKS: dict[str, Task] = {
         "哪一步做不了就如实告诉我卡在哪、为什么。",
         _setup_missing_toolchain, _check_missing_toolchain,
         tier="L2", expect_nudges={"deadend_hint": True}, max_steps=16,
+        replayable=False,
+        unreplayable_why="模型会去探测本机工具链（`which python` / `ls -l`），"
+                         "输出含机器特有路径（如 /root/.local/bin/python）与文件元数据——"
+                         "每台机器都不同。这类信息**不该归一化**：路径与文件元数据是真信息，"
+                         "抹掉就等于让回放门对着假输入判定",
     ),
     "fail_syntax_modules": Task(
         "fail_syntax_modules", "两个模块有语法错（syntax）",

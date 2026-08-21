@@ -75,7 +75,7 @@ def request_key(model: str, system, messages, tools) -> str:
         "tools": tools or [],
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    raw = normalize_noise(fold_workspace(raw))
+    raw = normalize_noise(fold_app_dir(fold_workspace(raw)))
     return hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:32]
 
 
@@ -98,6 +98,12 @@ _HEAP_ADDR_RE = re.compile(r"0x[0-9a-f]{6,}")
 # 模式刻意收窄到 `in <小数>s` 这一个搭配：光写 `\d+\.\d+s` 会误伤正文里有意义的数字
 # （"超时设成 1.5s"）。宁可漏掉别的框架的写法，也不能扩到会改变语义的地步。
 _DURATION_RE = re.compile(r"\bin \d+\.\d+s\b")
+# shell `time` 的三行输出（`real\t0m1.828s` / `user…` / `sys…`）。与 pytest 耗时同类：
+# 度量的是**本机当时的调度快慢**，同一份代码跑两次必然不同，且我们**不希望**模型的行为
+# 取决于它跑了 1.8s 还是 2.3s。真机 2026-08-21：`fail_resource_oom` 每跑都 miss 就是它。
+# 模式收窄到 `real|user|sys + <数>m<数>.<数>s` 这一个搭配——光写 `\d+m\d+\.\d+s`
+# 会误伤正文里有意义的数字。
+_TIME_BUILTIN_RE = re.compile(r"\b(real|user|sys)(\s+)\d+m\d+\.\d+s\b")
 
 
 def normalize_noise(text: str) -> str:
@@ -107,7 +113,34 @@ def normalize_noise(text: str) -> str:
     > **再要加新模式必须是显式决策**：得能论证该记号「机器生成、标识临时运行态、
     > 且同一情形下必然变化」——时间戳与 git SHA 都不满足，它们走 `replayable=False`。
     """
-    return _DURATION_RE.sub("in Ns", _HEAP_ADDR_RE.sub("0xADDR", text))
+    text = _HEAP_ADDR_RE.sub("0xADDR", text)
+    text = _DURATION_RE.sub("in Ns", text)
+    return _TIME_BUILTIN_RE.sub(r"\1\g<2>NmN.NNNs", text)
+
+
+def fold_app_dir(text: str) -> str:
+    """把 **hermes 自己的安装目录**折成 `<app>`。与折工作区同源，但漏了它就致命：
+
+    技能的附带资源清单（`list_skill_files`）返回的是**绝对路径**，它进 `load_skill` 的结果、
+    进消息历史、进指纹。于是同一份录音换个检出路径就必然 miss——
+    CI 在 `/home/runner/work/hermes/hermes`、开发机在 `/root/hermes-latest`、
+    worktree 在 `/tmp/...`。**这就是 CI 从块 V3 收尾（#2）起一直红、而本地一直绿的原因**
+    （本地永远在同一个目录跑，2026-08-21 定位）。
+
+    路径同样零语义：它标识的是"这份仓库放在哪"，不是被测行为的任何部分。
+    """
+    try:
+        from ..paths import APP_DIR
+    except Exception:  # noqa: BLE001
+        return text
+    cands = {str(APP_DIR)}
+    try:
+        cands.add(str(Path(APP_DIR).resolve()))
+    except OSError:
+        pass
+    for pre in sorted((c for c in cands if c), key=len, reverse=True):
+        text = text.replace(pre, "<app>")
+    return text
 
 
 def fold_workspace(text: str, ws: "str | None" = None) -> str:
@@ -136,8 +169,8 @@ def request_digests(model: str, system, messages, tools) -> list:
     与 `request_key` 走同一套归一化（含工作区折叠），否则诊断结论会与真实判定不符。
     """
     def h(obj) -> str:
-        raw = normalize_noise(fold_workspace(json.dumps(
-            obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))))
+        raw = normalize_noise(fold_app_dir(fold_workspace(json.dumps(
+            obj, sort_keys=True, ensure_ascii=False, separators=(",", ":")))))
         return hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:10]
     out = [f"model:{h(model or '')}", f"system:{h(system or '')}",
            f"tools:{h(tools or [])}"]

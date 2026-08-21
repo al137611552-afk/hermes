@@ -1,3 +1,0 @@
-{"_meta": true, "model": "deepseek-v4-flash", "n_messages": 7, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_W3aAj9z3xelLwKrZ5PNr9334", "name": "run_bash", "input": {"command": "python test_lib.py"}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 96, "output": 49, "cache_read": 9472, "cache_write": 0}}}
