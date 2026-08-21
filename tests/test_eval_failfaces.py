@@ -34,6 +34,17 @@ class _R:
         self.answer = answer
 
 
+# `resource.setrlimit` 是 **POSIX-only**：Windows 上这两个 OOM 脚本连 import 都过不去
+# （`ModuleNotFoundError: No module named 'resource'` → 归类 not_found，分类没错，
+# 是**夹具在那个平台上考不成 OOM**）。评测的录制与回放都在 Linux 跑，故这里跳过而不是
+# 去写一份 Win32 Job Object 版夹具——但**要说出来**，别让"跳过"看着像"通过"。
+_POSIX_ONLY = os.name != "nt"
+
+
+def _skip_non_posix(what):
+    print(f"  skip {what}（夹具依赖 POSIX 的 resource.setrlimit，本平台跑不了）")
+
+
 def _shell(line):
     """用**本平台的 shell** 跑一行命令。
 
@@ -106,6 +117,9 @@ def test_oom_output_is_deterministic():
     """爆点必须是**单一分配**：第一版用列表推导，回放偶发 miss（约 1/6）——CPython 的
     错误定位插入符（`^^^^` vs `~~^~~`）取决于 MemoryError 在表达式的哪一步抛出。
     那个记号**有语义**（指出在哪一步失败），不能像堆地址那样抹掉，只能让爆点唯一。"""
+    if not _POSIX_ONLY:
+        return _skip_non_posix("test_oom_output_is_deterministic")
+
     import hashlib
 
     d, ws = _ws(_setup_resource_oom)
@@ -119,6 +133,9 @@ def test_oom_output_is_deterministic():
 
 def test_oom_scripts_yield_resource():
     """自限内存（setrlimit）而不是真去吃光内存——开发机 2 核 4G，真 OOM 会拖垮整台机器。"""
+    if not _POSIX_ONLY:
+        return _skip_non_posix("test_oom_scripts_yield_resource")
+
     d, ws = _ws(_setup_resource_oom)
     with d:
         for name in ("process_data.py", "aggregate_all.py"):

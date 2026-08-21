@@ -27,6 +27,9 @@
 
 - **CI 增加 windows job**：主力平台的门从"推 tag 时"前移到"每次 push"。
   上面两个缺陷都潜了好几版才在发版那一刻炸出来。只跑测试、不打包（打包仍由 release.yml 守）。
+- **OOM 夹具标明 POSIX-only**：`resource.setrlimit` 在 Windows 上不存在，那儿这道题
+  当场变成"模块缺失"（分类没错，是夹具考不成资源类了）。相关用例在非 POSIX 平台
+  **显式跳过并打印原因**——别让"跳过"看着像"通过"。
 - 测试不再写死 `bash`：Windows 上 PATH 里的 `bash.exe` 常是 **WSL 存根**，
   没装发行版时 rc=1 却只说"没有已安装的分发版"，跟"命令找不到"一个字都不沾。
   改成用**本平台的 shell**（Windows 走 PowerShell，也正是 hermes 真机用的那个）。

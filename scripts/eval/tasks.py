@@ -460,6 +460,10 @@ def _check_syntax_modules(ws: Path, result) -> "tuple[bool, str]":
 
 # 两个脚本各自**自限内存**后一次性 materialize 一个大列表 → MemoryError。
 # 自限（setrlimit）而不是真去吃光内存：开发机 2 核 4G，真 OOM 会拖垮整台机器。
+# **这道题是 POSIX-only**：`resource.setrlimit` 在 Windows 上没有，那儿这两个脚本
+# 连 import 都过不去（`ModuleNotFoundError` → 归 not_found），题目当场变成"模块缺失"。
+# 录制与回放都在 Linux 跑，故不为它写一份 Win32 Job Object 版夹具；
+# 但**在 Windows 上跑评测时这一题不算数**，别把它的结果当"资源类"的证据。
 _OOM_HEAD = '''import resource
 
 # 本进程内存上限 200MB（**不要放宽它**：真实环境就是这么限的，请改算法）

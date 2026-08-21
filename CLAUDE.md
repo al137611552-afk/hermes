@@ -280,6 +280,17 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   ③ 读文件不给 `encoding="utf-8"` 就按 locale 解；④ Windows 临时目录是 8.3 短名
   （`C:\Users\RUNNER~1\...`），跟 `Path.resolve()` 后的长名**比对不相等**；
   ⑤ **单字节代码页解码永远"成功"**——把 cp1252 排在 GBK 前面等于吞掉一切、只是解成乱码（`_decode_best` 踩过）。
+  ⑥ **POSIX-only 的标准库在 Windows 上是 `ModuleNotFoundError`**：评测的 OOM 夹具用
+  `resource.setrlimit`，在 Windows 上题目当场变成"模块缺失"（分类没错，是夹具考不成了）——
+  这类测试要显式跳过并**打印跳过原因**，别让"跳过"看着像"通过"。
+  ⑦ **别在测试里写死 `bash`**：Windows 上 PATH 里的 `bash.exe` 常是 **WSL 存根**，
+  没装发行版时 rc=1 却只说"没有已安装的分发版"，跟"命令找不到"一个字都不沾——
+  于是用例在 Windows 恒红、Linux 恒绿。用本平台的 shell（Windows 走 PowerShell，
+  那也正是 hermes 真机用的）。
+  ⑧ **主力平台的门要跑在每次 push 上**（`ci.yml` 的 `windows` job，2026-08-21 加）。
+  原先 Windows 只在推 tag 时（`release.yml`）跑，两个**真机行为缺陷**
+  （分类器不认 Windows 的"命令找不到"、`fold_workspace` 只折一种分隔符）
+  因此潜了好几版，直到发版那一刻才炸。
   另：`build.ps1` **本身不跑测试**，所以本地打包成功不代表 CI 的 `test` 闸门会绿。
 - **改 `hermes-dev.spec` 的 `collect_submodules` 前先读它里面的 `_skip_cli` 注释**（2026-08-14 踩过）：
   它靠**逐个 `__import__` 子包**发现依赖，某个可选 extra 的 CLI 子模块（`mcp.cli.cli`）import 失败后
