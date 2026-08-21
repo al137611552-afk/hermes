@@ -117,6 +117,30 @@ def test_mcp_subprocess_inherits_parent_env():
     assert "_os.environ" in src and "sc.env or {}" in src, "必须继承父进程环境再叠加 server 配置"
 
 
+def test_proxy_visibility_is_reported():
+    """**"终端里 codex 好使"不能推出"hermes 起的子进程也好使"**：终端的代理变量是那个终端的，
+    hermes 若从没设代理的窗口启动，继承链上游本来就是空的。
+
+    真机代价：子进程没代理 → 每次先撞 5 次 WebSocket 重试再降级 HTTPS →
+    "委派卡一分多钟还没开始干活"。
+    """
+    from agentcore.mcp_client.diag import OK, WARN, mask_proxy, proxy_finding
+
+    # server 配置里指定的优先报出来
+    f = proxy_finding({"env": {"HTTPS_PROXY": "http://127.0.0.1:7890"}}, {})
+    assert f["level"] == OK and "server 配置" in f["text"]
+    # 否则看继承
+    f2 = proxy_finding({}, {"ALL_PROXY": "socks5://127.0.0.1:7890"})
+    assert f2["level"] == OK and "继承" in f2["text"]
+    # 两处都没有 → 警告，并给出怎么办
+    f3 = proxy_finding({}, {})
+    assert f3["level"] == WARN and "环境变量框" in f3["text"]
+    # 凭据要抹掉（代理地址常带 user:pass@）
+    assert mask_proxy("http://u:p@127.0.0.1:7890") == "http://***@127.0.0.1:7890"
+    assert mask_proxy("http://127.0.0.1:7890") == "http://127.0.0.1:7890"
+    assert "p@" not in proxy_finding({"env": {"HTTP_PROXY": "http://u:p@h:1"}}, {})["text"]
+
+
 def _run_all():
     import inspect
     fns = [(n, f) for n, f in globals().items()
