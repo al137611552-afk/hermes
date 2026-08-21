@@ -1,0 +1,4373 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:5ccc103225", "msg1:b5aad6f997", "msg2:4c561c685a", "msg3:b69b54b8ff", "msg4:4ec199e1a5", "msg5:d2578610c5", "msg6:c0b99c38f3", "msg7:a0ea920d39", "msg8:ec2af7b3f9"], "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "信息"}
+{"type": "thinking", "text": "齐全"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "README"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "明确"}
+{"type": "thinking", "text": "说"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "减"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "%，"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "减"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "%，"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "减"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "——"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "语义"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": " ≥"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "即"}
+{"type": "thinking", "text": "触发"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "而"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "bul"}
+{"type": "thinking", "text": "k"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " >"}
+{"type": "thinking", "text": " threshold"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "即"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "时不"}
+{"type": "thinking", "text": "触发"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "需要"}
+{"type": "thinking", "text": " ≥"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "才"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "%。"}
+{"type": "thinking", "text": "这是"}
+{"type": "thinking", "text": "明确的"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "off"}
+{"type": "thinking", "text": "-by"}
+{"type": "thinking", "text": "-one"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": " READ"}
+{"type": "thinking", "text": "ME"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "字"}
+{"type": "thinking", "text": "语义"}
+{"type": "thinking", "text": "矛盾"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": " run"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ests"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "只"}
+{"type": "thinking", "text": "测"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": " bulk"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": ")="}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "bul"}
+{"type": "thinking", "text": "k"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": ")="}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "bul"}
+{"type": "thinking", "text": "k"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "12"}
+{"type": "thinking", "text": ")="}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "恰好"}
+{"type": "thinking", "text": "避"}
+{"type": "thinking", "text": "开了"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "——"}
+{"type": "thinking", "text": "这"}
+{"type": "thinking", "text": "解释了"}
+{"type": "thinking", "text": "为什么"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "没"}
+{"type": "thinking", "text": "被"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "发现"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "这是一个"}
+{"type": "thinking", "text": "很好的"}
+{"type": "thinking", "text": "观察"}
+{"type": "thinking", "text": "点"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "用例"}
+{"type": "thinking", "text": "没"}
+{"type": "thinking", "text": "覆盖"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "呼应"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "完整"}
+{"type": "thinking", "text": "整理"}
+{"type": "thinking", "text": "审计"}
+{"type": "thinking", "text": "报告"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "**"}
+{"type": "thinking", "text": "①"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "职责"}
+{"type": "thinking", "text": "**\n"}
+{"type": "thinking", "text": "一句话"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "p"}
+{"type": "thinking", "text": "ricing"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": " shop"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "包的"}
+{"type": "thinking", "text": "计价"}
+{"type": "thinking", "text": "规则"}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "提供"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": "量"}
+{"type": "thinking", "text": "折扣"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "位"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": "百分比"}
+{"type": "thinking", "text": "打折"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": "税率"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "三"}
+{"type": "thinking", "text": "件事"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "都是"}
+{"type": "thinking", "text": "纯"}
+{"type": "thinking", "text": "函数"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "关键"}
+{"type": "thinking", "text": "实现"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " T"}
+{"type": "thinking", "text": "AX"}
+{"type": "thinking", "text": "_R"}
+{"type": "thinking", "text": "ATE"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "06"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "固定"}
+{"type": "thinking", "text": "税率"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "B"}
+{"type": "thinking", "text": "UL"}
+{"type": "thinking", "text": "K"}
+{"type": "thinking", "text": "_T"}
+{"type": "thinking", "text": "I"}
+{"type": "thinking", "text": "ERS"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "为"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "数"}
+{"type": "thinking", "text": "门槛"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "折扣"}
+{"type": "thinking", "text": "百分比"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的三"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "元"}
+{"type": "thinking", "text": "组"}
+{"type": "thinking", "text": "；\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " bulk"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "线性"}
+{"type": "thinking", "text": "遍历"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "位"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "取"}
+{"type": "thinking", "text": "最后"}
+{"type": "thinking", "text": "满足"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "实现"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "取"}
+{"type": "thinking", "text": "最高"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "；\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " apply"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "校验"}
+{"type": "thinking", "text": " p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": "∈"}
+{"type": "thinking", "text": "["}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": "100"}
+{"type": "thinking", "text": "]"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "再"}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "100"}
+{"type": "thinking", "text": "-p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": ")/"}
+{"type": "thinking", "text": "100"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "折"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "round"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "位"}
+{"type": "thinking", "text": "；\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ax"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "+"}
+{"type": "thinking", "text": "rate"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "round"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "位"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "**"}
+{"type": "thinking", "text": "②"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "对外"}
+{"type": "thinking", "text": "接口"}
+{"type": "thinking", "text": "**\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "常量"}
+{"type": "thinking", "text": " T"}
+{"type": "thinking", "text": "AX"}
+{"type": "thinking", "text": "_R"}
+{"type": "thinking", "text": "ATE"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "06"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "税率"}
+{"type": "thinking", "text": "）\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " bulk"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "(q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " int"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " ->"}
+{"type": "thinking", "text": " int"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": "整车"}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "数"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "折扣"}
+{"type": "thinking", "text": "百分比"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "为"}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "数"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " X"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "实现"}
+{"type": "thinking", "text": "为"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " >"}
+{"type": "thinking", "text": " threshold"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " apply"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "price"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " ->"}
+{"type": "thinking", "text": " float"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": " p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "打折"}
+{"type": "thinking", "text": "后的"}
+{"type": "thinking", "text": "金额"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "减"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "四"}
+{"type": "thinking", "text": "舍"}
+{"type": "thinking", "text": "五"}
+{"type": "thinking", "text": "入"}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": "分"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "不在"}
+{"type": "thinking", "text": " ["}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": "100"}
+{"type": "thinking", "text": "]"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "抛"}
+{"type": "thinking", "text": " ValueError"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ax"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "amount"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " rate"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "TA"}
+{"type": "thinking", "text": "X"}
+{"type": "thinking", "text": "_R"}
+{"type": "thinking", "text": "ATE"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " ->"}
+{"type": "thinking", "text": " float"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "后"}
+{"type": "thinking", "text": "金额"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "四"}
+{"type": "thinking", "text": "舍"}
+{"type": "thinking", "text": "五"}
+{"type": "thinking", "text": "入"}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": "分"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "私有"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "B"}
+{"type": "thinking", "text": "UL"}
+{"type": "thinking", "text": "K"}
+{"type": "thinking", "text": "_T"}
+{"type": "thinking", "text": "I"}
+{"type": "thinking", "text": "ERS"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": " __"}
+{"type": "thinking", "text": "all"}
+{"type": "thinking", "text": "__"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": " import"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "故"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "from"}
+{"type": "thinking", "text": " shop"}
+{"type": "thinking", "text": ".p"}
+{"type": "thinking", "text": "ricing"}
+{"type": "thinking", "text": " import"}
+{"type": "thinking", "text": " *"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "会"}
+{"type": "thinking", "text": "导出"}
+{"type": "thinking", "text": "上述"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "公开"}
+{"type": "thinking", "text": "符号"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "被"}
+{"type": "thinking", "text": " shop"}
+{"type": "thinking", "text": "/c"}
+{"type": "thinking", "text": "art"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": " shop"}
+{"type": "thinking", "text": "/re"}
+{"type": "thinking", "text": "port"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "以"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "from"}
+{"type": "thinking", "text": " ."}
+{"type": "thinking", "text": " import"}
+{"type": "thinking", "text": " pricing"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "方式"}
+{"type": "thinking", "text": "使用"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "bul"}
+{"type": "thinking", "text": "k"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " apply"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ax"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " T"}
+{"type": "thinking", "text": "AX"}
+{"type": "thinking", "text": "_R"}
+{"type": "thinking", "text": "ATE"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "全部"}
+{"type": "thinking", "text": "被"}
+{"type": "thinking", "text": "外部"}
+{"type": "thinking", "text": "用到"}
+{"type": "thinking", "text": "）。\n\n"}
+{"type": "thinking", "text": "**"}
+{"type": "thinking", "text": "③"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "依赖"}
+{"type": "thinking", "text": "**\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "顶部"}
+{"type": "thinking", "text": " import"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": " doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "之后"}
+{"type": "thinking", "text": "直接"}
+{"type": "thinking", "text": "定义"}
+{"type": "thinking", "text": "常量"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "标准"}
+{"type": "thinking", "text": "库"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "第三方"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "项目"}
+{"type": "thinking", "text": "内"}
+{"type": "thinking", "text": " import"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "不"}
+{"type": "thinking", "text": "依赖"}
+{"type": "thinking", "text": " shop"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "包"}
+{"type": "thinking", "text": "内"}
+{"type": "thinking", "text": "任何"}
+{"type": "thinking", "text": "其他"}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "全局"}
+{"type": "thinking", "text": "状态"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "完全"}
+{"type": "thinking", "text": "自"}
+{"type": "thinking", "text": "包含"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "纯"}
+{"type": "thinking", "text": "函数"}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "反向"}
+{"type": "thinking", "text": "依赖"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "cart"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "report"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "都"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "from"}
+{"type": "thinking", "text": " ."}
+{"type": "thinking", "text": " import"}
+{"type": "thinking", "text": " catalog"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " pricing"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "p"}
+{"type": "thinking", "text": "ricing"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "被"}
+{"type": "thinking", "text": "这两个"}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": "消费"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "**"}
+{"type": "thinking", "text": "④"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "可疑"}
+{"type": "thinking", "text": "之处"}
+{"type": "thinking", "text": "**\n"}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " 【"}
+{"type": "thinking", "text": "逻辑"}
+{"type": "thinking", "text": "错误"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": "处理"}
+{"type": "thinking", "text": "不当"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "16"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "】"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " >"}
+{"type": "thinking", "text": " threshold"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " X"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "语义"}
+{"type": "thinking", "text": "冲突"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "README"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "16"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "12"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "都说"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "%、"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "%、"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "，「"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "应"}
+{"type": "thinking", "text": "理解为"}
+{"type": "thinking", "text": " ≥"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "实现"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "严格"}
+{"type": "thinking", "text": "大于"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "%（"}
+{"type": "thinking", "text": "应"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "）、"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "%（"}
+{"type": "thinking", "text": "应"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "）、"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "%（"}
+{"type": "thinking", "text": "应"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "即"}
+{"type": "thinking", "text": "所有"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "位"}
+{"type": "thinking", "text": "都"}
+{"type": "thinking", "text": "延迟"}
+{"type": "thinking", "text": "了一件"}
+{"type": "thinking", "text": "才"}
+{"type": "thinking", "text": "生效"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "  "}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "佐"}
+{"type": "thinking", "text": "证"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "run"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ests"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "只"}
+{"type": "thinking", "text": "测"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "12"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "恰好"}
+{"type": "thinking", "text": "绕"}
+{"type": "thinking", "text": "开"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "三个"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "所以"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "全"}
+{"type": "thinking", "text": "绿"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "若"}
+{"type": "thinking", "text": "改成"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": ">="}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "仍"}
+{"type": "thinking", "text": "全"}
+{"type": "thinking", "text": "绿"}
+{"type": "thinking", "text": "且"}
+{"type": "thinking", "text": "符合"}
+{"type": "thinking", "text": " READ"}
+{"type": "thinking", "text": "ME"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "这是"}
+{"type": "thinking", "text": "最"}
+{"type": "thinking", "text": "值得"}
+{"type": "thinking", "text": "修"}
+{"type": "thinking", "text": "的点"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " 【"}
+{"type": "thinking", "text": "潜在"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "语义"}
+{"type": "thinking", "text": "歧"}
+{"type": "thinking", "text": "义"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "18"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "】"}
+{"type": "thinking", "text": "取"}
+{"type": "thinking", "text": "最高"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "依赖"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "B"}
+{"type": "thinking", "text": "UL"}
+{"type": "thinking", "text": "K"}
+{"type": "thinking", "text": "_T"}
+{"type": "thinking", "text": "I"}
+{"type": "thinking", "text": "ERS"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": "门槛"}
+{"type": "thinking", "text": "升"}
+{"type": "thinking", "text": "序"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "这一"}
+{"type": "thinking", "text": "隐藏"}
+{"type": "thinking", "text": "约定"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "循环"}
+{"type": "thinking", "text": "从"}
+{"type": "thinking", "text": "低"}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": "高"}
+{"type": "thinking", "text": "覆盖"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "最后"}
+{"type": "thinking", "text": "满足"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "才是"}
+{"type": "thinking", "text": "最高"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "若"}
+{"type": "thinking", "text": "有人"}
+{"type": "thinking", "text": "重"}
+{"type": "thinking", "text": "排"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "乱"}
+{"type": "thinking", "text": "序"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "位"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "会"}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "默"}
+{"type": "thinking", "text": "取"}
+{"type": "thinking", "text": "错"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "建议"}
+{"type": "thinking", "text": "显"}
+{"type": "thinking", "text": "式"}
+{"type": "thinking", "text": "取"}
+{"type": "thinking", "text": " max"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "排序"}
+{"type": "thinking", "text": "保护"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "当前"}
+{"type": "thinking", "text": "实现"}
+{"type": "thinking", "text": "正确"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "脆弱"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " 【"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": "情况"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "9"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "18"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "】"}
+{"type": "thinking", "text": "bul"}
+{"type": "thinking", "text": "k"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "不"}
+{"type": "thinking", "text": "校验"}
+{"type": "thinking", "text": "入"}
+{"type": "thinking", "text": "参"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "为"}
+{"type": "thinking", "text": "负数"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "语义"}
+{"type": "thinking", "text": "上"}
+{"type": "thinking", "text": "可"}
+{"type": "thinking", "text": "接受"}
+{"type": "thinking", "text": "但不"}
+{"type": "thinking", "text": "言"}
+{"type": "thinking", "text": "明"}
+{"type": "thinking", "text": "）；"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "空"}
+{"type": "thinking", "text": "车"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "正常"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "依赖"}
+{"type": "thinking", "text": "调用"}
+{"type": "thinking", "text": "方"}
+{"type": "thinking", "text": "保证"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "为"}
+{"type": "thinking", "text": " float"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "如"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "9"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "会"}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "之外"}
+{"type": "thinking", "text": "比较"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "结果"}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": "整数"}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "数"}
+{"type": "thinking", "text": "不符"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "为"}
+{"type": "thinking", "text": " None"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "str"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "抛"}
+{"type": "thinking", "text": "裸"}
+{"type": "thinking", "text": " TypeError"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": " cart"}
+{"type": "thinking", "text": ".add"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "<="}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "校验"}
+{"type": "thinking", "text": "再"}
+{"type": "thinking", "text": " int"}
+{"type": "thinking", "text": "(q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的风格"}
+{"type": "thinking", "text": "不一致"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " 【"}
+{"type": "thinking", "text": "精度"}
+{"type": "thinking", "text": "风险"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "25"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "30"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "】"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " float"}
+{"type": "thinking", "text": " +"}
+{"type": "thinking", "text": " round"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "处理"}
+{"type": "thinking", "text": "钱"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "Python"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": " round"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "银行"}
+{"type": "thinking", "text": "家"}
+{"type": "thinking", "text": "舍"}
+{"type": "thinking", "text": "入"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "round"}
+{"type": "thinking", "text": "-half"}
+{"type": "thinking", "text": "-even"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": " doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "四"}
+{"type": "thinking", "text": "舍"}
+{"type": "thinking", "text": "五"}
+{"type": "thinking", "text": "入"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "通常"}
+{"type": "thinking", "text": "理解"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "round"}
+{"type": "thinking", "text": "-half"}
+{"type": "thinking", "text": "-up"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "不完全"}
+{"type": "thinking", "text": "一致"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "且"}
+{"type": "thinking", "text": "浮"}
+{"type": "thinking", "text": "点"}
+{"type": "thinking", "text": "中间"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "如"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "399"}
+{"type": "thinking", "text": "*"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "折"}
+{"type": "thinking", "text": "后"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "在"}
+{"type": "thinking", "text": "分"}
+{"type": "thinking", "text": "步"}
+{"type": "thinking", "text": "舍"}
+{"type": "thinking", "text": "入"}
+{"type": "thinking", "text": "下"}
+{"type": "thinking", "text": "可能与"}
+{"type": "thinking", "text": " Decimal"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "一次"}
+{"type": "thinking", "text": "算"}
+{"type": "thinking", "text": "出的"}
+{"type": "thinking", "text": "结果"}
+{"type": "thinking", "text": "有"}
+{"type": "thinking", "text": " ±"}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "01"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "差异"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "项目"}
+{"type": "thinking", "text": "通"}
+{"type": "thinking", "text": "篇"}
+{"type": "thinking", "text": " float"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "属"}
+{"type": "thinking", "text": "统一"}
+{"type": "thinking", "text": "风格"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "计价"}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": "这是个"}
+{"type": "thinking", "text": "常见"}
+{"type": "thinking", "text": "隐患"}
+{"type": "thinking", "text": "点"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "值得"}
+{"type": "thinking", "text": "记录"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " 【"}
+{"type": "thinking", "text": "校验"}
+{"type": "thinking", "text": "缺失"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "28"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "30"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "】"}
+{"type": "thinking", "text": "with"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ax"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "不"}
+{"type": "thinking", "text": "校验"}
+{"type": "thinking", "text": " rate"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "传入"}
+{"type": "thinking", "text": "负"}
+{"type": "thinking", "text": " rate"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "误"}
+{"type": "thinking", "text": "把"}
+{"type": "thinking", "text": "百分比"}
+{"type": "thinking", "text": "当"}
+{"type": "thinking", "text": "小数"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "都会"}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "默"}
+{"type": "thinking", "text": "算出"}
+{"type": "thinking", "text": "错误"}
+{"type": "thinking", "text": "金额"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "异常"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "默认"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "正确"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "接口"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "防御"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "未"}
+{"type": "thinking", "text": "说明"}
+{"type": "thinking", "text": " rate"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的取值范围"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ".."}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "）。\n"}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " 【"}
+{"type": "thinking", "text": "校验"}
+{"type": "thinking", "text": "不对称"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "死"}
+{"type": "thinking", "text": "代码"}
+{"type": "thinking", "text": "可能性"}
+{"type": "thinking", "text": "】"}
+{"type": "thinking", "text": "apply"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": " ValueError"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "分支"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "23"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "24"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "当前"}
+{"type": "thinking", "text": "项目"}
+{"type": "thinking", "text": "内"}
+{"type": "thinking", "text": "没有任何"}
+{"type": "thinking", "text": "调用"}
+{"type": "thinking", "text": "方"}
+{"type": "thinking", "text": "传"}
+{"type": "thinking", "text": "非法"}
+{"type": "thinking", "text": " p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "cart"}
+{"type": "thinking", "text": ".total"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "只用"}
+{"type": "thinking", "text": " bulk"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的输出"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ".."}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "分支"}
+{"type": "thinking", "text": "仅"}
+{"type": "thinking", "text": "作"}
+{"type": "thinking", "text": "防御"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "不是"}
+{"type": "thinking", "text": "死"}
+{"type": "thinking", "text": "代码"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "属于"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "写了"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "当前"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "触发"}
+{"type": "thinking", "text": "路径"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "校验"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "也未"}
+{"type": "thinking", "text": "覆盖"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "run"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ests"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "没"}
+{"type": "thinking", "text": "测"}
+{"type": "thinking", "text": " p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "越"}
+{"type": "thinking", "text": "界"}
+{"type": "thinking", "text": "）。\n"}
+{"type": "thinking", "text": "7"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " 【"}
+{"type": "thinking", "text": "暴露"}
+{"type": "thinking", "text": "面"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "】"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "__"}
+{"type": "thinking", "text": "all"}
+{"type": "thinking", "text": "__"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "对外"}
+{"type": "thinking", "text": "接口"}
+{"type": "thinking", "text": "靠"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "下"}
+{"type": "thinking", "text": "划线"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "私有"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "命名"}
+{"type": "thinking", "text": "约定"}
+{"type": "thinking", "text": "界定"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "B"}
+{"type": "thinking", "text": "UL"}
+{"type": "thinking", "text": "K"}
+{"type": "thinking", "text": "_T"}
+{"type": "thinking", "text": "I"}
+{"type": "thinking", "text": "ERS"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": " import"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "故"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "import"}
+{"type": "thinking", "text": " *"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "恰好"}
+{"type": "thinking", "text": "只"}
+{"type": "thinking", "text": "导出"}
+{"type": "thinking", "text": " T"}
+{"type": "thinking", "text": "AX"}
+{"type": "thinking", "text": "_R"}
+{"type": "thinking", "text": "ATE"}
+{"type": "thinking", "text": "/b"}
+{"type": "thinking", "text": "ulk"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "apply"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "with"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ax"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "四个"}
+{"type": "thinking", "text": "符号"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "当前"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "泄漏"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "接口"}
+{"type": "thinking", "text": "契约"}
+{"type": "thinking", "text": "未"}
+{"type": "thinking", "text": "显"}
+{"type": "thinking", "text": "式"}
+{"type": "thinking", "text": "化"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "8"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " 【"}
+{"type": "thinking", "text": "轻微"}
+{"type": "thinking", "text": "命名"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "文档"}
+{"type": "thinking", "text": "不一致"}
+{"type": "thinking", "text": "】"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "28"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": " doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "后"}
+{"type": "thinking", "text": "金额"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "vs"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": " doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "含"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "金额"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "——"}
+{"type": "thinking", "text": "同一"}
+{"type": "thinking", "text": "概念"}
+{"type": "thinking", "text": "两种"}
+{"type": "thinking", "text": "说法"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "无"}
+{"type": "thinking", "text": "碍"}
+{"type": "thinking", "text": "理解"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "另外"}
+{"type": "thinking", "text": "模块"}
+{"type": "thinking", "text": " doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "说"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "含"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "金额"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "而"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ax"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "TA"}
+{"type": "thinking", "text": "X"}
+{"type": "thinking", "text": "_R"}
+{"type": "thinking", "text": "ATE"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "在"}
+{"type": "thinking", "text": "外部"}
+{"type": "thinking", "text": "也可"}
+{"type": "thinking", "text": "被"}
+{"type": "thinking", "text": "覆盖"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "见"}
+{"type": "thinking", "text": " cart"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "之外的"}
+{"type": "thinking", "text": "调用"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "这个"}
+{"type": "thinking", "text": "太"}
+{"type": "thinking", "text": "轻微"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "可以"}
+{"type": "thinking", "text": "并入"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "7"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "条"}
+{"type": "thinking", "text": "或者"}
+{"type": "thinking", "text": "不提"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "我会"}
+{"type": "thinking", "text": "作为"}
+{"type": "thinking", "text": "一条"}
+{"type": "thinking", "text": "小"}
+{"type": "thinking", "text": "项"}
+{"type": "thinking", "text": "列出"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "9"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "还有个"}
+{"type": "thinking", "text": "点"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "cart"}
+{"type": "thinking", "text": ".total"}
+{"type": "thinking", "text": "()"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "分"}
+{"type": "thinking", "text": "步"}
+{"type": "thinking", "text": "舍"}
+{"type": "thinking", "text": "入"}
+{"type": "thinking", "text": "——"}
+{"type": "thinking", "text": "apply"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": " round"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "再"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ax"}
+{"type": "thinking", "text": " round"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "折"}
+{"type": "thinking", "text": "后"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "这种"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "折"}
+{"type": "thinking", "text": "后"}
+{"type": "thinking", "text": "金额"}
+{"type": "thinking", "text": "四"}
+{"type": "thinking", "text": "舍"}
+{"type": "thinking", "text": "五"}
+{"type": "thinking", "text": "入"}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": "分"}
+{"type": "thinking", "text": "再加"}
+{"type": "thinking", "text": "税"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "合理"}
+{"type": "thinking", "text": "业务"}
+{"type": "thinking", "text": "选择"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "不算"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "可"}
+{"type": "thinking", "text": "并入"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "条"}
+{"type": "thinking", "text": "提及"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "我觉得"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "8"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "条"}
+{"type": "thinking", "text": "可疑"}
+{"type": "thinking", "text": "点"}
+{"type": "thinking", "text": "足够"}
+{"type": "thinking", "text": "全面"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "其中"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "核心"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "主要"}
+{"type": "thinking", "text": "隐患"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "7"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "8"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "次要"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "注意"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "我必须"}
+{"type": "thinking", "text": "保持"}
+{"type": "thinking", "text": "只"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "不改"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "没有"}
+{"type": "thinking", "text": "运行"}
+{"type": "thinking", "text": "命令"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "审计"}
+{"type": "thinking", "text": "报告"}
+{"type": "thinking", "text": "可以直接"}
+{"type": "thinking", "text": "给出"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "再"}
+{"type": "thinking", "text": "核对"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": " cart"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "中"}
+{"type": "thinking", "text": " bulk"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "用法"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "Cart"}
+{"type": "thinking", "text": ".total"}
+{"type": "thinking", "text": "()"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " bulk"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "(self"}
+{"type": "thinking", "text": ".count"}
+{"type": "thinking", "text": "()"}
+{"type": "thinking", "text": ")。"}
+{"type": "thinking", "text": "count"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": " int"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "sum"}
+{"type": "thinking", "text": " of"}
+{"type": "thinking", "text": " int"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "在"}
+{"type": "thinking", "text": " add"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": "被"}
+{"type": "thinking", "text": " int"}
+{"type": "thinking", "text": "()"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "所以"}
+{"type": "thinking", "text": "实际"}
+{"type": "thinking", "text": "项目"}
+{"type": "thinking", "text": "路径"}
+{"type": "thinking", "text": "上"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "总是"}
+{"type": "thinking", "text": " int"}
+{"type": "thinking", "text": " ≥"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "在第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "条"}
+{"type": "thinking", "text": "已"}
+{"type": "thinking", "text": "详"}
+{"type": "thinking", "text": "述"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "验证"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": "我的"}
+{"type": "thinking", "text": "边界"}
+{"type": "thinking", "text": "分析"}
+{"type": "thinking", "text": "数值"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " _"}
+{"type": "thinking", "text": "B"}
+{"type": "thinking", "text": "UL"}
+{"type": "thinking", "text": "K"}
+{"type": "thinking", "text": "_T"}
+{"type": "thinking", "text": "I"}
+{"type": "thinking", "text": "ERS"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " (("}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "),("}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "),("}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "))\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " False"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " p"}
+{"type": "thinking", "text": "ct"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "期望"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "README"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "）："}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "✗"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " True"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ";"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " False"}
+{"type": "thinking", "text": ";"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " False"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "✓"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "满"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "理解"}
+{"type": "thinking", "text": "也确实"}
+{"type": "thinking", "text": "该"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "）\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ";"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " False"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "期望"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "✗"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "→"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "→"}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " F"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "✓"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "≥"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "该"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "%"}
+{"type": "thinking", "text": "）\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " F"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "期望"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "✗"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "11"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "11"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "15"}
+{"type": "thinking", "text": " ✓"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "所以"}
+{"type": "thinking", "text": "确实"}
+{"type": "thinking", "text": "所有"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "位"}
+{"type": "thinking", "text": "延迟"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "条"}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": " float"}
+{"type": "thinking", "text": " q"}
+{"type": "thinking", "text": "ty"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "bul"}
+{"type": "thinking", "text": "k"}
+{"type": "thinking", "text": "_d"}
+{"type": "thinking", "text": "iscount"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ")："}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " True"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ";"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ">"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " F"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "即"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "按"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "件"}
+{"type": "thinking", "text": "档"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "虽然"}
+{"type": "thinking", "text": " cart"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": "不会"}
+{"type": "thinking", "text": "出现"}
+{"type": "thinking", "text": " float"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "函数"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "公开"}
+{"type": "thinking", "text": "接口"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "写"}
+{"type": "thinking", "text": "最终"}
+{"type": "thinking", "text": "报告"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " Mark"}
+{"type": "thinking", "text": "down"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "四"}
+{"type": "thinking", "text": "节"}
+{"type": "thinking", "text": "组织"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "要"}
+{"type": "thinking", "text": "引用"}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "号"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "号"}
+{"type": "thinking", "text": "基于"}
+{"type": "thinking", "text": "我"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "到的"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "30"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "）。"}
+{"type": "text", "text": "已"}
+{"type": "text", "text": "通"}
+{"type": "text", "text": "读"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/p"}
+{"type": "text", "text": "ricing"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "全文"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "并"}
+{"type": "text", "text": "核"}
+{"type": "text", "text": "对了"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/c"}
+{"type": "text", "text": "art"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/re"}
+{"type": "text", "text": "port"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "init"}
+{"type": "text", "text": "__."}
+{"type": "text", "text": "py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "README"}
+{"type": "text", "text": ".md"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "run"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ests"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "以"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "依赖"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "业务"}
+{"type": "text", "text": "口径"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "以下"}
+{"type": "text", "text": "为"}
+{"type": "text", "text": "审计"}
+{"type": "text", "text": "结论"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "---\n\n"}
+{"type": "text", "text": "#"}
+{"type": "text", "text": " shop"}
+{"type": "text", "text": "/p"}
+{"type": "text", "text": "ricing"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "代码"}
+{"type": "text", "text": "审计"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "①"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "职责"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "一句话"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "p"}
+{"type": "text", "text": "ricing"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "是"}
+{"type": "text", "text": " shop"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "包的"}
+{"type": "text", "text": "计价"}
+{"type": "text", "text": "规则"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "提供"}
+{"type": "text", "text": "三项"}
+{"type": "text", "text": "纯"}
+{"type": "text", "text": "函数"}
+{"type": "text", "text": "计算"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "满"}
+{"type": "text", "text": "量"}
+{"type": "text", "text": "折扣"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "按"}
+{"type": "text", "text": "百分比"}
+{"type": "text", "text": "打折"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "按"}
+{"type": "text", "text": "税率"}
+{"type": "text", "text": "加"}
+{"type": "text", "text": "税"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "关键"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "说明"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "：\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "级"}
+{"type": "text", "text": "常量"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "TA"}
+{"type": "text", "text": "X"}
+{"type": "text", "text": "_R"}
+{"type": "text", "text": "ATE"}
+{"type": "text", "text": " ="}
+{"type": "text", "text": " "}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "06"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "6"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "税率"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "私有"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "位"}
+{"type": "text", "text": "表"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "B"}
+{"type": "text", "text": "UL"}
+{"type": "text", "text": "K"}
+{"type": "text", "text": "_T"}
+{"type": "text", "text": "I"}
+{"type": "text", "text": "ERS"}
+{"type": "text", "text": " ="}
+{"type": "text", "text": " (("}
+{"type": "text", "text": "3"}
+{"type": "text", "text": ","}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "),("}
+{"type": "text", "text": "5"}
+{"type": "text", "text": ","}
+{"type": "text", "text": "10"}
+{"type": "text", "text": "),("}
+{"type": "text", "text": "10"}
+{"type": "text", "text": ","}
+{"type": "text", "text": "15"}
+{"type": "text", "text": "))"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "件"}
+{"type": "text", "text": "数"}
+{"type": "text", "text": "门槛"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " "}
+{"type": "text", "text": "折扣"}
+{"type": "text", "text": "百分比"}
+{"type": "text", "text": ")，"}
+{"type": "text", "text": "注释"}
+{"type": "text", "text": "声明"}
+{"type": "text", "text": "从"}
+{"type": "text", "text": "低"}
+{"type": "text", "text": "到"}
+{"type": "text", "text": "高"}
+{"type": "text", "text": "）。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "(q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "线性"}
+{"type": "text", "text": "遍历"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "位"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "用"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "最后"}
+{"type": "text", "text": "满足"}
+{"type": "text", "text": "条件的"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "位"}
+{"type": "text", "text": "覆盖"}
+{"type": "text", "text": "前"}
+{"type": "text", "text": "值"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "取"}
+{"type": "text", "text": "最高"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "」（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "14"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "18"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "apply"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "price"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " p"}
+{"type": "text", "text": "ct"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "先"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "p"}
+{"type": "text", "text": "ct"}
+{"type": "text", "text": " ∈"}
+{"type": "text", "text": " ["}
+{"type": "text", "text": "0"}
+{"type": "text", "text": ","}
+{"type": "text", "text": "100"}
+{"type": "text", "text": "]"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "越"}
+{"type": "text", "text": "界"}
+{"type": "text", "text": "抛"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Value"}
+{"type": "text", "text": "Error"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "再"}
+{"type": "text", "text": "按"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "price"}
+{"type": "text", "text": " ×"}
+{"type": "text", "text": " ("}
+{"type": "text", "text": "100"}
+{"type": "text", "text": "-p"}
+{"type": "text", "text": "ct"}
+{"type": "text", "text": ")/"}
+{"type": "text", "text": "100"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "计算"}
+{"type": "text", "text": "并"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "round"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "…"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " "}
+{"type": "text", "text": "2"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "21"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "25"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "amount"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " rate"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "TA"}
+{"type": "text", "text": "X"}
+{"type": "text", "text": "_R"}
+{"type": "text", "text": "ATE"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "按"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "amount"}
+{"type": "text", "text": " ×"}
+{"type": "text", "text": " ("}
+{"type": "text", "text": "1"}
+{"type": "text", "text": "+"}
+{"type": "text", "text": "rate"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "计算"}
+{"type": "text", "text": "并"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "round"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "…"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " "}
+{"type": "text", "text": "2"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "28"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "30"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "完全"}
+{"type": "text", "text": "自"}
+{"type": "text", "text": "包含"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "状态"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "是"}
+{"type": "text", "text": "纯"}
+{"type": "text", "text": "函数"}
+{"type": "text", "text": "集合"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "被"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "cart"}
+{"type": "text", "text": ".C"}
+{"type": "text", "text": "art"}
+{"type": "text", "text": ".total"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "和"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "report"}
+{"type": "text", "text": ".sum"}
+{"type": "text", "text": "mar"}
+{"type": "text", "text": "ize"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "消费"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "②"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "对外"}
+{"type": "text", "text": "接口"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "公开"}
+{"type": "text", "text": "符号"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "all"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "以下"}
+{"type": "text", "text": "划线"}
+{"type": "text", "text": "命"}
+{"type": "text", "text": "名的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "B"}
+{"type": "text", "text": "UL"}
+{"type": "text", "text": "K"}
+{"type": "text", "text": "_T"}
+{"type": "text", "text": "I"}
+{"type": "text", "text": "ERS"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "为"}
+{"type": "text", "text": "约定"}
+{"type": "text", "text": "私有"}
+{"type": "text", "text": "）：\n\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "符号"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "签名"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "返回"}
+{"type": "text", "text": "含义"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|---|---"}
+{"type": "text", "text": "|---"}
+{"type": "text", "text": "|\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "TA"}
+{"type": "text", "text": "X"}
+{"type": "text", "text": "_R"}
+{"type": "text", "text": "ATE"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "常量"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "="}
+{"type": "text", "text": " "}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "06"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "税率"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "6"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "(q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": ")"}
+{"type": "text", "text": " ->"}
+{"type": "text", "text": " int"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "按"}
+{"type": "text", "text": "整车"}
+{"type": "text", "text": "件"}
+{"type": "text", "text": "数"}
+{"type": "text", "text": "返回"}
+{"type": "text", "text": "折扣"}
+{"type": "text", "text": "百分比"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "取"}
+{"type": "text", "text": "满足"}
+{"type": "text", "text": "的最高"}
+{"type": "text", "text": "一"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "0"}
+{"type": "text", "text": " /"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "5"}
+{"type": "text", "text": " /"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "10"}
+{"type": "text", "text": " /"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "15"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "apply"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "apply"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "price"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " p"}
+{"type": "text", "text": "ct"}
+{"type": "text", "text": ")"}
+{"type": "text", "text": " ->"}
+{"type": "text", "text": " float"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "按"}
+{"type": "text", "text": "百分比"}
+{"type": "text", "text": "打折"}
+{"type": "text", "text": "后的"}
+{"type": "text", "text": "金额"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "四"}
+{"type": "text", "text": "舍"}
+{"type": "text", "text": "五"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "到"}
+{"type": "text", "text": "分"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "p"}
+{"type": "text", "text": "ct"}
+{"type": "text", "text": "∉"}
+{"type": "text", "text": "["}
+{"type": "text", "text": "0"}
+{"type": "text", "text": ","}
+{"type": "text", "text": "100"}
+{"type": "text", "text": "]"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "抛"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Value"}
+{"type": "text", "text": "Error"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "amount"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " rate"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "TA"}
+{"type": "text", "text": "X"}
+{"type": "text", "text": "_R"}
+{"type": "text", "text": "ATE"}
+{"type": "text", "text": ")"}
+{"type": "text", "text": " ->"}
+{"type": "text", "text": " float"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "加"}
+{"type": "text", "text": "税"}
+{"type": "text", "text": "后"}
+{"type": "text", "text": "金额"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "四"}
+{"type": "text", "text": "舍"}
+{"type": "text", "text": "五"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "到"}
+{"type": "text", "text": "分"}
+{"type": "text", "text": " |\n\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "暴露"}
+{"type": "text", "text": "方式"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "本"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "没有任何"}
+{"type": "text", "text": " import"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "故"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "from"}
+{"type": "text", "text": " shop"}
+{"type": "text", "text": ".p"}
+{"type": "text", "text": "ricing"}
+{"type": "text", "text": " import"}
+{"type": "text", "text": " *"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "恰好"}
+{"type": "text", "text": "只"}
+{"type": "text", "text": "导出"}
+{"type": "text", "text": "上述"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "4"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "个"}
+{"type": "text", "text": "符号"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "B"}
+{"type": "text", "text": "UL"}
+{"type": "text", "text": "K"}
+{"type": "text", "text": "_T"}
+{"type": "text", "text": "I"}
+{"type": "text", "text": "ERS"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "以下"}
+{"type": "text", "text": "划线"}
+{"type": "text", "text": "隐藏"}
+{"type": "text", "text": "。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "实际"}
+{"type": "text", "text": "消费"}
+{"type": "text", "text": "方"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/c"}
+{"type": "text", "text": "art"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "与"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/re"}
+{"type": "text", "text": "port"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "均"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "from"}
+{"type": "text", "text": " ."}
+{"type": "text", "text": " import"}
+{"type": "text", "text": " catalog"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " pricing"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "用"}
+{"type": "text", "text": "到的"}
+{"type": "text", "text": "符号"}
+{"type": "text", "text": "为"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "apply"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "TA"}
+{"type": "text", "text": "X"}
+{"type": "text", "text": "_R"}
+{"type": "text", "text": "ATE"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " ——"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "四个"}
+{"type": "text", "text": "公开"}
+{"type": "text", "text": "符号"}
+{"type": "text", "text": "全部"}
+{"type": "text", "text": "被"}
+{"type": "text", "text": "用到"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "死"}
+{"type": "text", "text": "代码"}
+{"type": "text", "text": "函数"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "③"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "依赖"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "顶部"}
+{"type": "text", "text": " import"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "1"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "是"}
+{"type": "text", "text": " doc"}
+{"type": "text", "text": "string"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "3"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "起"}
+{"type": "text", "text": "直接"}
+{"type": "text", "text": "定义"}
+{"type": "text", "text": "常量"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "依赖"}
+{"type": "text", "text": "任何"}
+{"type": "text", "text": "标准"}
+{"type": "text", "text": "库"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "第三方"}
+{"type": "text", "text": "库"}
+{"type": "text", "text": "或"}
+{"type": "text", "text": "项目"}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "依赖"}
+{"type": "text", "text": " shop"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "包"}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "其他"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "也不"}
+{"type": "text", "text": "读写"}
+{"type": "text", "text": "任何"}
+{"type": "text", "text": "全局"}
+{"type": "text", "text": "状态"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "输入"}
+{"type": "text", "text": "全靠"}
+{"type": "text", "text": "函数"}
+{"type": "text", "text": "参数"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "是"}
+{"type": "text", "text": "纯"}
+{"type": "text", "text": "函数"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "反向"}
+{"type": "text", "text": "依赖"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "它"}
+{"type": "text", "text": "被"}
+{"type": "text", "text": "谁"}
+{"type": "text", "text": "依赖"}
+{"type": "text", "text": "）："}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/c"}
+{"type": "text", "text": "art"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "和"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/re"}
+{"type": "text", "text": "port"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "都"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "from"}
+{"type": "text", "text": " ."}
+{"type": "text", "text": " import"}
+{"type": "text", "text": " catalog"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " pricing"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "cart"}
+{"type": "text", "text": ".C"}
+{"type": "text", "text": "art"}
+{"type": "text", "text": ".total"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "走"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " apply"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "全"}
+{"type": "text", "text": "链路"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "report"}
+{"type": "text", "text": ".sum"}
+{"type": "text", "text": "mar"}
+{"type": "text", "text": "ize"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "用到"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "与"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "TA"}
+{"type": "text", "text": "X"}
+{"type": "text", "text": "_R"}
+{"type": "text", "text": "ATE"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "shop"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "init"}
+{"type": "text", "text": "__."}
+{"type": "text", "text": "py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "导入"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "④"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "可疑"}
+{"type": "text", "text": "之处"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "1"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "【"}
+{"type": "text", "text": "核心"}
+{"type": "text", "text": "逻辑"}
+{"type": "text", "text": "错误"}
+{"type": "text", "text": "】"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": " >"}
+{"type": "text", "text": " threshold"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "满"}
+{"type": "text", "text": " X"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "件"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "语义"}
+{"type": "text", "text": "冲突"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "16"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**\n"}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " READ"}
+{"type": "text", "text": "ME"}
+{"type": "text", "text": ".md"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "16"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": " doc"}
+{"type": "text", "text": "string"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "12"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "都"}
+{"type": "text", "text": "明确"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "满"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "3"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "件"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "%、"}
+{"type": "text", "text": "满"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "5"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "件"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "10"}
+{"type": "text", "text": "%、"}
+{"type": "text", "text": "满"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "10"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "件"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "15"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "满"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "应"}
+{"type": "text", "text": "理解为"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "≥"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "而"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "是"}
+{"type": "text", "text": "严格"}
+{"type": "text", "text": "大于"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "实际"}
+{"type": "text", "text": "结果"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "3"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "应"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "）、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "5"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "应"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "10"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "）、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "10"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "10"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "应"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "15"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "所有"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "位"}
+{"type": "text", "text": "都"}
+{"type": "text", "text": "延迟"}
+{"type": "text", "text": "一件"}
+{"type": "text", "text": "才"}
+{"type": "text", "text": "生效"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "4"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "6"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "11"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "件"}
+{"type": "text", "text": "才"}
+{"type": "text", "text": "分别"}
+{"type": "text", "text": "命中"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "10"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "15"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "）。"}
+{"type": "text", "text": "判定"}
+{"type": "text", "text": "为"}
+{"type": "text", "text": " off"}
+{"type": "text", "text": "-by"}
+{"type": "text", "text": "-one"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "边界"}
+{"type": "text", "text": " bug"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "而非"}
+{"type": "text", "text": "意图"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "因为"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "cart"}
+{"type": "text", "text": ".count"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "是"}
+{"type": "text", "text": "整数"}
+{"type": "text", "text": "件"}
+{"type": "text", "text": "数"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": ">`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "没有任何"}
+{"type": "text", "text": "合理"}
+{"type": "text", "text": "场景"}
+{"type": "text", "text": "优于"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": ">="}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "佐"}
+{"type": "text", "text": "证"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "run"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ests"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "只"}
+{"type": "text", "text": "断言"}
+{"type": "text", "text": "了"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "1"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "4"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "12"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "恰好"}
+{"type": "text", "text": "绕"}
+{"type": "text", "text": "开"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "10"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "三个"}
+{"type": "text", "text": "边界"}
+{"type": "text", "text": "值"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "所以"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "全"}
+{"type": "text", "text": "绿"}
+{"type": "text", "text": "却没"}
+{"type": "text", "text": "抓住"}
+{"type": "text", "text": "这个"}
+{"type": "text", "text": " bug"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "改成"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": ">="}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "后"}
+{"type": "text", "text": "现有"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "依旧"}
+{"type": "text", "text": "全"}
+{"type": "text", "text": "绿"}
+{"type": "text", "text": "且"}
+{"type": "text", "text": "符合"}
+{"type": "text", "text": " READ"}
+{"type": "text", "text": "ME"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "2"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "【"}
+{"type": "text", "text": "潜在"}
+{"type": "text", "text": " bug"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "隐藏"}
+{"type": "text", "text": "约定"}
+{"type": "text", "text": "】"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "取"}
+{"type": "text", "text": "最高"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "依赖"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "位"}
+{"type": "text", "text": "元"}
+{"type": "text", "text": "组"}
+{"type": "text", "text": "按"}
+{"type": "text", "text": "门槛"}
+{"type": "text", "text": "升"}
+{"type": "text", "text": "序"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "6"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "15"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "18"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**\n"}
+{"type": "text", "text": "   "}
+{"type": "text", "text": "逻辑"}
+{"type": "text", "text": "是"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "顺序"}
+{"type": "text", "text": "遍历"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "后者"}
+{"type": "text", "text": "覆盖"}
+{"type": "text", "text": "前者"}
+{"type": "text", "text": "」，"}
+{"type": "text", "text": "正确"}
+{"type": "text", "text": "性"}
+{"type": "text", "text": "完全"}
+{"type": "text", "text": "建立在"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "B"}
+{"type": "text", "text": "UL"}
+{"type": "text", "text": "K"}
+{"type": "text", "text": "_T"}
+{"type": "text", "text": "I"}
+{"type": "text", "text": "ERS"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "必须"}
+{"type": "text", "text": "从"}
+{"type": "text", "text": "低"}
+{"type": "text", "text": "到"}
+{"type": "text", "text": "高"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "这个"}
+{"type": "text", "text": "只"}
+{"type": "text", "text": "写在"}
+{"type": "text", "text": "注释"}
+{"type": "text", "text": "里的"}
+{"type": "text", "text": "约定"}
+{"type": "text", "text": "上"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "若"}
+{"type": "text", "text": "日后"}
+{"type": "text", "text": "有人"}
+{"type": "text", "text": "重"}
+{"type": "text", "text": "排"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "插入"}
+{"type": "text", "text": "或"}
+{"type": "text", "text": "改成"}
+{"type": "text", "text": "无序"}
+{"type": "text", "text": "容器"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "函数"}
+{"type": "text", "text": "会"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "静"}
+{"type": "text", "text": "默"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "取"}
+{"type": "text", "text": "错"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "位"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "比如"}
+{"type": "text", "text": "把"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "10"}
+{"type": "text", "text": ","}
+{"type": "text", "text": "15"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "放"}
+{"type": "text", "text": "前面"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "10"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "件"}
+{"type": "text", "text": "就"}
+{"type": "text", "text": "只会"}
+{"type": "text", "text": "拿到"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "%"}
+{"type": "text", "text": "）。"}
+{"type": "text", "text": "更"}
+{"type": "text", "text": "稳"}
+{"type": "text", "text": "的"}
+{"type": "text", "text": "写法"}
+{"type": "text", "text": "是"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "max"}
+{"type": "text", "text": "(..."}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "或"}
+{"type": "text", "text": "显"}
+{"type": "text", "text": "式"}
+{"type": "text", "text": "排序"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "当前"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "正确"}
+{"type": "text", "text": "但"}
+{"type": "text", "text": "脆弱"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "【"}
+{"type": "text", "text": "边界"}
+{"type": "text", "text": "处理"}
+{"type": "text", "text": "不当"}
+{"type": "text", "text": "】"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "参"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "9"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "18"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**\n"}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " -"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "负数"}
+{"type": "text", "text": " q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "返回"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "语义"}
+{"type": "text", "text": "上"}
+{"type": "text", "text": "可"}
+{"type": "text", "text": "接受"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "但"}
+{"type": "text", "text": "未"}
+{"type": "text", "text": "言"}
+{"type": "text", "text": "明"}
+{"type": "text", "text": "）；\n"}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " -"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "非"}
+{"type": "text", "text": "整数"}
+{"type": "text", "text": " q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "如"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "能"}
+{"type": "text", "text": "通过"}
+{"type": "text", "text": "比较"}
+{"type": "text", "text": "并"}
+{"type": "text", "text": "返回"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "位"}
+{"type": "text", "text": "值"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "件"}
+{"type": "text", "text": "数"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "的"}
+{"type": "text", "text": "整数"}
+{"type": "text", "text": "语义"}
+{"type": "text", "text": "不符"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "虽"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "cart"}
+{"type": "text", "text": ".add"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "已"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "int"}
+{"type": "text", "text": "(q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "保证"}
+{"type": "text", "text": "项目"}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "路径"}
+{"type": "text", "text": "为"}
+{"type": "text", "text": "整数"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "但"}
+{"type": "text", "text": "它是"}
+{"type": "text", "text": "公开"}
+{"type": "text", "text": "接口"}
+{"type": "text", "text": "；\n"}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " -"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": "=None"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " /"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "字符串"}
+{"type": "text", "text": "会"}
+{"type": "text", "text": "抛"}
+{"type": "text", "text": "裸"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Type"}
+{"type": "text", "text": "Error"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "友好"}
+{"type": "text", "text": "提示"}
+{"type": "text", "text": "。\n"}
+{"type": "text", "text": "   "}
+{"type": "text", "text": "与"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "cart"}
+{"type": "text", "text": ".add"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "12"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "13"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "先"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": "<="}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "再"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "int"}
+{"type": "text", "text": "(q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "的"}
+{"type": "text", "text": "防御"}
+{"type": "text", "text": "风格"}
+{"type": "text", "text": "不一致"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "4"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "【"}
+{"type": "text", "text": "精度"}
+{"type": "text", "text": "风险"}
+{"type": "text", "text": "】"}
+{"type": "text", "text": "float"}
+{"type": "text", "text": " +"}
+{"type": "text", "text": " round"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "处理"}
+{"type": "text", "text": "金额"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "25"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "30"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**\n"}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " Python"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "round"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "是"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "银行"}
+{"type": "text", "text": "家"}
+{"type": "text", "text": "舍"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "round"}
+{"type": "text", "text": "-half"}
+{"type": "text", "text": "-even"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": " doc"}
+{"type": "text", "text": "string"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "四"}
+{"type": "text", "text": "舍"}
+{"type": "text", "text": "五"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "的"}
+{"type": "text", "text": "通常"}
+{"type": "text", "text": "理解"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "half"}
+{"type": "text", "text": "-up"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "并不"}
+{"type": "text", "text": "完全"}
+{"type": "text", "text": "一致"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "且"}
+{"type": "text", "text": "浮"}
+{"type": "text", "text": "点"}
+{"type": "text", "text": "中间"}
+{"type": "text", "text": "值"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "如"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "399"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "×"}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "折"}
+{"type": "text", "text": "后"}
+{"type": "text", "text": "加"}
+{"type": "text", "text": "税"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "经"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "apply"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "分"}
+{"type": "text", "text": "步"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "舍"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "后"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "可能与"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Decimal"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "一次"}
+{"type": "text", "text": "算"}
+{"type": "text", "text": "出的"}
+{"type": "text", "text": "结果"}
+{"type": "text", "text": "差"}
+{"type": "text", "text": " ±"}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "01"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "项目"}
+{"type": "text", "text": "通"}
+{"type": "text", "text": "篇"}
+{"type": "text", "text": "用"}
+{"type": "text", "text": " float"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "属"}
+{"type": "text", "text": "统一"}
+{"type": "text", "text": "风格"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "但在"}
+{"type": "text", "text": "计价"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "里"}
+{"type": "text", "text": "这是"}
+{"type": "text", "text": "公认"}
+{"type": "text", "text": "隐患"}
+{"type": "text", "text": "点"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "至少"}
+{"type": "text", "text": "值得"}
+{"type": "text", "text": "记录"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "如"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "round"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "2"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "675"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " "}
+{"type": "text", "text": "2"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "得"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "2"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "67"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "而非"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "2"}
+{"type": "text", "text": "."}
+{"type": "text", "text": "68"}
+{"type": "text", "text": "）。\n\n"}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "【"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": "缺失"}
+{"type": "text", "text": "】"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "rate"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "28"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "30"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**\n"}
+{"type": "text", "text": "   "}
+{"type": "text", "text": "传"}
+{"type": "text", "text": "负"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "rate"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "或"}
+{"type": "text", "text": "把"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "6"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "误"}
+{"type": "text", "text": "当"}
+{"type": "text", "text": "百分比"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "当"}
+{"type": "text", "text": " rate"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "传入"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "都会"}
+{"type": "text", "text": "静"}
+{"type": "text", "text": "默"}
+{"type": "text", "text": "算"}
+{"type": "text", "text": "出一个"}
+{"type": "text", "text": "错误"}
+{"type": "text", "text": "金额"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "任何"}
+{"type": "text", "text": "异常"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "doc"}
+{"type": "text", "text": "string"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "也未"}
+{"type": "text", "text": "说明"}
+{"type": "text", "text": " rate"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": "合理"}
+{"type": "text", "text": "取值"}
+{"type": "text", "text": "区间"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "0"}
+{"type": "text", "text": ".."}
+{"type": "text", "text": "1"}
+{"type": "text", "text": "）。"}
+{"type": "text", "text": "默认"}
+{"type": "text", "text": "值"}
+{"type": "text", "text": "路径"}
+{"type": "text", "text": "正确"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "但"}
+{"type": "text", "text": "接口"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "防御"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "对比"}
+{"type": "text", "text": "同"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "apply"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "对"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "p"}
+{"type": "text", "text": "ct"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "有"}
+{"type": "text", "text": "严格"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "两者"}
+{"type": "text", "text": "风格"}
+{"type": "text", "text": "不一致"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "6"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "【"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": "分支"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "触发"}
+{"type": "text", "text": "路径"}
+{"type": "text", "text": "】"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "apply"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Value"}
+{"type": "text", "text": "Error"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "分支"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "23"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "24"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**\n"}
+{"type": "text", "text": "   "}
+{"type": "text", "text": "项目"}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "唯一"}
+{"type": "text", "text": "调用"}
+{"type": "text", "text": "方"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "cart"}
+{"type": "text", "text": ".total"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "只"}
+{"type": "text", "text": "传"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "bul"}
+{"type": "text", "text": "k"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "iscount"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的输出"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "恒"}
+{"type": "text", "text": "为"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "0"}
+{"type": "text", "text": ".."}
+{"type": "text", "text": "15"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "故"}
+{"type": "text", "text": "该"}
+{"type": "text", "text": "分支"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "当前"}
+{"type": "text", "text": "项目"}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "不可"}
+{"type": "text", "text": "达"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "仅"}
+{"type": "text", "text": "作"}
+{"type": "text", "text": "防御"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "不算"}
+{"type": "text", "text": "死"}
+{"type": "text", "text": "代码"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "但"}
+{"type": "text", "text": "属"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "写了"}
+{"type": "text", "text": "却没有"}
+{"type": "text", "text": "触发"}
+{"type": "text", "text": "路径"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "的"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "且"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "run"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ests"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "未"}
+{"type": "text", "text": "覆盖"}
+{"type": "text", "text": " p"}
+{"type": "text", "text": "ct"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "越"}
+{"type": "text", "text": "界"}
+{"type": "text", "text": "用例"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "若"}
+{"type": "text", "text": "它"}
+{"type": "text", "text": "未来"}
+{"type": "text", "text": "被"}
+{"type": "text", "text": "移除"}
+{"type": "text", "text": "或"}
+{"type": "text", "text": "改"}
+{"type": "text", "text": "坏"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "察觉"}
+{"type": "text", "text": "不到"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "7"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "【"}
+{"type": "text", "text": "接口"}
+{"type": "text", "text": "契约"}
+{"type": "text", "text": "未"}
+{"type": "text", "text": "显"}
+{"type": "text", "text": "式"}
+{"type": "text", "text": "化"}
+{"type": "text", "text": "】"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "all"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "1"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "6"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**\n"}
+{"type": "text", "text": "   "}
+{"type": "text", "text": "对外"}
+{"type": "text", "text": "暴露"}
+{"type": "text", "text": "面"}
+{"type": "text", "text": "仅"}
+{"type": "text", "text": "靠"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "下"}
+{"type": "text", "text": "划线"}
+{"type": "text", "text": " ="}
+{"type": "text", "text": " "}
+{"type": "text", "text": "私有"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "的"}
+{"type": "text", "text": "命名"}
+{"type": "text", "text": "约定"}
+{"type": "text", "text": "界定"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "当前"}
+{"type": "text", "text": "因"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": " import"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "import"}
+{"type": "text", "text": " *"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "恰好"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "泄漏"}
+{"type": "text", "text": "多余"}
+{"type": "text", "text": "符号"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "但"}
+{"type": "text", "text": "一旦"}
+{"type": "text", "text": "有人"}
+{"type": "text", "text": "在此"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "顶部"}
+{"type": "text", "text": "加"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "import"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "如"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "from"}
+{"type": "text", "text": " decimal"}
+{"type": "text", "text": " import"}
+{"type": "text", "text": " Decimal"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "import"}
+{"type": "text", "text": " *"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "会"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "连带"}
+{"type": "text", "text": "导出"}
+{"type": "text", "text": "该"}
+{"type": "text", "text": "名字"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "建议"}
+{"type": "text", "text": "补"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "all"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "固化"}
+{"type": "text", "text": "接口"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "8"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "【"}
+{"type": "text", "text": "轻微"}
+{"type": "text", "text": "文档"}
+{"type": "text", "text": "不一致"}
+{"type": "text", "text": "】"}
+{"type": "text", "text": "同"}
+{"type": "text", "text": "概念"}
+{"type": "text", "text": "两种"}
+{"type": "text", "text": "叫"}
+{"type": "text", "text": "法"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "1"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": " vs"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "28"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "29"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**\n"}
+{"type": "text", "text": "   "}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": " doc"}
+{"type": "text", "text": "string"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "称"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "含"}
+{"type": "text", "text": "税"}
+{"type": "text", "text": "金额"}
+{"type": "text", "text": "」，"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": " doc"}
+{"type": "text", "text": "string"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "称"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "加"}
+{"type": "text", "text": "税"}
+{"type": "text", "text": "后"}
+{"type": "text", "text": "金额"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "同一"}
+{"type": "text", "text": "件事"}
+{"type": "text", "text": "两种"}
+{"type": "text", "text": "说法"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "碍"}
+{"type": "text", "text": "理解"}
+{"type": "text", "text": "但"}
+{"type": "text", "text": "口径"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "统一"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "另外"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "with"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ax"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "rate"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "形"}
+{"type": "text", "text": "参"}
+{"type": "text", "text": "说明"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "含"}
+{"type": "text", "text": "税"}
+{"type": "text", "text": "金额"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "也未"}
+{"type": "text", "text": "提及"}
+{"type": "text", "text": "默认"}
+{"type": "text", "text": "值"}
+{"type": "text", "text": "来自"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "TA"}
+{"type": "text", "text": "X"}
+{"type": "text", "text": "_R"}
+{"type": "text", "text": "ATE"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "文档"}
+{"type": "text", "text": "可"}
+{"type": "text", "text": "更"}
+{"type": "text", "text": "明确"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "---\n\n"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "审计"}
+{"type": "text", "text": "结论"}
+{"type": "text", "text": "摘要"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "小"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "结构"}
+{"type": "text", "text": "清晰"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "纯"}
+{"type": "text", "text": "函数"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "副作用"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "职责"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "命名"}
+{"type": "text", "text": "基本"}
+{"type": "text", "text": "一致"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "四个"}
+{"type": "text", "text": "公开"}
+{"type": "text", "text": "符号"}
+{"type": "text", "text": "均"}
+{"type": "text", "text": "被"}
+{"type": "text", "text": "使用"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "无"}
+{"type": "text", "text": "死"}
+{"type": "text", "text": "代码"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "最重要"}
+{"type": "text", "text": "的问题"}
+{"type": "text", "text": "只有"}
+{"type": "text", "text": "一处"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "16"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "q"}
+{"type": "text", "text": "ty"}
+{"type": "text", "text": " >"}
+{"type": "text", "text": " threshold"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "满"}
+{"type": "text", "text": " X"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "件"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "业务"}
+{"type": "text", "text": "口径"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "README"}
+{"type": "text", "text": "/doc"}
+{"type": "text", "text": "string"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "不符"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "三个"}
+{"type": "text", "text": "档"}
+{"type": "text", "text": "位"}
+{"type": "text", "text": "全部"}
+{"type": "text", "text": "延迟"}
+{"type": "text", "text": "一件"}
+{"type": "text", "text": "生效"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "且"}
+{"type": "text", "text": "现有"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "恰好"}
+{"type": "text", "text": "未"}
+{"type": "text", "text": "覆盖"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "3"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "10"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "边界"}
+{"type": "text", "text": "值"}
+{"type": "text", "text": "而"}
+{"type": "text", "text": "漏"}
+{"type": "text", "text": "报"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "建议"}
+{"type": "text", "text": "改为"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": ">="}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "并"}
+{"type": "text", "text": "补"}
+{"type": "text", "text": "边界"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "其余"}
+{"type": "text", "text": "为"}
+{"type": "text", "text": "防御"}
+{"type": "text", "text": "性"}
+{"type": "text", "text": "校验"}
+{"type": "text", "text": "缺失"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "float"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "舍"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "精度"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "隐藏"}
+{"type": "text", "text": "排序"}
+{"type": "text", "text": "约定"}
+{"type": "text", "text": "等"}
+{"type": "text", "text": "次"}
+{"type": "text", "text": "要与"}
+{"type": "text", "text": "风格"}
+{"type": "text", "text": "类"}
+{"type": "text", "text": "问题"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "主"}
+{"type": "text", "text": " Agent"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "后续"}
+{"type": "text", "text": "如需"}
+{"type": "text", "text": "修复"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "只需"}
+{"type": "text", "text": "动"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "16"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "一个"}
+{"type": "text", "text": "字符"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": ">`"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": ">="}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "现有"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "run"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ests"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "仍"}
+{"type": "text", "text": "会"}
+{"type": "text", "text": "全"}
+{"type": "text", "text": "绿"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "README"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "与"}
+{"type": "text", "text": " doc"}
+{"type": "text", "text": "string"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "无需"}
+{"type": "text", "text": "改动"}
+{"type": "text", "text": "。"}
+{"type": "done", "meta": {"stop_reason": "end_turn", "usage": {"input": 653, "output": 4376, "cache_read": 10112, "cache_write": 0}}}

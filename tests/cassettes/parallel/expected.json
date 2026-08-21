@@ -1,10 +1,8 @@
 {
  "passed": true,
- "tool_calls": 8,
- "steps": 5,
+ "tool_calls": 7,
+ "steps": 4,
  "subagents": 2,
- "nudges": {
-  "search_hint": 1
- },
+ "nudges": {},
  "why": "2 个子任务并行且全部成功"
 }

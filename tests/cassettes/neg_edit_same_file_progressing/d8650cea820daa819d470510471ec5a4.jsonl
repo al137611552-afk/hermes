@@ -1,0 +1,86 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:8bc5af178c", "msg1:c446f30dea", "msg2:a192e7786c", "msg3:6039c3dd0c", "msg4:707d8d3330", "msg5:89064c783a", "msg6:6c30be54ae"], "model": "deepseek-v4-flash", "n_messages": 7, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "title"}
+{"type": "thinking", "text": "ize"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "完成"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "步"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": " trunc"}
+{"type": "thinking", "text": "ate"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "tr"}
+{"type": "thinking", "text": "unc"}
+{"type": "thinking", "text": "ate"}
+{"type": "thinking", "text": "(text"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " n"}
+{"type": "thinking", "text": ")："}
+{"type": "thinking", "text": "超"}
+{"type": "thinking", "text": "长"}
+{"type": "thinking", "text": "截"}
+{"type": "thinking", "text": "断"}
+{"type": "thinking", "text": "加"}
+{"type": "thinking", "text": "省略"}
+{"type": "thinking", "text": "号"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "语义"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "len"}
+{"type": "thinking", "text": "(text"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " >"}
+{"type": "thinking", "text": " n"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "时"}
+{"type": "thinking", "text": "截"}
+{"type": "thinking", "text": "断"}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": "前"}
+{"type": "thinking", "text": " n"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "字符"}
+{"type": "thinking", "text": " +"}
+{"type": "thinking", "text": " \""}
+{"type": "thinking", "text": "...\""}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "✅"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "title"}
+{"type": "text", "text": "ize"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "加"}
+{"type": "text", "text": "好"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "通过"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "第"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "2"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "步"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "加"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "tr"}
+{"type": "text", "text": "unc"}
+{"type": "text", "text": "ate"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_eQOw9TelqdO1Pr0TC6oh9055", "name": "edit_file", "input": {"new_string": "def titleize(text):\n    return text.title()\n\n\ndef truncate(text, n):\n    if len(text) > n:\n        return text[:n] + \"...\"\n    return text", "old_string": "def titleize(text):\n    return text.title()", "path": "lib.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_mn4VuHsYH6fC0E7BGLMf1818", "name": "edit_file", "input": {"new_string": "from lib import slugify, titleize, truncate\n\nassert slugify(\"Hello World\") == \"hello-world\"\nassert titleize(\"hello world\") == \"Hello World\"\nassert truncate(\"hello world\", 5) == \"hello...\"\nassert truncate(\"hello\", 10) == \"hello\"\nprint(\"ALL TESTS PASSED\")", "old_string": "from lib import slugify, titleize\n\nassert slugify(\"Hello World\") == \"hello-world\"\nassert titleize(\"hello world\") == \"Hello World\"\nprint(\"ALL TESTS PASSED\")", "path": "test_lib.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 93, "output": 382, "cache_read": 10112, "cache_write": 0}}}

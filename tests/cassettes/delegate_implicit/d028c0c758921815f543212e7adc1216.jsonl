@@ -1,0 +1,107 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:d8b7abcbb2", "msg1:9a4354d885", "msg2:b2e8845e35", "msg3:53359c9ed2", "msg4:91313608d8"], "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Now"}
+{"type": "thinking", "text": " I"}
+{"type": "thinking", "text": " understand"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": " architecture"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " it"}
+{"type": "thinking", "text": " uses"}
+{"type": "thinking", "text": " classes"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "name"}
+{"type": "thinking", "text": "`,"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "description"}
+{"type": "thinking", "text": "`,"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "input"}
+{"type": "thinking", "text": "_s"}
+{"type": "thinking", "text": "chema"}
+{"type": "thinking", "text": "`,"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "danger"}
+{"type": "thinking", "text": "ous"}
+{"type": "thinking", "text": "`,"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "run"}
+{"type": "thinking", "text": "()`"}
+{"type": "thinking", "text": " methods"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " rather"}
+{"type": "thinking", "text": " than"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "@"}
+{"type": "thinking", "text": "tool"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " decor"}
+{"type": "thinking", "text": "ators"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " The"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": " registers"}
+{"type": "thinking", "text": " them"}
+{"type": "thinking", "text": ".\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " now"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " other"}
+{"type": "thinking", "text": " files"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " search"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " tasks"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " git"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " fixture"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " memory"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " ask"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " notes"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " codes"}
+{"type": "thinking", "text": "earch"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " screenshot"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " skills"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " recall"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " search"}
+{"type": "thinking", "text": "code"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "."}
+{"type": "text", "text": "Now"}
+{"type": "text", "text": " let"}
+{"type": "text", "text": " me"}
+{"type": "text", "text": " read"}
+{"type": "text", "text": " the"}
+{"type": "text", "text": " next"}
+{"type": "text", "text": " batch"}
+{"type": "text", "text": " of"}
+{"type": "text", "text": " files"}
+{"type": "text", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_HI8knUC5nqq40nh4Fnjc1996", "name": "read_file", "input": {"path": "src/agentcore/tools/search.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_5N9vx1d4WziO0pDv99DD9631", "name": "read_file", "input": {"path": "src/agentcore/tools/tasks.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_ug42zdIQ9DC9smff1cRl5885", "name": "read_file", "input": {"path": "src/agentcore/tools/git.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 6212, "output": 228, "cache_read": 6912, "cache_write": 0}}}

@@ -1,0 +1,29 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:5ad58e5b78", "msg1:ecb8355dec", "msg2:74cec1497b", "msg3:b2df291998", "msg4:6c3d3a7d92", "msg5:b0564846e6", "msg6:784c3c3ebb", "msg7:822567b4ca", "msg8:0fc6697f7f", "msg9:95be915a87", "msg10:c050f6ddb6"], "model": "deepseek-v4-flash", "n_messages": 11, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "全部"}
+{"type": "thinking", "text": "通过了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": "最终的"}
+{"type": "thinking", "text": " calc"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "改动"}
+{"type": "thinking", "text": "正确"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "最小"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "全部"}
+{"type": "text", "text": "通过"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "看一下"}
+{"type": "text", "text": "最终"}
+{"type": "text", "text": "改"}
+{"type": "text", "text": "动的"}
+{"type": "text", "text": " diff"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ON9fQ6wr4rJQRTgl2Eaz1975", "name": "git_diff", "input": {"path": "calc.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 59, "output": 70, "cache_read": 11264, "cache_write": 0}}}

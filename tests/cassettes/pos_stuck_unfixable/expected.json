@@ -1,7 +1,7 @@
 {
  "passed": true,
- "tool_calls": 4,
- "steps": 3,
+ "tool_calls": 5,
+ "steps": 4,
  "subagents": 0,
  "nudges": {
   "learning_shadow": 1

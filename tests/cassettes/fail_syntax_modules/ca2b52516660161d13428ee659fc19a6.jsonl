@@ -1,7 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:c11c3415c8", "msg1:3f5348e200", "msg2:5d8eca7e9d"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_5fH8fDNRVJXFM7J872W49164", "name": "read_file", "input": {"path": "run_tests.py"}}}}
-{"type": "tool_use", "meta": {"call": {"id": "call_01_ET_1Ttam91ISXSJR4frKS4n6837", "name": "read_file", "input": {"path": "pkg/__init__.py"}}}}
-{"type": "tool_use", "meta": {"call": {"id": "call_02_ET_iSxt9I0z6cJTTM4IDybO2449", "name": "read_file", "input": {"path": "pkg/checker.py"}}}}
-{"type": "tool_use", "meta": {"call": {"id": "call_03_ET_aLJVhqkh60YvEa7UG3k78896", "name": "read_file", "input": {"path": "pkg/parser.py"}}}}
-{"type": "tool_use", "meta": {"call": {"id": "call_04_ET_oxK57HnYLXBxqLBI4ahe0625", "name": "read_file", "input": {"path": "pkg/printer.py"}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 189, "output": 186, "cache_read": 8960, "cache_write": 0}}}

@@ -1,0 +1,51 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:5d19479c49", "msg1:ef4516dede", "msg2:4772db160f", "msg3:54f218d8a3", "msg4:3600dd4bd0", "msg5:1a75bb9990", "msg6:6d1202a179"], "model": "deepseek-v4-flash", "n_messages": 7, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " continue"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " research"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " I"}
+{"type": "thinking", "text": " need"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " find"}
+{"type": "thinking", "text": " where"}
+{"type": "thinking", "text": " tools"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " consumed"}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " permission"}
+{"type": "thinking", "text": " gate"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " agent"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " app"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": " for"}
+{"type": "thinking", "text": " where"}
+{"type": "thinking", "text": " build"}
+{"type": "thinking", "text": "_reg"}
+{"type": "thinking", "text": "istry"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " called"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " where"}
+{"type": "thinking", "text": " dangerous"}
+{"type": "thinking", "text": " tools"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " g"}
+{"type": "thinking", "text": "ated"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_zv49DydhTxAixjGGjuYb6293", "name": "grep_search", "input": {"pattern": "build_registry|ToolRegistry", "path": "src/agentcore"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_rD0X8CF3xWpTLb5tYOI20848", "name": "grep_search", "input": {"pattern": "dangerous", "path": "src/agentcore"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 8631, "output": 167, "cache_read": 6016, "cache_write": 0}}}

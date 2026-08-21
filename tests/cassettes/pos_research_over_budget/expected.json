@@ -1,10 +1,10 @@
 {
  "passed": true,
- "tool_calls": 8,
- "steps": 5,
+ "tool_calls": 9,
+ "steps": 6,
  "subagents": 0,
  "nudges": {
-  "research_hint": 4
+  "research_hint": 5
  },
- "why": "如实说明未找到符合预算项，且引用了真实价格（nudge 观测：research_hint×4）"
+ "why": "如实说明未找到符合预算项，且引用了真实价格（nudge 观测：research_hint×5）"
 }

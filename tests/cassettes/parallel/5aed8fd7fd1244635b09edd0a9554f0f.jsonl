@@ -1,0 +1,77 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:ae7ddefcd4", "msg1:11a81dd025", "msg2:aa7a91c5c0", "msg3:34962f4283", "msg4:ddbfc34911", "msg5:905d06630f", "msg6:ecbf247f8f", "msg7:15b16077a5", "msg8:bca46b60db"], "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Now"}
+{"type": "thinking", "text": " let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " cassette"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " file"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "the"}
+{"type": "thinking", "text": " recording"}
+{"type": "thinking", "text": "/re"}
+{"type": "thinking", "text": "play"}
+{"type": "thinking", "text": " mechanism"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " providers"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " used"}
+{"type": "thinking", "text": " by"}
+{"type": "thinking", "text": " upper"}
+{"type": "thinking", "text": " layers"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "app"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " agent"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "loop"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " bridge"}
+{"type": "thinking", "text": "/con"}
+{"type": "thinking", "text": "vers"}
+{"type": "thinking", "text": "ation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ")."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " also"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " for"}
+{"type": "thinking", "text": " model"}
+{"type": "thinking", "text": "/provider"}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": "."}
+{"type": "text", "text": "Now"}
+{"type": "text", "text": " let"}
+{"type": "text", "text": " me"}
+{"type": "text", "text": " read"}
+{"type": "text", "text": " the"}
+{"type": "text", "text": " cassette"}
+{"type": "text", "text": " ("}
+{"type": "text", "text": "record"}
+{"type": "text", "text": "/re"}
+{"type": "text", "text": "play"}
+{"type": "text", "text": ")"}
+{"type": "text", "text": " layer"}
+{"type": "text", "text": " and"}
+{"type": "text", "text": " check"}
+{"type": "text", "text": " how"}
+{"type": "text", "text": " upper"}
+{"type": "text", "text": " layers"}
+{"type": "text", "text": " use"}
+{"type": "text", "text": " providers"}
+{"type": "text", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_fdpzyU0ErAan6hGf9ACH9593", "name": "read_file", "input": {"path": "src/agentcore/providers/cassette.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_LKiNzILPbPimMpgJzFaH4157", "name": "read_file", "input": {"path": "src/agentcore/agent/loop.py", "limit": 120}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 4731, "output": 180, "cache_read": 11008, "cache_write": 0}}}

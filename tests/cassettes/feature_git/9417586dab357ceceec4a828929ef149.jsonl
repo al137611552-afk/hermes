@@ -1,0 +1,57 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:3fc705c988", "msg1:c43f1cb9cc", "msg2:9e307a96a6", "msg3:90f13f9fae", "msg4:c3ea1c86a9", "msg5:f2d375c45d", "msg6:3016bdd94d", "msg7:849a9fb7cc", "msg8:aef5411ff0", "msg9:f869bed979", "msg10:72ad9057b6"], "model": "deepseek-v4-flash", "n_messages": 11, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " Conventional"}
+{"type": "thinking", "text": " Comm"}
+{"type": "thinking", "text": "its"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "信息"}
+{"type": "thinking", "text": "类似"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "fe"}
+{"type": "thinking", "text": "at"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " add"}
+{"type": "thinking", "text": " clear"}
+{"type": "thinking", "text": "()"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " Todo"}
+{"type": "thinking", "text": "List"}
+{"type": "thinking", "text": "`\n\n"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "已"}
+{"type": "thinking", "text": "明确"}
+{"type": "thinking", "text": "要求"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": "后"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "\"，"}
+{"type": "thinking", "text": "所以"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "是"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "要求的"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "检查"}
+{"type": "thinking", "text": " diff"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "后"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "通过"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "提交"}
+{"type": "text", "text": "改动"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_P9qRt2hxgwunZ3K7U8lW5610", "name": "git_commit", "input": {"message": "feat: add clear() method to TodoList"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 118, "output": 107, "cache_read": 10112, "cache_write": 0}}}

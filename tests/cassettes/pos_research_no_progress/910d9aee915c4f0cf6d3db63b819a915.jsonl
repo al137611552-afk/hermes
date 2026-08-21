@@ -1,0 +1,230 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:d182d1d682", "msg0:7005da1e4b", "msg1:4cded5602b", "msg2:09d23685ee"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "质量"}
+{"type": "thinking", "text": "不"}
+{"type": "thinking", "text": "达标"}
+{"type": "thinking", "text": "——"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "的结果"}
+{"type": "thinking", "text": "都是"}
+{"type": "thinking", "text": "高"}
+{"type": "thinking", "text": "价位"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "¥"}
+{"type": "thinking", "text": "899"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "238"}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "没有"}
+{"type": "thinking", "text": "落在"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "500"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "元"}
+{"type": "thinking", "text": "预算"}
+{"type": "thinking", "text": "内"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "我需要"}
+{"type": "thinking", "text": "换"}
+{"type": "thinking", "text": "关键词"}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": "来源"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "系统"}
+{"type": "thinking", "text": "建议"}
+{"type": "thinking", "text": "我"}
+{"type": "thinking", "text": "继续"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "不要"}
+{"type": "thinking", "text": "编"}
+{"type": "thinking", "text": "造"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": "不同的"}
+{"type": "thinking", "text": "关键词"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "具体"}
+{"type": "thinking", "text": "品牌"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "高斯"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "ik"}
+{"type": "thinking", "text": "bc"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "达尔"}
+{"type": "thinking", "text": "优"}
+{"type": "thinking", "text": "/A"}
+{"type": "thinking", "text": "KK"}
+{"type": "thinking", "text": "O"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "狼"}
+{"type": "thinking", "text": "蛛"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "雷"}
+{"type": "thinking", "text": "柏"}
+{"type": "thinking", "text": "/R"}
+{"type": "thinking", "text": "K"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "黑"}
+{"type": "thinking", "text": "峡谷"}
+{"type": "thinking", "text": "等"}
+{"type": "thinking", "text": "平价"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "品牌"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "轴"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "T"}
+{"type": "thinking", "text": "TC"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "红"}
+{"type": "thinking", "text": "轴"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "佳"}
+{"type": "thinking", "text": "达"}
+{"type": "thinking", "text": "隆"}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "轴"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "高"}
+{"type": "thinking", "text": "特"}
+{"type": "thinking", "text": "水"}
+{"type": "thinking", "text": "蜜"}
+{"type": "thinking", "text": "桃"}
+{"type": "thinking", "text": "轴"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "关键词"}
+{"type": "thinking", "text": "如"}
+{"type": "thinking", "text": "「"}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "红"}
+{"type": "thinking", "text": "轴"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "200"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "ik"}
+{"type": "thinking", "text": "bc"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "高斯"}
+{"type": "thinking", "text": " GS"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": "D"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "AK"}
+{"type": "thinking", "text": "KO"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "309"}
+{"type": "thinking", "text": "8"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "狼"}
+{"type": "thinking", "text": "蛛"}
+{"type": "thinking", "text": " F"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "RK"}
+{"type": "thinking", "text": " R"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "黑"}
+{"type": "thinking", "text": "峡谷"}
+{"type": "thinking", "text": " X"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "」\n\n"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "并行"}
+{"type": "thinking", "text": "多"}
+{"type": "thinking", "text": "搜"}
+{"type": "thinking", "text": "几"}
+{"type": "thinking", "text": "轮"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": "更"}
+{"type": "thinking", "text": "具体"}
+{"type": "thinking", "text": "的关键"}
+{"type": "thinking", "text": "词"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "第一"}
+{"type": "text", "text": "轮"}
+{"type": "text", "text": "搜索"}
+{"type": "text", "text": "返回"}
+{"type": "text", "text": "的都是"}
+{"type": "text", "text": " ¥"}
+{"type": "text", "text": "899"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "以上的"}
+{"type": "text", "text": "高价"}
+{"type": "text", "text": "型号"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "没"}
+{"type": "text", "text": "落到"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "500"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "元"}
+{"type": "text", "text": "预算"}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "我"}
+{"type": "text", "text": "换"}
+{"type": "text", "text": "更"}
+{"type": "text", "text": "精准"}
+{"type": "text", "text": "的关键"}
+{"type": "text", "text": "词"}
+{"type": "text", "text": "继续"}
+{"type": "text", "text": "搜"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "目标"}
+{"type": "text", "text": "锁定"}
+{"type": "text", "text": "平价"}
+{"type": "text", "text": "品牌"}
+{"type": "text", "text": "和"}
+{"type": "text", "text": "静"}
+{"type": "text", "text": "音"}
+{"type": "text", "text": "轴"}
+{"type": "text", "text": "体"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "静"}
+{"type": "text", "text": "音"}
+{"type": "text", "text": "红"}
+{"type": "text", "text": "轴"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "水"}
+{"type": "text", "text": "蜜"}
+{"type": "text", "text": "桃"}
+{"type": "text", "text": "轴"}
+{"type": "text", "text": "等"}
+{"type": "text", "text": "）。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_drtBSDvasZGTIOBNUr6E6263", "name": "web_search", "input": {"query": "静音红轴 机械键盘 300元以内 办公 高斯 ikbc AKKO"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_4ghTvnpr29Sij8VwgSmW7072", "name": "web_search", "input": {"query": "狼蛛F87 静音轴 机械键盘 价格"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_DnPW0VJLp2FD0NbnmNiL2138", "name": "web_search", "input": {"query": "RK R87 静音红轴 机械键盘 价格 评测"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 2276, "output": 373, "cache_read": 7936, "cache_write": 0}}}

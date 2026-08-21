@@ -1,7 +1,7 @@
 {
  "passed": true,
- "tool_calls": 13,
- "steps": 6,
+ "tool_calls": 7,
+ "steps": 4,
  "subagents": 4,
  "nudges": {},
  "why": "并行委派成立、汇总覆盖 4/4 个模块、一个文件没动"

@@ -1,10 +1,10 @@
 {
- "passed": true,
- "tool_calls": 12,
- "steps": 10,
+ "passed": false,
+ "tool_calls": 20,
+ "steps": 12,
  "subagents": 0,
  "nudges": {
   "research_hint": 5
  },
- "why": "停下来如实作答（web_search 8 次）（nudge 观测：research_hint×5）"
+ "why": "重搜失控（web_search 11 次 > 8）（nudge 观测：research_hint×5）"
 }

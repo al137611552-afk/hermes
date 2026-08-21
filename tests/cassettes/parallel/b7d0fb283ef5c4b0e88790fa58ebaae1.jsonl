@@ -1,0 +1,48 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:ae7ddefcd4", "msg1:11a81dd025", "msg2:aa7a91c5c0", "msg3:34962f4283", "msg4:ddbfc34911", "msg5:905d06630f", "msg6:ecbf247f8f", "msg7:15b16077a5", "msg8:bca46b60db", "msg9:e9d0cb6e45", "msg10:c7c6b067f7", "msg11:9c30e86535", "msg12:3c27d2556f", "msg13:7bb720e4f0", "msg14:a181a4d9aa", "msg15:a1590b91f1", "msg16:c793f82759", "msg17:550d569e7e", "msg18:59a225ab98", "msg19:a191c21493", "msg20:5c09df2432", "msg21:1dd8eff6a2", "msg22:76c006e30a"], "model": "deepseek-v4-flash", "n_messages": 23, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " around"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "800"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "815"}
+{"type": "thinking", "text": " for"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " usage"}
+{"type": "thinking", "text": " event"}
+{"type": "thinking", "text": " emission"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " line"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "779"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "second"}
+{"type": "thinking", "text": " stream"}
+{"type": "thinking", "text": "_ch"}
+{"type": "thinking", "text": "at"}
+{"type": "thinking", "text": " call"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " probably"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " \""}
+{"type": "thinking", "text": "ret"}
+{"type": "thinking", "text": "ry"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": " no"}
+{"type": "thinking", "text": " tools"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": " path"}
+{"type": "thinking", "text": ")."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " quickly"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_GTXYiofn8ZyHG7JxfMQR2393", "name": "read_file", "input": {"limit": 50, "offset": 770, "path": "src/agentcore/agent/loop.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 768, "output": 129, "cache_read": 37504, "cache_write": 0}}}

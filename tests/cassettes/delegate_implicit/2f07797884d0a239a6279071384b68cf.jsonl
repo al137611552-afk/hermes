@@ -1,0 +1,193 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:cfaad2eef9", "msg1:2e4ad4c511", "msg2:d6f5da9787", "msg3:091bccf1de", "msg4:d9f6b474ba", "msg5:1b4ea65eec", "msg6:6db73d250c", "msg7:69af1a69d9", "msg8:71ac0aae3d", "msg9:262d974f74", "msg10:336ec4a223"], "model": "deepseek-v4-flash", "n_messages": 11, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "The"}
+{"type": "thinking", "text": " system"}
+{"type": "thinking", "text": " observer"}
+{"type": "thinking", "text": " suggests"}
+{"type": "thinking", "text": " using"}
+{"type": "thinking", "text": " search"}
+{"type": "thinking", "text": "_code"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " But"}
+{"type": "thinking", "text": " I"}
+{"type": "thinking", "text": "'ve"}
+{"type": "thinking", "text": " actually"}
+{"type": "thinking", "text": " already"}
+{"type": "thinking", "text": " completed"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " main"}
+{"type": "thinking", "text": " task"}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": " I"}
+{"type": "thinking", "text": "'ve"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " full"}
+{"type": "thinking", "text": " web"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " file"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " verified"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " confirm"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " tools"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " registered"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "danger"}
+{"type": "thinking", "text": "ous"}
+{"type": "thinking", "text": " flag"}
+{"type": "thinking", "text": " etc"}
+{"type": "thinking", "text": ".),"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " then"}
+{"type": "thinking", "text": " I"}
+{"type": "thinking", "text": " can"}
+{"type": "thinking", "text": " final"}
+{"type": "thinking", "text": "ize"}
+{"type": "thinking", "text": ".\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": " at"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " confirm"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " registration"}
+{"type": "thinking", "text": " mechanism"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " specifically"}
+{"type": "thinking", "text": " whether"}
+{"type": "thinking", "text": " these"}
+{"type": "thinking", "text": " tools"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " marked"}
+{"type": "thinking", "text": " dangerous"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Actually"}
+{"type": "thinking", "text": " I"}
+{"type": "thinking", "text": " saw"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " that"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "danger"}
+{"type": "thinking", "text": "ous"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " bool"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " False"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " class"}
+{"type": "thinking", "text": " attribute"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Web"}
+{"type": "thinking", "text": "Search"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " Web"}
+{"type": "thinking", "text": "Fetch"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": " don"}
+{"type": "thinking", "text": "'t"}
+{"type": "thinking", "text": " define"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "danger"}
+{"type": "thinking", "text": "ous"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " True"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "I"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " whole"}
+{"type": "thinking", "text": " file"}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": " neither"}
+{"type": "thinking", "text": " class"}
+{"type": "thinking", "text": " sets"}
+{"type": "thinking", "text": " dangerous"}
+{"type": "thinking", "text": ")."}
+{"type": "thinking", "text": " Also"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " module"}
+{"type": "thinking", "text": " doc"}
+{"type": "thinking", "text": "string"}
+{"type": "thinking", "text": " says"}
+{"type": "thinking", "text": " \""}
+{"type": "thinking", "text": "两"}
+{"type": "thinking", "text": "工具"}
+{"type": "thinking", "text": "均"}
+{"type": "thinking", "text": "只"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "非"}
+{"type": "thinking", "text": "危险"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "不过"}
+{"type": "thinking", "text": "权限"}
+{"type": "thinking", "text": " gate"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "并"}
+{"type": "thinking", "text": "进"}
+{"type": "thinking", "text": "只"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "子"}
+{"type": "thinking", "text": " Agent"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "角色"}
+{"type": "thinking", "text": "白"}
+{"type": "thinking", "text": "名单"}
+{"type": "thinking", "text": "。\"\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " quickly"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " confirm"}
+{"type": "thinking", "text": " registration"}
+{"type": "thinking", "text": "."}
+{"type": "text", "text": "I"}
+{"type": "text", "text": "'ve"}
+{"type": "text", "text": " read"}
+{"type": "text", "text": " the"}
+{"type": "text", "text": " full"}
+{"type": "text", "text": " file"}
+{"type": "text", "text": " and"}
+{"type": "text", "text": " confirmed"}
+{"type": "text", "text": " the"}
+{"type": "text", "text": " tool"}
+{"type": "text", "text": " classes"}
+{"type": "text", "text": "."}
+{"type": "text", "text": " Let"}
+{"type": "text", "text": " me"}
+{"type": "text", "text": " quickly"}
+{"type": "text", "text": " verify"}
+{"type": "text", "text": " the"}
+{"type": "text", "text": " registry"}
+{"type": "text", "text": " registration"}
+{"type": "text", "text": " to"}
+{"type": "text", "text": " confirm"}
+{"type": "text", "text": " how"}
+{"type": "text", "text": " they"}
+{"type": "text", "text": "'re"}
+{"type": "text", "text": " exported"}
+{"type": "text", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_pXYyEWrMWaqB1Ls8US099072", "name": "read_file", "input": {"path": "src/agentcore/tools/registry.py", "offset": 80, "limit": 75}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 29561, "output": 273, "cache_read": 6144, "cache_write": 0}}}

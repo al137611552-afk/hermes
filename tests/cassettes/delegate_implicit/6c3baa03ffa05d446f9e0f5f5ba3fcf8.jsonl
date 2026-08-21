@@ -1,0 +1,56 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:d8b7abcbb2"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " start"}
+{"type": "thinking", "text": " by"}
+{"type": "thinking", "text": " reading"}
+{"type": "thinking", "text": " all"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " files"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " src"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "agent"}
+{"type": "thinking", "text": "core"}
+{"type": "thinking", "text": "/t"}
+{"type": "thinking", "text": "ools"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": " directory"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " first"}
+{"type": "thinking", "text": " list"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " directory"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " see"}
+{"type": "thinking", "text": " what"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " there"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " then"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " each"}
+{"type": "thinking", "text": " file"}
+{"type": "thinking", "text": ".\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " files"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " parallel"}
+{"type": "thinking", "text": " batches"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " First"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " list"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " directory"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_aOiSZNEk6wDYhXSu4ZOh7783", "name": "list_dir", "input": {"path": "src/agentcore/tools"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 610, "output": 102, "cache_read": 5760, "cache_write": 0}}}

@@ -1,0 +1,82 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:2fcef9ef74", "msg1:df651acee5", "msg2:0c6a42db6a", "msg3:e182a90359", "msg4:90e3857092", "msg5:1d8ceaa882", "msg6:a8173bf649", "msg7:f76a0e866e", "msg8:0a4575c167"], "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "都"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "完了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "我需要"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "工具的"}
+{"type": "thinking", "text": "注册"}
+{"type": "thinking", "text": "机制"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "了解"}
+{"type": "thinking", "text": " @"}
+{"type": "thinking", "text": "tool"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "装饰"}
+{"type": "thinking", "text": "器"}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "注册"}
+{"type": "thinking", "text": "方式"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "以及"}
+{"type": "thinking", "text": " __"}
+{"type": "thinking", "text": "init"}
+{"type": "thinking", "text": "__."}
+{"type": "thinking", "text": "py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": "工具的"}
+{"type": "thinking", "text": "导出"}
+{"type": "thinking", "text": "方式"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "快速"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "两个"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "已"}
+{"type": "text", "text": "完整"}
+{"type": "text", "text": "阅读"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "现在"}
+{"type": "text", "text": "快速"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "注册"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "导出"}
+{"type": "text", "text": "机制"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "看"}
+{"type": "text", "text": " base"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "registry"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "和"}
+{"type": "text", "text": " __"}
+{"type": "text", "text": "init"}
+{"type": "text", "text": "__."}
+{"type": "text", "text": "py"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "中"}
+{"type": "text", "text": "如何"}
+{"type": "text", "text": "注册"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_d1V7Cjqxuki9So20Jh5J4561", "name": "grep_search", "input": {"pattern": "RunShellTool|ProcessListTool|ProcessOutputTool|ProcessInputTool|ProcessStopTool", "path": "src/agentcore"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_eloxoMV4vRnnLUxlH6xb7001", "name": "read_file", "input": {"path": "src/agentcore/tools/base.py", "limit": 120}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 2225, "output": 212, "cache_read": 24192, "cache_write": 0}}}

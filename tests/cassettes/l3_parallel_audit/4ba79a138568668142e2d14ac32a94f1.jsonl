@@ -1,0 +1,4 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:5ccc103225", "msg1:b5aad6f997", "msg2:4c561c685a", "msg3:b69b54b8ff", "msg4:4ec199e1a5", "msg5:d2578610c5", "msg6:c0b99c38f3"], "model": "deepseek-v4-flash", "n_messages": 7, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_L4q9SE4Hk0ClBX5oxOkg2679", "name": "read_file", "input": {"path": "README.md"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_ET_Yf38pFSpVvOjE4n9pAob6352", "name": "read_file", "input": {"path": "run_tests.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 57, "output": 78, "cache_read": 9984, "cache_write": 0}}}

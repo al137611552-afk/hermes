@@ -1,0 +1,26 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:317c475ccb", "msg1:5d069bd44a", "msg2:2a88435c95"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "工作"}
+{"type": "thinking", "text": "区"}
+{"type": "thinking", "text": "只有"}
+{"type": "thinking", "text": "两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "main"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " READ"}
+{"type": "thinking", "text": "ME"}
+{"type": "thinking", "text": ".md"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": " READ"}
+{"type": "thinking", "text": "ME"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "了解"}
+{"type": "thinking", "text": "构建"}
+{"type": "thinking", "text": "方式"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ATmLgzBMTkOBdHHPbhqB7092", "name": "read_file", "input": {"path": "README.md"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 104, "output": 68, "cache_read": 8960, "cache_write": 0}}}

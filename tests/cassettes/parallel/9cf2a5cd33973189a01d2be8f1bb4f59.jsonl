@@ -1,0 +1,23 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:5d19479c49"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "开始"}
+{"type": "thinking", "text": "调研"}
+{"type": "thinking", "text": " src"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "agent"}
+{"type": "thinking", "text": "core"}
+{"type": "thinking", "text": "/t"}
+{"type": "thinking", "text": "ools"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "目录"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "首先"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": "目录"}
+{"type": "thinking", "text": "结构和"}
+{"type": "thinking", "text": "相关"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_zpkEgA83B8eK2fOTLzjB2683", "name": "list_dir", "input": {"path": "src/agentcore/tools"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_JFvsfBsV5SPd1ZE48Gca5762", "name": "list_dir", "input": {"path": "src/agentcore"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 360, "output": 101, "cache_read": 5760, "cache_write": 0}}}

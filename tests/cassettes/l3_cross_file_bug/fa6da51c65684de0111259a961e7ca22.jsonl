@@ -1,0 +1,17 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:1d746b61f5", "msg1:4c5cd7b6e3", "msg2:1d13ed314d"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": " READ"}
+{"type": "thinking", "text": "ME"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": "相关的"}
+{"type": "thinking", "text": " Python"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_3EZBmbiTO2XpxEaPfbs37212", "name": "read_file", "input": {"path": "README.md"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_VdugMknT2sm5a4y67NA05936", "name": "read_file", "input": {"path": "shop/pricing.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_cXl1TeM7vU57AnjOdt1U3492", "name": "read_file", "input": {"path": "shop/report.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_03_Bd2Cnbja7pflARwfG6l30414", "name": "read_file", "input": {"path": "run_tests.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 144, "output": 155, "cache_read": 9088, "cache_write": 0}}}

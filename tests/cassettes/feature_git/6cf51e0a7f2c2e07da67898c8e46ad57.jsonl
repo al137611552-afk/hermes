@@ -1,7 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:3fc705c988", "msg1:0213ed9984", "msg2:2c9bd50c13", "msg3:9513e831cb", "msg4:9fb4cea0ad", "msg5:61197539fa", "msg6:a576ede598", "msg7:98bde5b4c3", "msg8:e8d8d5a21f"], "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "text", "text": "跑"}
-{"type": "text", "text": "测试"}
-{"type": "text", "text": "验证"}
-{"type": "text", "text": "："}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_q509AiOVDGt26ZdGwTV41984", "name": "run_bash", "input": {"command": "python test_todo.py"}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 129, "output": 52, "cache_read": 10112, "cache_write": 0}}}

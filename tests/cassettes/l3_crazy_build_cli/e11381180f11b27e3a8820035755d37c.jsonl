@@ -1,0 +1,68 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:affcceb696", "tools:46fa0e83f9", "msg0:bdfa899bf0", "msg1:c661f3fdf6", "msg2:1495120e13", "msg3:5b4a589b5e", "msg4:690fa83f63", "msg5:4c7c03dd16", "msg6:053896be25", "msg7:3c952201a3", "msg8:e7615ac36d", "msg9:d3de611f5f", "msg10:1a801c2070", "msg11:dc3ddeab9a", "msg12:4b7e36fe1a", "msg13:b0fbecd3da", "msg14:2161b52a59", "msg15:3c54adcec7", "msg16:35c6a154df"], "model": "deepseek-v4-flash", "n_messages": 17, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "全"}
+{"type": "thinking", "text": "绿"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "再"}
+{"type": "thinking", "text": "手动"}
+{"type": "thinking", "text": "验证"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": " CLI"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的真实"}
+{"type": "thinking", "text": "用法"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "不带"}
+{"type": "thinking", "text": " --"}
+{"type": "thinking", "text": "top"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "默认"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "自定义"}
+{"type": "thinking", "text": " N"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "以及"}
+{"type": "thinking", "text": " READ"}
+{"type": "thinking", "text": "ME"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "要求的"}
+{"type": "thinking", "text": "每"}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "词"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "次数"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "格式"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "同时"}
+{"type": "thinking", "text": "清理"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": "tmp"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里的"}
+{"type": "thinking", "text": "临时"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "全"}
+{"type": "text", "text": "绿"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "再"}
+{"type": "text", "text": "手动"}
+{"type": "text", "text": "验证"}
+{"type": "text", "text": "一遍"}
+{"type": "text", "text": " CLI"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的各种"}
+{"type": "text", "text": "用法"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "并"}
+{"type": "text", "text": "清理"}
+{"type": "text", "text": "临时"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_WT3bmntapuJblwsLjDL27416", "name": "run_bash", "input": {"command": "printf 'Hello world! Hello, WORLD. hello...\\n' > /tmp/demo.txt\necho \"=== 默认 top 3 ===\"; python wordstat.py /tmp/demo.txt\necho \"=== --top 1 ===\"; python wordstat.py /tmp/demo.txt --top 1\necho \"=== --top 99（n 大于词数）===\"; python wordstat.py /tmp/demo.txt --top 99\nrm -f /tmp/demo.txt /tmp/wordstat_sample.txt"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 123, "output": 220, "cache_read": 13312, "cache_write": 0}}}

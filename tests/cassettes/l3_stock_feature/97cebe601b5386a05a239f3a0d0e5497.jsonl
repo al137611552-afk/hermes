@@ -1,0 +1,21 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:ba8a0c89c9", "msg1:dfc3eeaf4e", "msg2:3aa90edaa4", "msg3:d2213ee2ed", "msg4:1bbc9f3d3b", "msg5:2aae989d21", "msg6:dd5dda7f94", "msg7:eaa3811331", "msg8:22a7d7f483"], "model": "deepseek-v4-flash", "n_messages": 9, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "跑"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "全"}
+{"type": "thinking", "text": "绿"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "4"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "处"}
+{"type": "text", "text": "都"}
+{"type": "text", "text": "改"}
+{"type": "text", "text": "完了"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "跑"}
+{"type": "text", "text": "测试"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_pWPrL9xXb925sIXx2v524666", "name": "run_bash", "input": {"command": "python run_tests.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 96, "output": 66, "cache_read": 14848, "cache_write": 0}}}

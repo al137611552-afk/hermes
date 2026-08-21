@@ -1,0 +1,192 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:ae7ddefcd4", "msg1:11a81dd025", "msg2:aa7a91c5c0", "msg3:34962f4283", "msg4:ddbfc34911"], "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "好"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "结构"}
+{"type": "thinking", "text": "清楚了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "prov"}
+{"type": "thinking", "text": "iders"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "目录"}
+{"type": "thinking", "text": "有"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " __"}
+{"type": "thinking", "text": "init"}
+{"type": "thinking", "text": "__."}
+{"type": "thinking", "text": "py"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "build"}
+{"type": "thinking", "text": "_pro"}
+{"type": "thinking", "text": "vider"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "工厂"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "Message"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " Tool"}
+{"type": "thinking", "text": "Call"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " Stream"}
+{"type": "thinking", "text": "Event"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " Base"}
+{"type": "thinking", "text": "Provider"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "重"}
+{"type": "thinking", "text": "试"}
+{"type": "thinking", "text": "逻辑"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " open"}
+{"type": "thinking", "text": "ai"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "Open"}
+{"type": "thinking", "text": "AI"}
+{"type": "thinking", "text": "Provider"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " anthrop"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "An"}
+{"type": "thinking", "text": "throp"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": "Provider"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " cassette"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "Cass"}
+{"type": "thinking", "text": "ette"}
+{"type": "thinking", "text": "Store"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "录制"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "重"}
+{"type": "thinking", "text": "放"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "用的"}
+{"type": "thinking", "text": "）\n\n"}
+{"type": "thinking", "text": "上层"}
+{"type": "thinking", "text": "调用"}
+{"type": "thinking", "text": "者"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "agent"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "loop"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "agent"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "design"}
+{"type": "thinking", "text": "_re"}
+{"type": "thinking", "text": "view"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "bridge"}
+{"type": "thinking", "text": "/api"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "bridge"}
+{"type": "thinking", "text": "/con"}
+{"type": "thinking", "text": "vers"}
+{"type": "thinking", "text": "ation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "context"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "con"}
+{"type": "thinking", "text": "ventions"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "long"}
+{"type": "thinking", "text": "mem"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "全文"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "统一"}
+{"type": "thinking", "text": "接口"}
+{"type": "thinking", "text": "的核心"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "再"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": " __"}
+{"type": "thinking", "text": "init"}
+{"type": "thinking", "text": "__."}
+{"type": "thinking", "text": "py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "open"}
+{"type": "thinking", "text": "ai"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "anthrop"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "c"}
+{"type": "thinking", "text": "ass"}
+{"type": "thinking", "text": "ette"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "也"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "重点是"}
+{"type": "thinking", "text": "前"}
+{"type": "thinking", "text": "几个"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "只有"}
+{"type": "thinking", "text": " ~"}
+{"type": "thinking", "text": "200"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "左右"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "L"}
+{"type": "thinking", "text": "30"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": " L"}
+{"type": "thinking", "text": "180"}
+{"type": "thinking", "text": "+"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "并行"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "这些"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_NXhY2Cavdbcdk3O0cv4C1206", "name": "read_file", "input": {"path": "src/agentcore/providers/base.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_28FRIxR73HXVZVgeMuJr8030", "name": "read_file", "input": {"path": "src/agentcore/providers/__init__.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 1352, "output": 281, "cache_read": 6656, "cache_write": 0}}}

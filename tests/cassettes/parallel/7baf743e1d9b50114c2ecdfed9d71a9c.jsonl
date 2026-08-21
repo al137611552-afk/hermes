@@ -1,0 +1,203 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:5d19479c49", "msg1:ef4516dede", "msg2:4772db160f", "msg3:54f218d8a3", "msg4:3600dd4bd0", "msg5:1a75bb9990", "msg6:6d1202a179", "msg7:32ed976593", "msg8:e4a4a4dce3", "msg9:d30f86b114", "msg10:fb46c90296", "msg11:17f6f95232", "msg12:842a4270a8", "msg13:a2db582b85", "msg14:552d1276fc", "msg15:7352329b90", "msg16:746ec13f6e", "msg17:accae4f932", "msg18:6b1ff3d1bb", "msg19:798666c129", "msg20:1043098d8a", "msg21:693baeab69", "msg22:62f366a029", "msg23:7a5c0a5cc6", "msg24:efab8e0137", "msg25:2a32299f3a", "msg26:c8d9e8091a", "msg27:600295054b", "msg28:fe0770da58"], "model": "deepseek-v4-flash", "n_messages": 29, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Now"}
+{"type": "thinking", "text": " I"}
+{"type": "thinking", "text": " have"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " very"}
+{"type": "thinking", "text": " comprehensive"}
+{"type": "thinking", "text": " picture"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " few"}
+{"type": "thinking", "text": " remaining"}
+{"type": "thinking", "text": " pieces"}
+{"type": "thinking", "text": ":\n\n"}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "bud"}
+{"type": "thinking", "text": "get"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": "_b"}
+{"type": "thinking", "text": "udget"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "per"}
+{"type": "thinking", "text": "-s"}
+{"type": "thinking", "text": "ession"}
+{"type": "thinking", "text": " caps"}
+{"type": "thinking", "text": " on"}
+{"type": "thinking", "text": " web"}
+{"type": "thinking", "text": "_search"}
+{"type": "thinking", "text": "/de"}
+{"type": "thinking", "text": "legate"}
+{"type": "thinking", "text": ").\n"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "hooks"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " hook"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "runner"}
+{"type": "thinking", "text": " pre"}
+{"type": "thinking", "text": "/post"}
+{"type": "thinking", "text": ".\n"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Quickly"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": " at"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " few"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": " files"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " catalog"}
+{"type": "thinking", "text": " schema"}
+{"type": "thinking", "text": " style"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " e"}
+{"type": "thinking", "text": ".g"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " fs"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": "_file"}
+{"type": "thinking", "text": "/w"}
+{"type": "thinking", "text": "rite"}
+{"type": "thinking", "text": "_file"}
+{"type": "thinking", "text": " sche"}
+{"type": "thinking", "text": "mas"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " shell"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " run"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": " schema"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " some"}
+{"type": "thinking", "text": " schema"}
+{"type": "thinking", "text": " examples"}
+{"type": "thinking", "text": ".\n"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Check"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "get"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ool"}
+{"type": "thinking", "text": "_b"}
+{"type": "thinking", "text": "udget"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " conversation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ".\n"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Check"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " app"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " consumes"}
+{"type": "thinking", "text": " tools"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " it"}
+{"type": "thinking", "text": " seems"}
+{"type": "thinking", "text": " minimal"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " app"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " quickly"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " also"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " cl"}
+{"type": "thinking", "text": "i"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " for"}
+{"type": "thinking", "text": " crazy"}
+{"type": "thinking", "text": " mode"}
+{"type": "thinking", "text": " gate"}
+{"type": "thinking", "text": "._"}
+{"type": "thinking", "text": "allow"}
+{"type": "thinking", "text": "_all"}
+{"type": "thinking", "text": ".\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " also"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "s"}
+{"type": "thinking", "text": "creenshot"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " kill"}
+{"type": "thinking", "text": "-sw"}
+{"type": "thinking", "text": "itch"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "config"}
+{"type": "thinking", "text": " agent"}
+{"type": "thinking", "text": ".s"}
+{"type": "thinking", "text": "creenshot"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " —"}
+{"type": "thinking", "text": " already"}
+{"type": "thinking", "text": " seen"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "75"}
+{"type": "thinking", "text": ".\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " couple"}
+{"type": "thinking", "text": " of"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": " implementation"}
+{"type": "thinking", "text": " files"}
+{"type": "thinking", "text": " quickly"}
+{"type": "thinking", "text": " for"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " schema"}
+{"type": "thinking", "text": " examples"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " fs"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " lines"}
+{"type": "thinking", "text": " ~"}
+{"type": "thinking", "text": "120"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "340"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " shell"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " ~"}
+{"type": "thinking", "text": "430"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "520"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_7B101yPTMKId93AWgeRd9769", "name": "read_file", "input": {"limit": 120, "offset": 120, "path": "src/agentcore/tools/fs.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_CUOlATuAhy7HjnHYlisN2811", "name": "grep_search", "input": {"path": "src/agentcore/bridge/conversation.py", "pattern": "_get_tool_budget|ToolBudget|def _make_hook_runner|def _make_verifier|_extra_dirs"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 2410, "output": 367, "cache_read": 46208, "cache_write": 0}}}

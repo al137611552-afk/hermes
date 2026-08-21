@@ -1,0 +1,41 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:5ccc103225", "msg1:b5aad6f997", "msg2:4c561c685a"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": "同"}
+{"type": "thinking", "text": "级的"}
+{"type": "thinking", "text": "其他"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "来"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "依赖"}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": "对外"}
+{"type": "thinking", "text": "暴露"}
+{"type": "thinking", "text": "方式"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "很小"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "再"}
+{"type": "text", "text": "读"}
+{"type": "text", "text": "同级"}
+{"type": "text", "text": "其他"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "依赖"}
+{"type": "text", "text": "关系和"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "all"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "暴露"}
+{"type": "text", "text": "方式"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_hKHNv8TviukPuzIxcdvR8438", "name": "read_file", "input": {"path": "shop/__init__.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_QwqDdEgU0jTVtYViaZWB3395", "name": "read_file", "input": {"path": "shop/catalog.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_B930wtsuuxTh1xT5ruqx0369", "name": "read_file", "input": {"path": "shop/cart.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_03_kiPToZJaBOgN0n36IJBO9416", "name": "read_file", "input": {"path": "shop/report.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 624, "output": 182, "cache_read": 6016, "cache_write": 0}}}

@@ -1,0 +1,11 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:11379c2ce1", "msg1:0f51815f6c", "msg2:1257a9a791", "msg3:4241464638", "msg4:8c6c38c20d", "msg5:6201e4cc0c", "msg6:3f400f57f7", "msg7:d81b58bab2", "msg8:13f47e6bcd", "msg9:2d04d0fa51", "msg10:930826d185", "msg11:a50deb47be", "msg12:8a5b449ced", "msg13:8d8073f780", "msg14:2a44fd02e5", "msg15:652190f088", "msg16:e08b486512", "msg17:527b20548c", "msg18:4d7b9d278c"], "model": "deepseek-v4-flash", "n_messages": 19, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "提交"}
+{"type": "thinking", "text": "完成"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "工作"}
+{"type": "thinking", "text": "区"}
+{"type": "thinking", "text": "干净"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_A3Xnrc9W1LBr3FAqREnO5011", "name": "git_status", "input": {}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 109, "output": 36, "cache_read": 13184, "cache_write": 0}}}

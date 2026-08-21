@@ -33,7 +33,11 @@ def _iter_files(root, workspace=None, gi=None):
     skip = _skip_dirs_for(root)
     if _ARTIFACT_DIR not in skip:
         gi = None       # 显式检索产物时连 .gitignore 过滤一起放行（用户仓库可能忽略 *.log）
-    for p in root.rglob("*"):
+    # **排序遍历**：`rglob` 给的是文件系统的目录项顺序，换台机器（甚至重建一次目录）就变。
+    # 这不只坑 cassette 回放（2026-08-21：同一份录音在 CI 上必 miss），对人也一样——
+    # 同一个查询两次给出不同顺序，没法比对。排序的代价是把列表落地一次，
+    # 而 rglob 本来就要走完整棵树，且上面有 8s 墙钟兜底。
+    for p in sorted(root.rglob("*")):
         if not p.is_file() or any(part in skip for part in p.parts):
             continue
         if gi is not None and workspace is not None:

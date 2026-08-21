@@ -1,0 +1,23 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:41a6018d18", "msg1:d21db2655c", "msg2:ef9ef23f1d"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "项目"}
+{"type": "thinking", "text": "在"}
+{"type": "thinking", "text": " src"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "下"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": " src"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的结构"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "并"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "更多"}
+{"type": "thinking", "text": "压缩"}
+{"type": "thinking", "text": "相关的"}
+{"type": "thinking", "text": "关键词"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_fYeippK7w3OZ4NbVAFpc5242", "name": "list_dir", "input": {"path": "src"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_logR9YfaJnnuyiYDTUnX4549", "name": "grep_search", "input": {"pattern": "compress|compaction|summariz|精简|裁剪|压缩", "path": "src"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 230, "output": 123, "cache_read": 9216, "cache_write": 0}}}

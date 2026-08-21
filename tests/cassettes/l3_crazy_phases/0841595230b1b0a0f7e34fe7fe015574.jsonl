@@ -1,5 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:affcceb696", "tools:46fa0e83f9", "msg0:5c1bb60fdb", "msg1:33c1513c29", "msg2:e98ddbc3b5", "msg3:7b164147c8", "msg4:4b82a89d97"], "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_BrDoj2bdkrMV9QuXePLC7017", "name": "read_file", "input": {"path": "shop/pricing.py"}}}}
-{"type": "tool_use", "meta": {"call": {"id": "call_01_ET_IjFTkei9Or0Vksl2sXfG0971", "name": "read_file", "input": {"path": "shop/cart.py"}}}}
-{"type": "tool_use", "meta": {"call": {"id": "call_02_ET_kE4K1dQCVhzgcVY75BIf8779", "name": "read_file", "input": {"path": "shop/__init__.py"}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 412, "output": 115, "cache_read": 10496, "cache_write": 0}}}

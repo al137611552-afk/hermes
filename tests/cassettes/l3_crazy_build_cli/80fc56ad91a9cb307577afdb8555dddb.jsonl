@@ -1,0 +1,15 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:affcceb696", "tools:46fa0e83f9", "msg0:bdfa899bf0", "msg1:c661f3fdf6", "msg2:1495120e13"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": " ."}
+{"type": "thinking", "text": "her"}
+{"type": "thinking", "text": "mes"}
+{"type": "thinking", "text": ".yaml"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "了解"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "命令"}
+{"type": "thinking", "text": "配置"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_WdE92UnOC0f2P5khRDbr0575", "name": "read_file", "input": {"path": ".hermes.yaml"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 279, "output": 59, "cache_read": 9984, "cache_write": 0}}}

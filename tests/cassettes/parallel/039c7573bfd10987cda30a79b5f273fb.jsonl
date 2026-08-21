@@ -1,0 +1,1763 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:a5aa8aedaa", "msg1:7df2a9e6f8", "msg2:8a3343940e", "msg3:6f55dff74c", "msg4:fb74ef5f1f", "msg5:4ee3464ef3", "msg6:855a496dd7"], "model": "deepseek-v4-flash", "n_messages": 7, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "所有"}
+{"type": "thinking", "text": "关键"}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "号"}
+{"type": "thinking", "text": "验证"}
+{"type": "thinking", "text": "一致"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "30"}
+{"type": "thinking", "text": " Tool"}
+{"type": "thinking", "text": "Registry"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "49"}
+{"type": "thinking", "text": " filtered"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "54"}
+{"type": "thinking", "text": " build"}
+{"type": "thinking", "text": "_reg"}
+{"type": "thinking", "text": "istry"}
+{"type": "thinking", "text": " ✓"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " gate"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "48"}
+{"type": "thinking", "text": " Permission"}
+{"type": "thinking", "text": "Gate"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "98"}
+{"type": "thinking", "text": " explain"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "129"}
+{"type": "thinking", "text": " confirm"}
+{"type": "thinking", "text": " ✓"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "110"}
+{"type": "thinking", "text": " Message"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "124"}
+{"type": "thinking", "text": " Tool"}
+{"type": "thinking", "text": "Call"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "132"}
+{"type": "thinking", "text": " Stream"}
+{"type": "thinking", "text": "Event"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "147"}
+{"type": "thinking", "text": " Base"}
+{"type": "thinking", "text": "Provider"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "167"}
+{"type": "thinking", "text": " stream"}
+{"type": "thinking", "text": "_ch"}
+{"type": "thinking", "text": "at"}
+{"type": "thinking", "text": " ✓"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " providers"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "__"}
+{"type": "thinking", "text": "init"}
+{"type": "thinking", "text": "__."}
+{"type": "thinking", "text": "py"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "14"}
+{"type": "thinking", "text": " _"}
+{"type": "thinking", "text": "REG"}
+{"type": "thinking", "text": "IST"}
+{"type": "thinking", "text": "RY"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": "20"}
+{"type": "thinking", "text": " build"}
+{"type": "thinking", "text": "_pro"}
+{"type": "thinking", "text": "vider"}
+{"type": "thinking", "text": " ✓"}
+{"type": "thinking", "text": "\n\n"}
+{"type": "thinking", "text": "两份"}
+{"type": "thinking", "text": "调研"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "骨架"}
+{"type": "thinking", "text": "结论"}
+{"type": "thinking", "text": "都"}
+{"type": "thinking", "text": "可靠"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "输出"}
+{"type": "thinking", "text": "对比"}
+{"type": "thinking", "text": "汇总"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "重点"}
+{"type": "thinking", "text": "回答"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "两者"}
+{"type": "thinking", "text": "如何"}
+{"type": "thinking", "text": "协作"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "汇总"}
+{"type": "thinking", "text": "结构"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "各自"}
+{"type": "thinking", "text": "一句话"}
+{"type": "thinking", "text": "概括"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "协作"}
+{"type": "thinking", "text": "点"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "核心"}
+{"type": "thinking", "text": "）："}
+{"type": "thinking", "text": "统一"}
+{"type": "thinking", "text": " schema"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "语言"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "An"}
+{"type": "thinking", "text": "throp"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "方言"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "——"}
+{"type": "thinking", "text": "这是"}
+{"type": "thinking", "text": "两者的"}
+{"type": "thinking", "text": "桥梁"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "协作"}
+{"type": "thinking", "text": "链路"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "Agent"}
+{"type": "thinking", "text": "Loop"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "每"}
+{"type": "thinking", "text": "回合"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ".to"}
+{"type": "thinking", "text": "_s"}
+{"type": "thinking", "text": "che"}
+{"type": "thinking", "text": "mas"}
+{"type": "thinking", "text": "()"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": ".stream"}
+{"type": "thinking", "text": "_ch"}
+{"type": "thinking", "text": "at"}
+{"type": "thinking", "text": "(t"}
+{"type": "thinking", "text": "ools"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "...)"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "工具"}
+{"type": "thinking", "text": "执行"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "回"}
+{"type": "thinking", "text": "灌"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": "_result"}
+{"type": "thinking", "text": " →"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "翻"}
+{"type": "thinking", "text": "成"}
+{"type": "thinking", "text": "自家"}
+{"type": "thinking", "text": "格式"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "限"}
+{"type": "thinking", "text": "权"}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的关系"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "provider"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "不"}
+{"type": "thinking", "text": "感知"}
+{"type": "thinking", "text": "权限"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "gate"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "在"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "之外"}
+{"type": "thinking", "text": "）\n"}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "其他"}
+{"type": "thinking", "text": "协作"}
+{"type": "thinking", "text": "细节"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "thinking"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "不计"}
+{"type": "thinking", "text": "答案"}
+{"type": "thinking", "text": "与"}
+{"type": "thinking", "text": "重"}
+{"type": "thinking", "text": "试"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "stop"}
+{"type": "thinking", "text": "_re"}
+{"type": "thinking", "text": "ason"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "驱动"}
+{"type": "thinking", "text": "工具"}
+{"type": "thinking", "text": "循环"}
+{"type": "thinking", "text": "；"}
+{"type": "thinking", "text": "usage"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "口径"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "6"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "表格"}
+{"type": "thinking", "text": "对比"}
+{"type": "thinking", "text": "\n\n"}
+{"type": "thinking", "text": "保持"}
+{"type": "thinking", "text": "简洁"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "完整"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "要"}
+{"type": "thinking", "text": "的是"}
+{"type": "thinking", "text": "\""}
+{"type": "thinking", "text": "两者"}
+{"type": "thinking", "text": "如何"}
+{"type": "thinking", "text": "协作"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "对比"}
+{"type": "thinking", "text": "汇总"}
+{"type": "thinking", "text": "\"。"}
+{"type": "text", "text": "两份"}
+{"type": "text", "text": "调研"}
+{"type": "text", "text": "均"}
+{"type": "text", "text": "已完成"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "关键"}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "号"}
+{"type": "text", "text": "我已"}
+{"type": "text", "text": "逐一"}
+{"type": "text", "text": "抽查"}
+{"type": "text", "text": "核实"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "registry"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "54"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "30"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "49"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "gate"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "48"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "129"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "base"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "147"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "167"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "prov"}
+{"type": "text", "text": "iders"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "init"}
+{"type": "text", "text": "__."}
+{"type": "text", "text": "py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "14"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "20"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "全部"}
+{"type": "text", "text": "对"}
+{"type": "text", "text": "得上"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "结论"}
+{"type": "text", "text": "可靠"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "以下是"}
+{"type": "text", "text": "汇总"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "---\n\n"}
+{"type": "text", "text": "#"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "工"}
+{"type": "text", "text": "具体"}
+{"type": "text", "text": "系"}
+{"type": "text", "text": " ×"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "模型"}
+{"type": "text", "text": "适配"}
+{"type": "text", "text": "层"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "协作"}
+{"type": "text", "text": "对比"}
+{"type": "text", "text": "汇总"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "各自"}
+{"type": "text", "text": "一句话"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "tools"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "A"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "build"}
+{"type": "text", "text": "_reg"}
+{"type": "text", "text": "istry"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "工厂"}
+{"type": "text", "text": "按"}
+{"type": "text", "text": "配置"}
+{"type": "text", "text": "条件"}
+{"type": "text", "text": "构造"}
+{"type": "text", "text": "全部"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Tool"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "实例"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "装入"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Tool"}
+{"type": "text", "text": "Registry"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "dict"}
+{"type": "text", "text": "[str"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " Tool"}
+{"type": "text", "text": "]"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "）；"}
+{"type": "text", "text": "调用"}
+{"type": "text", "text": "时"}
+{"type": "text", "text": "经"}
+{"type": "text", "text": "「"}
+{"type": "text", "text": "角色"}
+{"type": "text", "text": "裁剪"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "预算"}
+{"type": "text", "text": "闸"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " Pre"}
+{"type": "text", "text": "Tool"}
+{"type": "text", "text": "Use"}
+{"type": "text", "text": " hooks"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "权限"}
+{"type": "text", "text": " gate"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "执行"}
+{"type": "text", "text": "」"}
+{"type": "text", "text": "五"}
+{"type": "text", "text": "段"}
+{"type": "text", "text": "管线"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "限"}
+{"type": "text", "text": "权"}
+{"type": "text", "text": "核心"}
+{"type": "text", "text": "是"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Permission"}
+{"type": "text", "text": "Gate"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "gate"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "48"}
+{"type": "text", "text": "）+"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "per"}
+{"type": "text", "text": "missions"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "规则"}
+{"type": "text", "text": "引擎"}
+{"type": "text", "text": " +"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "自"}
+{"type": "text", "text": "带的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "danger"}
+{"type": "text", "text": "ous"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "标记"}
+{"type": "text", "text": "。\n"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "prov"}
+{"type": "text", "text": "iders"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "B"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "build"}
+{"type": "text", "text": "_pro"}
+{"type": "text", "text": "vider"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "按"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Model"}
+{"type": "text", "text": "Config"}
+{"type": "text", "text": ".pro"}
+{"type": "text", "text": "vider"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "从"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "REG"}
+{"type": "text", "text": "IST"}
+{"type": "text", "text": "RY"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "{\""}
+{"type": "text", "text": "anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": "\","}
+{"type": "text", "text": " \""}
+{"type": "text", "text": "open"}
+{"type": "text", "text": "ai"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "}`"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "__"}
+{"type": "text", "text": "init"}
+{"type": "text", "text": "__."}
+{"type": "text", "text": "py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "14"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "选"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "对外"}
+{"type": "text", "text": "只有一个"}
+{"type": "text", "text": "抽象"}
+{"type": "text", "text": "方法"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "stream"}
+{"type": "text", "text": "_ch"}
+{"type": "text", "text": "at"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "base"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "167"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "协议"}
+{"type": "text", "text": "差异"}
+{"type": "text", "text": "全部"}
+{"type": "text", "text": "封装"}
+{"type": "text", "text": "在"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Open"}
+{"type": "text", "text": "AI"}
+{"type": "text", "text": "Provider"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " /"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "An"}
+{"type": "text", "text": "throp"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": "Provider"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "内部"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "协作"}
+{"type": "text", "text": "的关键"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "母"}
+{"type": "text", "text": "语"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "是"}
+{"type": "text", "text": " Anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "方言"}
+{"type": "text", "text": "**\n\n"}
+{"type": "text", "text": "两者"}
+{"type": "text", "text": "之间"}
+{"type": "text", "text": "没有"}
+{"type": "text", "text": "自定义"}
+{"type": "text", "text": "协议"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "靠"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "同一个"}
+{"type": "text", "text": " schema"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "方言"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "咬"}
+{"type": "text", "text": "合"}
+{"type": "text", "text": "：\n\n"}
+{"type": "text", "text": "```\n"}
+{"type": "text", "text": "Tool"}
+{"type": "text", "text": "Registry"}
+{"type": "text", "text": ".to"}
+{"type": "text", "text": "_s"}
+{"type": "text", "text": "che"}
+{"type": "text", "text": "mas"}
+{"type": "text", "text": "()"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " ─"}
+{"type": "text", "text": "─"}
+{"type": "text", "text": "{"}
+{"type": "text", "text": "name"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " description"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " input"}
+{"type": "text", "text": "_s"}
+{"type": "text", "text": "chema"}
+{"type": "text", "text": "}"}
+{"type": "text", "text": "──"}
+{"type": "text", "text": "►"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " provider"}
+{"type": "text", "text": ".stream"}
+{"type": "text", "text": "_ch"}
+{"type": "text", "text": "at"}
+{"type": "text", "text": "(t"}
+{"type": "text", "text": "ools"}
+{"type": "text", "text": "="}
+{"type": "text", "text": "..."}
+{"type": "text", "text": ")\n"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "tools"}
+{"type": "text", "text": "/base"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "100"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "      "}
+{"type": "text", "text": " Anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "原生"}
+{"type": "text", "text": "格式"}
+{"type": "text", "text": "                   "}
+{"type": "text", "text": " （"}
+{"type": "text", "text": "prov"}
+{"type": "text", "text": "iders"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "直接"}
+{"type": "text", "text": "消费"}
+{"type": "text", "text": "）\n"}
+{"type": "text", "text": "                                                                "}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " ├"}
+{"type": "text", "text": "─"}
+{"type": "text", "text": " Anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": "Provider"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "零"}
+{"type": "text", "text": "转换"}
+{"type": "text", "text": "透"}
+{"type": "text", "text": "传"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": "                                                                "}
+{"type": "text", "text": "  "}
+{"type": "text", "text": " └"}
+{"type": "text", "text": "─"}
+{"type": "text", "text": " OpenAI"}
+{"type": "text", "text": "Provider"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "tools"}
+{"type": "text", "text": "_to"}
+{"type": "text", "text": "_open"}
+{"type": "text", "text": "ai"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "翻"}
+{"type": "text", "text": "成"}
+{"type": "text", "text": " function"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "格式"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": "```\n\n"}
+{"type": "text", "text": "消息"}
+{"type": "text", "text": "往返"}
+{"type": "text", "text": "同理"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "ass"}
+{"type": "text", "text": "istant"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "tool"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "use"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "块"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "loop"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "638"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "→"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "执行"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "tool"}
+{"type": "text", "text": "_result"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "块"}
+{"type": "text", "text": "带"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "tool"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "use"}
+{"type": "text", "text": "_id"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "回"}
+{"type": "text", "text": "灌"}
+{"type": "text", "text": "为"}
+{"type": "text", "text": " user"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "消息"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "loop"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "865"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "→"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "两个"}
+{"type": "text", "text": " provider"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "各自"}
+{"type": "text", "text": "翻"}
+{"type": "text", "text": "成"}
+{"type": "text", "text": "自家"}
+{"type": "text", "text": "格式"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "Open"}
+{"type": "text", "text": "AI"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "拆"}
+{"type": "text", "text": "成"}
+{"type": "text", "text": "多条"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "role"}
+{"type": "text", "text": "=\""}
+{"type": "text", "text": "tool"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "消息"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "An"}
+{"type": "text", "text": "throp"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "原生"}
+{"type": "text", "text": "透"}
+{"type": "text", "text": "传"}
+{"type": "text", "text": "）。"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "层"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "感知"}
+{"type": "text", "text": "厂商"}
+{"type": "text", "text": "差异"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "provider"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "层"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "感知"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "语义"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "这就是"}
+{"type": "text", "text": "分层"}
+{"type": "text", "text": "协作"}
+{"type": "text", "text": "的全部"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "协作"}
+{"type": "text", "text": "链路"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "每"}
+{"type": "text", "text": "回合"}
+{"type": "text", "text": "）\n\n"}
+{"type": "text", "text": "```\n"}
+{"type": "text", "text": "Agent"}
+{"type": "text", "text": "Loop"}
+{"type": "text", "text": ".run"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "agent"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "loop"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "505"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "起"}
+{"type": "text", "text": "）\n"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " ├"}
+{"type": "text", "text": "─"}
+{"type": "text", "text": " registry"}
+{"type": "text", "text": ".to"}
+{"type": "text", "text": "_s"}
+{"type": "text", "text": "che"}
+{"type": "text", "text": "mas"}
+{"type": "text", "text": "()"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "模型"}
+{"type": "text", "text": "看到"}
+{"type": "text", "text": "全部"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " ├"}
+{"type": "text", "text": "─"}
+{"type": "text", "text": " provider"}
+{"type": "text", "text": ".stream"}
+{"type": "text", "text": "_ch"}
+{"type": "text", "text": "at"}
+{"type": "text", "text": "(m"}
+{"type": "text", "text": "essages"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " system"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " tools"}
+{"type": "text", "text": ")"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " ←"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "唯一"}
+{"type": "text", "text": "入口"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " ├"}
+{"type": "text", "text": "─"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "按"}
+{"type": "text", "text": " done"}
+{"type": "text", "text": ".stop"}
+{"type": "text", "text": "_re"}
+{"type": "text", "text": "ason"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "决定"}
+{"type": "text", "text": "是否"}
+{"type": "text", "text": "继续"}
+{"type": "text", "text": "：\n"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " │"}
+{"type": "text", "text": "   "}
+{"type": "text", "text": " \""}
+{"type": "text", "text": "tool"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "use"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "进"}
+{"type": "text", "text": " _"}
+{"type": "text", "text": "exec"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "ool"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "loop"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "949"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "100"}
+{"type": "text", "text": "9"}
+{"type": "text", "text": "）\n"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " │"}
+{"type": "text", "text": "      "}
+{"type": "text", "text": " registry"}
+{"type": "text", "text": ".get"}
+{"type": "text", "text": "(name"}
+{"type": "text", "text": ")"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "预算"}
+{"type": "text", "text": "闸"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " hooks"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " prepare"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " │"}
+{"type": "text", "text": "      "}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " dangerous"}
+{"type": "text", "text": "?"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " gate"}
+{"type": "text", "text": ".conf"}
+{"type": "text", "text": "irm"}
+{"type": "text", "text": "()"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " ←"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "权限"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": " provider"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "完全"}
+{"type": "text", "text": "无关"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "在"}
+{"type": "text", "text": " provider"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "之外"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " │"}
+{"type": "text", "text": "      "}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " tool"}
+{"type": "text", "text": ".run"}
+{"type": "text", "text": "()"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " tool"}
+{"type": "text", "text": "_result"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "回"}
+{"type": "text", "text": "灌"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": " "}
+{"type": "text", "text": " └"}
+{"type": "text", "text": "─"}
+{"type": "text", "text": " \""}
+{"type": "text", "text": "end"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "urn"}
+{"type": "text", "text": "\"/"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "max"}
+{"type": "text", "text": "_t"}
+{"type": "text", "text": "okens"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "收"}
+{"type": "text", "text": "尾"}
+{"type": "text", "text": "\n"}
+{"type": "text", "text": "```\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "四个"}
+{"type": "text", "text": "重要的"}
+{"type": "text", "text": "协作"}
+{"type": "text", "text": "细节"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "协作"}
+{"type": "text", "text": "点"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "事实"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "出处"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|---|---"}
+{"type": "text", "text": "|---"}
+{"type": "text", "text": "|\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "schema"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "单一"}
+{"type": "text", "text": "来源"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": " schema"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "只在"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Tool"}
+{"type": "text", "text": "Registry"}
+{"type": "text", "text": ".to"}
+{"type": "text", "text": "_s"}
+{"type": "text", "text": "che"}
+{"type": "text", "text": "mas"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "产"}
+{"type": "text", "text": "一次"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "Open"}
+{"type": "text", "text": "AI"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "侧的"}
+{"type": "text", "text": "格式"}
+{"type": "text", "text": "转换"}
+{"type": "text", "text": "是"}
+{"type": "text", "text": " provider"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "内部"}
+{"type": "text", "text": "私"}
+{"type": "text", "text": "事"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " tools"}
+{"type": "text", "text": "/base"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "100"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "open"}
+{"type": "text", "text": "ai"}
+{"type": "text", "text": "_p"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "52"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "64"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "权限"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "模型"}
+{"type": "text", "text": "无关"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "gate"}
+{"type": "text", "text": ".conf"}
+{"type": "text", "text": "irm"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "阻塞"}
+{"type": "text", "text": "式"}
+{"type": "text", "text": "弹"}
+{"type": "text", "text": "窗"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "thread"}
+{"type": "text", "text": "ing"}
+{"type": "text", "text": ".Event"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "发生在"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "tool"}
+{"type": "text", "text": ".run"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "之前"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "provider"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "从不"}
+{"type": "text", "text": "参与"}
+{"type": "text", "text": "限"}
+{"type": "text", "text": "权"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "只"}
+{"type": "text", "text": "负责"}
+{"type": "text", "text": "把"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "调用"}
+{"type": "text", "text": "意图"}
+{"type": "text", "text": "从"}
+{"type": "text", "text": "模型"}
+{"type": "text", "text": "翻译"}
+{"type": "text", "text": "过来"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " loop"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "983"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "985"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "thinking"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "不算"}
+{"type": "text", "text": "答案"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "推理"}
+{"type": "text", "text": "模型"}
+{"type": "text", "text": "长"}
+{"type": "text", "text": "考"}
+{"type": "text", "text": "内容"}
+{"type": "text", "text": "以"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "thinking"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "事件"}
+{"type": "text", "text": "流出"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "Open"}
+{"type": "text", "text": "AI"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "读"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "reason"}
+{"type": "text", "text": "ing"}
+{"type": "text", "text": "_content"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "An"}
+{"type": "text", "text": "throp"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "读"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "thinking"}
+{"type": "text", "text": "_d"}
+{"type": "text", "text": "elta"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "仅"}
+{"type": "text", "text": "展示"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "且"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "不计"}
+{"type": "text", "text": "入"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "已"}
+{"type": "text", "text": "吐"}
+{"type": "text", "text": "答案"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "判定"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "断"}
+{"type": "text", "text": "线"}
+{"type": "text", "text": "重"}
+{"type": "text", "text": "试"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "截"}
+{"type": "text", "text": "断"}
+{"type": "text", "text": "处理"}
+{"type": "text", "text": "都"}
+{"type": "text", "text": "基于"}
+{"type": "text", "text": "这条"}
+{"type": "text", "text": "共识"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " base"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "53"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "55"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "loop"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "557"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "573"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " **"}
+{"type": "text", "text": "usage"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "口径"}
+{"type": "text", "text": "对齐"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "统一"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "{"}
+{"type": "text", "text": "input"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " output"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " cache"}
+{"type": "text", "text": "_read"}
+{"type": "text", "text": ","}
+{"type": "text", "text": " cache"}
+{"type": "text", "text": "_write"}
+{"type": "text", "text": "}`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "四"}
+{"type": "text", "text": "字段"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "ADR"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "002"}
+{"type": "text", "text": "5"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "两"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "各自"}
+{"type": "text", "text": "翻译"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "Open"}
+{"type": "text", "text": "AI"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "必须"}
+{"type": "text", "text": "冲"}
+{"type": "text", "text": "减"}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": "命中"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "cache"}
+{"type": "text", "text": "_write"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "恒"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "An"}
+{"type": "text", "text": "throp"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "直"}
+{"type": "text", "text": "取"}
+{"type": "text", "text": "且"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "cache"}
+{"type": "text", "text": "_write"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "必须"}
+{"type": "text", "text": "单"}
+{"type": "text", "text": "记"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " open"}
+{"type": "text", "text": "ai"}
+{"type": "text", "text": "_p"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "18"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "49"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": "_p"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "33"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "38"}
+{"type": "text", "text": " |\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "两个"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "的关键"}
+{"type": "text", "text": "差异"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "B"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "内部"}
+{"type": "text", "text": "）\n\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "维度"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " OpenAI"}
+{"type": "text", "text": "Provider"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " Anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": "Provider"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|---|---"}
+{"type": "text", "text": "|---"}
+{"type": "text", "text": "|\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "覆盖"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " OpenAI"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "Deep"}
+{"type": "text", "text": "Se"}
+{"type": "text", "text": "ek"}
+{"type": "text", "text": "/K"}
+{"type": "text", "text": "imi"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "中转"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "Open"}
+{"type": "text", "text": "AI"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "兼容"}
+{"type": "text", "text": "协议"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " Anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "官方"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "火山"}
+{"type": "text", "text": "方"}
+{"type": "text", "text": "舟"}
+{"type": "text", "text": " coding"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "Deep"}
+{"type": "text", "text": "Se"}
+{"type": "text", "text": "ek"}
+{"type": "text", "text": " anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "端点"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " SDK"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "open"}
+{"type": "text", "text": "ai"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "chat"}
+{"type": "text", "text": ".com"}
+{"type": "text", "text": "plet"}
+{"type": "text", "text": "ions"}
+{"type": "text", "text": ".create"}
+{"type": "text", "text": "("}
+{"type": "text", "text": "stream"}
+{"type": "text", "text": "=True"}
+{"type": "text", "text": ")`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "messages"}
+{"type": "text", "text": ".stream"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "上下文"}
+{"type": "text", "text": "管理器"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " tool"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "use"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "组装"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "流"}
+{"type": "text", "text": "中"}
+{"type": "text", "text": "按"}
+{"type": "text", "text": " index"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "分"}
+{"type": "text", "text": "片"}
+{"type": "text", "text": "累积"}
+{"type": "text", "text": " +"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "流"}
+{"type": "text", "text": "末"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "json"}
+{"type": "text", "text": ".load"}
+{"type": "text", "text": "s"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "流"}
+{"type": "text", "text": "结束后"}
+{"type": "text", "text": "从"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "get"}
+{"type": "text", "text": "_f"}
+{"type": "text", "text": "inal"}
+{"type": "text", "text": "_message"}
+{"type": "text", "text": "()`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "一次性"}
+{"type": "text", "text": "取"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "开关"}
+{"type": "text", "text": "形"}
+{"type": "text", "text": "同"}
+{"type": "text", "text": "虚"}
+{"type": "text", "text": "设"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "服务"}
+{"type": "text", "text": "端"}
+{"type": "text", "text": "自动"}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "主动"}
+{"type": "text", "text": "打"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "cache"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "control"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "断"}
+{"type": "text", "text": "点"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "端点"}
+{"type": "text", "text": "不"}
+{"type": "text", "text": "认"}
+{"type": "text", "text": "则"}
+{"type": "text", "text": "摘"}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": "降"}
+{"type": "text", "text": "级"}
+{"type": "text", "text": "重"}
+{"type": "text", "text": "试"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " system"}
+{"type": "text", "text": " prompt"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "塞"}
+{"type": "text", "text": "进"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "messages"}
+{"type": "text", "text": "["}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "]"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "顶层"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "system"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "参数"}
+{"type": "text", "text": " +"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "末"}
+{"type": "text", "text": "块"}
+{"type": "text", "text": " cache"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "断"}
+{"type": "text", "text": "点"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "图片"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " image"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "块"}
+{"type": "text", "text": " →"}
+{"type": "text", "text": " data"}
+{"type": "text", "text": "-"}
+{"type": "text", "text": "URL"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "image"}
+{"type": "text", "text": "_url"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "原生"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "{\""}
+{"type": "text", "text": "type"}
+{"type": "text", "text": "\":\""}
+{"type": "text", "text": "image"}
+{"type": "text", "text": "\","}
+{"type": "text", "text": "..."}
+{"type": "text", "text": "}`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "透"}
+{"type": "text", "text": "传"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " stop"}
+{"type": "text", "text": "_re"}
+{"type": "text", "text": "ason"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "length"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "优先"}
+{"type": "text", "text": "于"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "tool"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "use"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "上报"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "防"}
+{"type": "text", "text": "执行"}
+{"type": "text", "text": "残缺"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "调用"}
+{"type": "text", "text": "死"}
+{"type": "text", "text": "循环"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "原生"}
+{"type": "text", "text": "透"}
+{"type": "text", "text": "传"}
+{"type": "text", "text": " |\n"}
+{"type": "text", "text": "|"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "重"}
+{"type": "text", "text": "试"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "共享"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "ret"}
+{"type": "text", "text": "ry"}
+{"type": "text", "text": "_stream"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "base"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "81"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": " |"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "自"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": " while"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "循环"}
+{"type": "text", "text": " +"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "缓存"}
+{"type": "text", "text": "降"}
+{"type": "text", "text": "级"}
+{"type": "text", "text": "分支"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": "_p"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": ":"}
+{"type": "text", "text": "142"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": " |\n\n"}
+{"type": "text", "text": "##"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "一句话"}
+{"type": "text", "text": "总结"}
+{"type": "text", "text": "协作"}
+{"type": "text", "text": "模型"}
+{"type": "text", "text": "\n\n"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": "tools"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "层"}
+{"type": "text", "text": "用"}
+{"type": "text", "text": " Anthrop"}
+{"type": "text", "text": "ic"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "方言"}
+{"type": "text", "text": "声明"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "能"}
+{"type": "text", "text": "做什么"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "schema"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "prov"}
+{"type": "text", "text": "iders"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "层"}
+{"type": "text", "text": "负责"}
+{"type": "text", "text": "把"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "模型"}
+{"type": "text", "text": "想"}
+{"type": "text", "text": "做什么"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "tool"}
+{"type": "text", "text": "_"}
+{"type": "text", "text": "use"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "流"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "翻译"}
+{"type": "text", "text": "回"}
+{"type": "text", "text": "统一"}
+{"type": "text", "text": "格式"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "Agent"}
+{"type": "text", "text": "Loop"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "是"}
+{"type": "text", "text": "两者的"}
+{"type": "text", "text": "仲裁"}
+{"type": "text", "text": "者"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "按"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "stop"}
+{"type": "text", "text": "_re"}
+{"type": "text", "text": "ason"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "决定"}
+{"type": "text", "text": "是否"}
+{"type": "text", "text": "调用"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "按"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "danger"}
+{"type": "text", "text": "ous"}
+{"type": "text", "text": "+"}
+{"type": "text", "text": "gate"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "决定"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "能不能"}
+{"type": "text", "text": "真"}
+{"type": "text", "text": "跑"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "按"}
+{"type": "text", "text": "统一"}
+{"type": "text", "text": " usage"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "口径"}
+{"type": "text", "text": "记账"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "**"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "权限"}
+{"type": "text", "text": "机制"}
+{"type": "text", "text": "完全"}
+{"type": "text", "text": "位于"}
+{"type": "text", "text": " provider"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "之外"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "因此"}
+{"type": "text", "text": "加"}
+{"type": "text", "text": "新"}
+{"type": "text", "text": "厂商"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "新"}
+{"type": "text", "text": " provider"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "不影响"}
+{"type": "text", "text": "限"}
+{"type": "text", "text": "权"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "加"}
+{"type": "text", "text": "新"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "新"}
+{"type": "text", "text": " Tool"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "类"}
+{"type": "text", "text": "）"}
+{"type": "text", "text": "不影响"}
+{"type": "text", "text": "适配"}
+{"type": "text", "text": "层"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "两侧"}
+{"type": "text", "text": "各自"}
+{"type": "text", "text": "扩展"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "只"}
+{"type": "text", "text": "通过"}
+{"type": "text", "text": " schema"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "方言"}
+{"type": "text", "text": "和"}
+{"type": "text", "text": " Stream"}
+{"type": "text", "text": "Event"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "事件"}
+{"type": "text", "text": "流"}
+{"type": "text", "text": "耦合"}
+{"type": "text", "text": "。\n\n"}
+{"type": "text", "text": ">"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "注"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "A"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "份"}
+{"type": "text", "text": "调研"}
+{"type": "text", "text": "在"}
+{"type": "text", "text": "返回"}
+{"type": "text", "text": "前"}
+{"type": "text", "text": "撞"}
+{"type": "text", "text": "了"}
+{"type": "text", "text": "步"}
+{"type": "text", "text": "数"}
+{"type": "text", "text": "上限"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "但它"}
+{"type": "text", "text": "明确"}
+{"type": "text", "text": "声明"}
+{"type": "text", "text": " registry"}
+{"type": "text", "text": "/base"}
+{"type": "text", "text": "/g"}
+{"type": "text", "text": "ate"}
+{"type": "text", "text": "/per"}
+{"type": "text", "text": "missions"}
+{"type": "text", "text": "/de"}
+{"type": "text", "text": "legate"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "均已"}
+{"type": "text", "text": "通"}
+{"type": "text", "text": "读"}
+{"type": "text", "text": "、"}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "号"}
+{"type": "text", "text": "已"}
+{"type": "text", "text": "核实"}
+{"type": "text", "text": "；"}
+{"type": "text", "text": "唯一"}
+{"type": "text", "text": "未"}
+{"type": "text", "text": "逐"}
+{"type": "text", "text": "行"}
+{"type": "text", "text": "读"}
+{"type": "text", "text": "的是"}
+{"type": "text", "text": " web"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "/s"}
+{"type": "text", "text": "hell"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "的"}
+{"type": "text", "text": " run"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "体"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "不影响"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "注册"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "限"}
+{"type": "text", "text": "权"}
+{"type": "text", "text": "\""}
+{"type": "text", "text": "主题"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "如需"}
+{"type": "text", "text": "这两"}
+{"type": "text", "text": "处"}
+{"type": "text", "text": "细节"}
+{"type": "text", "text": "我可以"}
+{"type": "text", "text": "补"}
+{"type": "text", "text": "读"}
+{"type": "text", "text": "。"}
+{"type": "done", "meta": {"stop_reason": "end_turn", "usage": {"input": 347, "output": 1765, "cache_read": 19840, "cache_write": 0}}}

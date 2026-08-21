@@ -1,0 +1,238 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:d182d1d682", "msg0:7005da1e4b", "msg1:4cded5602b", "msg2:09d23685ee", "msg3:85495c6c2f", "msg4:55708d0d70", "msg5:b944e91c44", "msg6:e9e38bbe95", "msg7:c2baeb53af", "msg8:62905bcd17", "msg9:9b4347eb66", "msg10:066d4e3fcd"], "model": "deepseek-v4-flash", "n_messages": 11, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "web"}
+{"type": "thinking", "text": "_f"}
+{"type": "thinking", "text": "etch"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "工具"}
+{"type": "thinking", "text": "不存在"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "我只能"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": " browser"}
+{"type": "thinking", "text": "_n"}
+{"type": "thinking", "text": "avigate"}
+{"type": "thinking", "text": " +"}
+{"type": "thinking", "text": " browser"}
+{"type": "thinking", "text": "_s"}
+{"type": "thinking", "text": "n"}
+{"type": "thinking", "text": "apshot"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "尝试"}
+{"type": "thinking", "text": "重新"}
+{"type": "thinking", "text": "加载"}
+{"type": "thinking", "text": " sm"}
+{"type": "thinking", "text": "zd"}
+{"type": "thinking", "text": "m"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "页面"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "等待"}
+{"type": "thinking", "text": "更"}
+{"type": "thinking", "text": "长时间"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "或者"}
+{"type": "thinking", "text": "滚动"}
+{"type": "thinking", "text": "页面"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "重新"}
+{"type": "thinking", "text": " snapshot"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": "是否有"}
+{"type": "thinking", "text": "更多"}
+{"type": "thinking", "text": "内容"}
+{"type": "thinking", "text": "加载"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "也可能"}
+{"type": "thinking", "text": "需要"}
+{"type": "thinking", "text": "点击"}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "滚动"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "试试"}
+{"type": "thinking", "text": "重新"}
+{"type": "thinking", "text": "导航"}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": "不同"}
+{"type": "thinking", "text": " URL"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "比如"}
+{"type": "thinking", "text": " b"}
+{"type": "thinking", "text": "ilib"}
+{"type": "thinking", "text": "ili"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "或者"}
+{"type": "thinking", "text": "京东"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "其实"}
+{"type": "thinking", "text": "这"}
+{"type": "thinking", "text": "环境"}
+{"type": "thinking", "text": "看起来"}
+{"type": "thinking", "text": "像是"}
+{"type": "thinking", "text": "受限"}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "模拟"}
+{"type": "thinking", "text": "环境"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "搜索引擎"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "固定"}
+{"type": "thinking", "text": "结果"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "但"}
+{"type": "thinking", "text": "系统"}
+{"type": "thinking", "text": "观察"}
+{"type": "thinking", "text": "一直在"}
+{"type": "thinking", "text": "提示"}
+{"type": "thinking", "text": "我"}
+{"type": "thinking", "text": "继续"}
+{"type": "thinking", "text": "尝试"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "尝试"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "重新"}
+{"type": "thinking", "text": " snapshot"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "当前"}
+{"type": "thinking", "text": "页"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "等"}
+{"type": "thinking", "text": "加载"}
+{"type": "thinking", "text": "）\n"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "导航"}
+{"type": "thinking", "text": "到"}
+{"type": "thinking", "text": "其他"}
+{"type": "thinking", "text": "站点"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "b"}
+{"type": "thinking", "text": "ilib"}
+{"type": "thinking", "text": "ili"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "页"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "京东"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "页"}
+{"type": "thinking", "text": "\n\n"}
+{"type": "thinking", "text": "京东"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "页"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "https"}
+{"type": "thinking", "text": "://"}
+{"type": "thinking", "text": "search"}
+{"type": "thinking", "text": ".j"}
+{"type": "thinking", "text": "d"}
+{"type": "thinking", "text": ".com"}
+{"type": "thinking", "text": "/S"}
+{"type": "thinking", "text": "earch"}
+{"type": "thinking", "text": "?"}
+{"type": "thinking", "text": "keyword"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "&"}
+{"type": "thinking", "text": "enc"}
+{"type": "thinking", "text": "=utf"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "8"}
+{"type": "thinking", "text": "\n\n"}
+{"type": "thinking", "text": "不过"}
+{"type": "thinking", "text": "京东"}
+{"type": "thinking", "text": "很可能"}
+{"type": "thinking", "text": "有"}
+{"type": "thinking", "text": "反"}
+{"type": "thinking", "text": "爬"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "试试"}
+{"type": "thinking", "text": "吧"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "另外"}
+{"type": "thinking", "text": " b"}
+{"type": "thinking", "text": "ilib"}
+{"type": "thinking", "text": "ili"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "https"}
+{"type": "thinking", "text": "://"}
+{"type": "thinking", "text": "search"}
+{"type": "thinking", "text": ".b"}
+{"type": "thinking", "text": "ilib"}
+{"type": "thinking", "text": "ili"}
+{"type": "thinking", "text": ".com"}
+{"type": "thinking", "text": "/all"}
+{"type": "thinking", "text": "?"}
+{"type": "thinking", "text": "keyword"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "静"}
+{"type": "thinking", "text": "音"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "\n\n"}
+{"type": "thinking", "text": "我可以"}
+{"type": "thinking", "text": "并行"}
+{"type": "thinking", "text": "做"}
+{"type": "thinking", "text": "吗"}
+{"type": "thinking", "text": "？"}
+{"type": "thinking", "text": "b"}
+{"type": "thinking", "text": "rowser"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "工具"}
+{"type": "thinking", "text": "一次"}
+{"type": "thinking", "text": "只能"}
+{"type": "thinking", "text": "操作"}
+{"type": "thinking", "text": "一个"}
+{"type": "thinking", "text": "页面"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": " snapshot"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "当前"}
+{"type": "thinking", "text": "页"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "当前"}
+{"type": "text", "text": "环境"}
+{"type": "text", "text": "没有"}
+{"type": "text", "text": " web"}
+{"type": "text", "text": "_f"}
+{"type": "text", "text": "etch"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "只能"}
+{"type": "text", "text": "走"}
+{"type": "text", "text": "浏览器"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "我先"}
+{"type": "text", "text": "重新"}
+{"type": "text", "text": "快"}
+{"type": "text", "text": "照"}
+{"type": "text", "text": "当前"}
+{"type": "text", "text": "页"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "加载"}
+{"type": "text", "text": "状态"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "同时"}
+{"type": "text", "text": "准备"}
+{"type": "text", "text": "切换"}
+{"type": "text", "text": "数据"}
+{"type": "text", "text": "源"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_3eo35sld7euTqBfxbu1u6193", "name": "browser__browser_snapshot", "input": {}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 132, "output": 268, "cache_read": 14720, "cache_write": 0}}}

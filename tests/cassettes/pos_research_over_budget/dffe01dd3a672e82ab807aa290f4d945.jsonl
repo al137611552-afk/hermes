@@ -1,0 +1,253 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:40c28ff17b", "msg0:effc37259c", "msg1:7403897285", "msg2:5d27faf9d5"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 29, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "搜索结果"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "的都是"}
+{"type": "thinking", "text": "高价"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "129"}
+{"type": "thinking", "text": "9"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "899"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "238"}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "等"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "没有一个"}
+{"type": "thinking", "text": "在"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "500"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "元"}
+{"type": "thinking", "text": "以内"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "系统"}
+{"type": "thinking", "text": "观察"}
+{"type": "thinking", "text": "也"}
+{"type": "thinking", "text": "提示"}
+{"type": "thinking", "text": "质量"}
+{"type": "thinking", "text": "不"}
+{"type": "thinking", "text": "达标"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "需要"}
+{"type": "thinking", "text": "换"}
+{"type": "thinking", "text": "关键词"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "换"}
+{"type": "thinking", "text": "数据"}
+{"type": "thinking", "text": "源"}
+{"type": "thinking", "text": "重"}
+{"type": "thinking", "text": "搜"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "我需要"}
+{"type": "thinking", "text": "重新"}
+{"type": "thinking", "text": "搜索"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": "更"}
+{"type": "thinking", "text": "精准"}
+{"type": "thinking", "text": "的关键"}
+{"type": "thinking", "text": "词"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "比如"}
+{"type": "thinking", "text": "具体"}
+{"type": "thinking", "text": "的热"}
+{"type": "thinking", "text": "门"}
+{"type": "thinking", "text": "型号"}
+{"type": "thinking", "text": "：「"}
+{"type": "thinking", "text": "V"}
+{"type": "thinking", "text": "GN"}
+{"type": "thinking", "text": " V"}
+{"type": "thinking", "text": "98"}
+{"type": "thinking", "text": " Pro"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "RK"}
+{"type": "thinking", "text": " R"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "狼"}
+{"type": "thinking", "text": "蛛"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "达尔"}
+{"type": "thinking", "text": "优"}
+{"type": "thinking", "text": " A"}
+{"type": "thinking", "text": "98"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "新"}
+{"type": "thinking", "text": "盟"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "迈"}
+{"type": "thinking", "text": "从"}
+{"type": "thinking", "text": "」「"}
+{"type": "thinking", "text": "雷"}
+{"type": "thinking", "text": "柏"}
+{"type": "thinking", "text": "」"}
+{"type": "thinking", "text": "等"}
+{"type": "thinking", "text": "百"}
+{"type": "thinking", "text": "元"}
+{"type": "thinking", "text": "价位"}
+{"type": "thinking", "text": "热门"}
+{"type": "thinking", "text": "品牌"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "500"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "元"}
+{"type": "thinking", "text": "以内的"}
+{"type": "thinking", "text": "机械"}
+{"type": "thinking", "text": "键盘"}
+{"type": "thinking", "text": "热门"}
+{"type": "thinking", "text": "型号"}
+{"type": "thinking", "text": "通常"}
+{"type": "thinking", "text": "有"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " V"}
+{"type": "thinking", "text": "GN"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "游戏"}
+{"type": "thinking", "text": "动力"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "V"}
+{"type": "thinking", "text": "98"}
+{"type": "thinking", "text": " Pro"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " S"}
+{"type": "thinking", "text": "99"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " RK"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "Royal"}
+{"type": "thinking", "text": " Kl"}
+{"type": "thinking", "text": "udge"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "R"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " R"}
+{"type": "thinking", "text": "98"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "狼"}
+{"type": "thinking", "text": "蛛"}
+{"type": "thinking", "text": " F"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " F"}
+{"type": "thinking", "text": "99"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "迈"}
+{"type": "thinking", "text": "从"}
+{"type": "thinking", "text": " K"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " G"}
+{"type": "thinking", "text": "75"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "达尔"}
+{"type": "thinking", "text": "优"}
+{"type": "thinking", "text": " A"}
+{"type": "thinking", "text": "98"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " E"}
+{"type": "thinking", "text": "K"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "新"}
+{"type": "thinking", "text": "盟"}
+{"type": "thinking", "text": " M"}
+{"type": "thinking", "text": "71"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "雷"}
+{"type": "thinking", "text": "柏"}
+{"type": "thinking", "text": " V"}
+{"type": "thinking", "text": "500"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " V"}
+{"type": "thinking", "text": "700"}
+{"type": "thinking", "text": "\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "高斯"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "G"}
+{"type": "thinking", "text": "ans"}
+{"type": "thinking", "text": "s"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "GS"}
+{"type": "thinking", "text": "87"}
+{"type": "thinking", "text": "\n\n"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "并行"}
+{"type": "thinking", "text": "搜"}
+{"type": "thinking", "text": "几个"}
+{"type": "thinking", "text": "具体"}
+{"type": "thinking", "text": "型号"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "看看"}
+{"type": "thinking", "text": "能否"}
+{"type": "thinking", "text": "拿到"}
+{"type": "thinking", "text": "带"}
+{"type": "thinking", "text": "价格"}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": "链接"}
+{"type": "thinking", "text": "的结果"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "第一批"}
+{"type": "text", "text": "结果"}
+{"type": "text", "text": "全是"}
+{"type": "text", "text": "高价"}
+{"type": "text", "text": "型号"}
+{"type": "text", "text": "（"}
+{"type": "text", "text": "¥"}
+{"type": "text", "text": "899"}
+{"type": "text", "text": "~"}
+{"type": "text", "text": "238"}
+{"type": "text", "text": "0"}
+{"type": "text", "text": "），"}
+{"type": "text", "text": "没"}
+{"type": "text", "text": "一个"}
+{"type": "text", "text": "在"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "500"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "元"}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "数据"}
+{"type": "text", "text": "源"}
+{"type": "text", "text": "不对"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "换"}
+{"type": "text", "text": "更"}
+{"type": "text", "text": "精准"}
+{"type": "text", "text": "的关键"}
+{"type": "text", "text": "词"}
+{"type": "text", "text": "重"}
+{"type": "text", "text": "搜"}
+{"type": "text", "text": "——"}
+{"type": "text", "text": "直接"}
+{"type": "text", "text": "搜"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "500"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "元"}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "主流"}
+{"type": "text", "text": "性价比"}
+{"type": "text", "text": "型号"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ism5HesRStkOoUOeg6cX6221", "name": "web_search", "input": {"max_results": 8, "query": "VGN 狼蛛 迈从 机械键盘 200元 300元 评测 价格"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_U2MLnoGvZwu86qL0P7zM0224", "name": "web_search", "input": {"max_results": 8, "query": "RK R87 达尔优 高斯 机械键盘 京东 价格 多少钱"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 873, "output": 392, "cache_read": 7936, "cache_write": 0}}}

@@ -1,0 +1,3 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:8bc5af178c", "msg1:c446f30dea", "msg2:a192e7786c", "msg3:6039c3dd0c", "msg4:707d8d3330", "msg5:89064c783a", "msg6:6c30be54ae", "msg7:88b483b1e7", "msg8:a8e2ee262f", "msg9:7b25d50fc8", "msg10:b67ca0f942", "msg11:5a86ff9056", "msg12:b0c297762c"], "model": "deepseek-v4-flash", "n_messages": 13, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_MB7vswL5ViVrOHkLXkzy7018", "name": "run_bash", "input": {"command": "python test_lib.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 131, "output": 49, "cache_read": 11008, "cache_write": 0}}}

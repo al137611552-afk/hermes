@@ -1,0 +1,60 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:ae7ddefcd4", "msg1:11a81dd025", "msg2:aa7a91c5c0"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "目录"}
+{"type": "thinking", "text": "里有"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "__"}
+{"type": "thinking", "text": "init"}
+{"type": "thinking", "text": "__."}
+{"type": "thinking", "text": "py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " anthrop"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " cassette"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " open"}
+{"type": "thinking", "text": "ai"}
+{"type": "thinking", "text": "_p"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "看起来"}
+{"type": "thinking", "text": "除了"}
+{"type": "thinking", "text": " OpenAI"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " Anthrop"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "还有"}
+{"type": "thinking", "text": " cassette"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "可能是"}
+{"type": "thinking", "text": "录音"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "重"}
+{"type": "thinking", "text": "放"}
+{"type": "thinking", "text": "用的"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "看"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "大小"}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": "结构"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_pnJhTT6qerTjliO9U8QF5059", "name": "code_outline", "input": {"path": "src/agentcore/providers"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_ox3jWsagJc8BkDcJvCAs2296", "name": "grep_search", "input": {"pattern": "import.*providers|from.*providers|providers\\.", "path": "src"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 352, "output": 166, "cache_read": 6144, "cache_write": 0}}}

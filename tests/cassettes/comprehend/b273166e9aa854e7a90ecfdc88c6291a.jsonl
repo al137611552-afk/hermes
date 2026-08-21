@@ -1,0 +1,91 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:41a6018d18", "msg1:d21db2655c", "msg2:ef9ef23f1d", "msg3:ee4398f127", "msg4:e61060b534", "msg5:eb59f8b0a1", "msg6:e6c31a4714"], "model": "deepseek-v4-flash", "n_messages": 7, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "我已经"}
+{"type": "thinking", "text": "找到了"}
+{"type": "thinking", "text": "核心"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "src"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "agent"}
+{"type": "thinking", "text": "core"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "context"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "完整"}
+{"type": "thinking", "text": "代码"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "还需要"}
+{"type": "thinking", "text": "看"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "con"}
+{"type": "thinking", "text": "vers"}
+{"type": "thinking", "text": "ation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里的"}
+{"type": "thinking", "text": "触发"}
+{"type": "thinking", "text": "点"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "maybe"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "compress"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "或"}
+{"type": "thinking", "text": "类似"}
+{"type": "thinking", "text": "调用"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "compress"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的地方"}
+{"type": "thinking", "text": "）"}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "compact"}
+{"type": "thinking", "text": "_sum"}
+{"type": "thinking", "text": "mar"}
+{"type": "thinking", "text": "ize"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "函数"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": " conversation"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的相关"}
+{"type": "thinking", "text": "部分"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "核心"}
+{"type": "text", "text": "模块"}
+{"type": "text", "text": "已"}
+{"type": "text", "text": "读完"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "再看"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "con"}
+{"type": "text", "text": "vers"}
+{"type": "text", "text": "ation"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "里的"}
+{"type": "text", "text": "触发"}
+{"type": "text", "text": "点"}
+{"type": "text", "text": "与"}
+{"type": "text", "text": "模型"}
+{"type": "text", "text": "摘要"}
+{"type": "text", "text": "实现"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ba68n4fkpq0I88bIuuJZ3865", "name": "read_file", "input": {"path": "src/agentcore/bridge/conversation.py", "offset": 600, "limit": 340}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 7885, "output": 172, "cache_read": 8832, "cache_write": 0}}}

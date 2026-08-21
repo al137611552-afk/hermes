@@ -303,7 +303,11 @@ def list_skill_files(skill: Skill) -> list[str]:
             continue
         try:
             for p in sorted(d.rglob("*")):
-                if p.is_file():
+                # 跳过生成物：`.pyc` 不是"可供按需读取的资源"，列出来只会误导模型；
+                # 而且它**因机器而异**（跑过脚本的机器才有、还分 cpython-311/312），
+                # 于是同一个技能在两台机器上的清单不同——cassette 指纹跟着变
+                # （2026-08-21：CI 回放门最后一条红就是它）。
+                if p.is_file() and "__pycache__" not in p.parts and p.suffix not in (".pyc", ".pyo"):
                     out.append(str(p))
                     if len(out) >= MAX_LISTED_FILES * 2:   # 防超大技能包扫爆
                         return out

@@ -1,10 +1,10 @@
 {
  "passed": true,
- "tool_calls": 11,
+ "tool_calls": 12,
  "steps": 14,
  "subagents": 0,
  "nudges": {
-  "truncation_hint": 2
+  "truncation_hint": 1
  },
- "why": "分块写成，index.html 共 298 行且功能齐（nudge 观测：truncation_hint×2）"
+ "why": "分块写成，index.html 共 499 行且功能齐（nudge 观测：truncation_hint×1）"
 }

@@ -1,7 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:c11c3415c8", "msg1:3f5348e200", "msg2:5d8eca7e9d", "msg3:be1ecc1b41", "msg4:256f01ee10", "msg5:14b2c3eb7b", "msg6:db7e3372a1", "msg7:27c322b78c", "msg8:b7287aede3", "msg9:67284b94ed", "msg10:0b3078ea02"], "model": "deepseek-v4-flash", "n_messages": 11, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "text", "text": "跑"}
-{"type": "text", "text": "测试"}
-{"type": "text", "text": "验证"}
-{"type": "text", "text": "："}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_zLAqAB9b8z5L8Z0w3EE28590", "name": "run_bash", "input": {"command": "python run_tests.py"}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 34, "output": 52, "cache_read": 10496, "cache_write": 0}}}

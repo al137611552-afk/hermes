@@ -1,8 +1,10 @@
 {
  "passed": true,
  "tool_calls": 13,
- "steps": 9,
+ "steps": 11,
  "subagents": 0,
- "nudges": {},
+ "nudges": {
+  "learning_shadow": 1
+ },
  "why": "CLI 与函数都达标、自测全绿（1 轮，停因 goal_reached）"
 }

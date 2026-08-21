@@ -1,3 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:594e690f40", "msg1:46cfcf6594", "msg2:7a72f68b6b"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_c4gvlzMsfiXohxoOjytI6363", "name": "read_file", "input": {"path": "calc.py"}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 278, "output": 45, "cache_read": 8960, "cache_write": 0}}}

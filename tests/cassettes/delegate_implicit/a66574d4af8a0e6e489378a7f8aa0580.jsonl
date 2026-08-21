@@ -1,0 +1,195 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:d3f65dd038", "msg1:692c631cd6", "msg2:e0b3013d62"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "我已"}
+{"type": "thinking", "text": "完整"}
+{"type": "thinking", "text": "读取"}
+{"type": "thinking", "text": "三个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "分析"}
+{"type": "thinking", "text": "每个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "中"}
+{"type": "thinking", "text": " Tool"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "基"}
+{"type": "thinking", "text": "类的"}
+{"type": "thinking", "text": "行为"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "了解"}
+{"type": "thinking", "text": " dangerous"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "属性"}
+{"type": "thinking", "text": "默认"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "等"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "快速"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里的"}
+{"type": "thinking", "text": " Tool"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "类"}
+{"type": "thinking", "text": "定义"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": "_file"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是否"}
+{"type": "thinking", "text": "标记"}
+{"type": "thinking", "text": " dangerous"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "等"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "其实"}
+{"type": "thinking", "text": " fs"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "里"}
+{"type": "thinking", "text": "已经"}
+{"type": "thinking", "text": "明确"}
+{"type": "thinking", "text": "标注"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": " dangerous"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " True"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "write"}
+{"type": "thinking", "text": "_file"}
+{"type": "thinking", "text": "/edit"}
+{"type": "thinking", "text": "_file"}
+{"type": "thinking", "text": "/m"}
+{"type": "thinking", "text": "ulti"}
+{"type": "thinking", "text": "_"}
+{"type": "thinking", "text": "edit"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "read"}
+{"type": "thinking", "text": "_file"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "和"}
+{"type": "thinking", "text": " list"}
+{"type": "thinking", "text": "_dir"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "没"}
+{"type": "thinking", "text": "标"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "默认"}
+{"type": "thinking", "text": " False"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "且"}
+{"type": "thinking", "text": " parallel"}
+{"type": "thinking", "text": "_s"}
+{"type": "thinking", "text": "afe"}
+{"type": "thinking", "text": "=True"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "表明"}
+{"type": "thinking", "text": "只"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "）。"}
+{"type": "thinking", "text": "trace"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": " Trace"}
+{"type": "thinking", "text": "Run"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "标"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": " dangerous"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " True"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "de"}
+{"type": "thinking", "text": "legate"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": " De"}
+{"type": "thinking", "text": "legate"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "没"}
+{"type": "thinking", "text": "标"}
+{"type": "thinking", "text": " dangerous"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "parallel"}
+{"type": "thinking", "text": "_s"}
+{"type": "thinking", "text": "afe"}
+{"type": "thinking", "text": "=True"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "中"}
+{"type": "thinking", "text": " Tool"}
+{"type": "thinking", "text": ".d"}
+{"type": "thinking", "text": "anger"}
+{"type": "thinking", "text": "ous"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "默认"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "以便"}
+{"type": "thinking", "text": "准确"}
+{"type": "thinking", "text": "说明"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "我已"}
+{"type": "text", "text": "完整"}
+{"type": "text", "text": "读取"}
+{"type": "text", "text": "三个"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "快速"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "一下"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "base"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "中"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "Tool"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "基"}
+{"type": "text", "text": "类的"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "danger"}
+{"type": "text", "text": "ous"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "/"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": "parallel"}
+{"type": "text", "text": "_s"}
+{"type": "text", "text": "afe"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "默认"}
+{"type": "text", "text": "值与"}
+{"type": "text", "text": " `"}
+{"type": "text", "text": "resolve"}
+{"type": "text", "text": "`"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "行为"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "确保"}
+{"type": "text", "text": "结论"}
+{"type": "text", "text": "准确"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_wv4etUWr3uzXVT7zxVzb1781", "name": "read_file", "input": {"path": "src/agentcore/tools/base.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 12455, "output": 242, "cache_read": 6272, "cache_write": 0}}}

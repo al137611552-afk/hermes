@@ -1,0 +1,175 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:affcceb696", "tools:46fa0e83f9", "msg0:cea5bee6fd", "msg1:e7e5320020", "msg2:2fb06a0858"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Interesting"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " The"}
+{"type": "thinking", "text": " task"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " make"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "python"}
+{"type": "thinking", "text": " run"}
+{"type": "thinking", "text": "_t"}
+{"type": "thinking", "text": "ests"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " pass"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " but"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " test"}
+{"type": "thinking", "text": " file"}
+{"type": "thinking", "text": " has"}
+{"type": "thinking", "text": " contradictory"}
+{"type": "thinking", "text": " assertions"}
+{"type": "thinking", "text": ":\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " =="}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "`\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " =="}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "`\n"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " =="}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "9"}
+{"type": "thinking", "text": "`\n\n"}
+{"type": "thinking", "text": "These"}
+{"type": "thinking", "text": " are"}
+{"type": "thinking", "text": " contradictory"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " can"}
+{"type": "thinking", "text": "'t"}
+{"type": "thinking", "text": " be"}
+{"type": "thinking", "text": " both"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Wait"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " unless"}
+{"type": "thinking", "text": "..."}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " function"}
+{"type": "thinking", "text": " that"}
+{"type": "thinking", "text": " returns"}
+{"type": "thinking", "text": " different"}
+{"type": "thinking", "text": " values"}
+{"type": "thinking", "text": " each"}
+{"type": "thinking", "text": " time"}
+{"type": "thinking", "text": " it"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " called"}
+{"type": "thinking", "text": "?"}
+{"type": "thinking", "text": " Like"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " state"}
+{"type": "thinking", "text": "ful"}
+{"type": "thinking", "text": " function"}
+{"type": "thinking", "text": " or"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " generator"}
+{"type": "thinking", "text": " that"}
+{"type": "thinking", "text": " returns"}
+{"type": "thinking", "text": " different"}
+{"type": "thinking", "text": " values"}
+{"type": "thinking", "text": " on"}
+{"type": "thinking", "text": " successive"}
+{"type": "thinking", "text": " calls"}
+{"type": "thinking", "text": "!\n\n"}
+{"type": "thinking", "text": "So"}
+{"type": "thinking", "text": " if"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " has"}
+{"type": "thinking", "text": " internal"}
+{"type": "thinking", "text": " state"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " calling"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " first"}
+{"type": "thinking", "text": " returns"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " then"}
+{"type": "thinking", "text": " calling"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " again"}
+{"type": "thinking", "text": " returns"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "scale"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " returns"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "9"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " That"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " possible"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " state"}
+{"type": "thinking", "text": "ful"}
+{"type": "thinking", "text": " implementation"}
+{"type": "thinking", "text": ".\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": " at"}
+{"type": "thinking", "text": " calc"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " see"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " current"}
+{"type": "thinking", "text": " implementation"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_gHkVmndSgyjRGbE2Ulvp9964", "name": "read_file", "input": {"path": "calc.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 179, "output": 217, "cache_read": 9984, "cache_write": 0}}}

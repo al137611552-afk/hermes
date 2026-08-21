@@ -1,0 +1,29 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:0ab20205c0", "msg1:d1195dc0f1", "msg2:8a56ee25cd"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "项目"}
+{"type": "thinking", "text": "很小"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "只有"}
+{"type": "thinking", "text": "两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": "这两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "项目"}
+{"type": "text", "text": "很小"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "只有"}
+{"type": "text", "text": "两个"}
+{"type": "text", "text": "文件"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "我"}
+{"type": "text", "text": "逐个"}
+{"type": "text", "text": "读"}
+{"type": "text", "text": "一下"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_ke0IQ4GPljapCZAxOqtR2021", "name": "read_file", "input": {"path": "lib.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_mTbbLBj77Xrqz4TH7N248660", "name": "read_file", "input": {"path": "test_lib.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 53, "output": 102, "cache_read": 8960, "cache_write": 0}}}

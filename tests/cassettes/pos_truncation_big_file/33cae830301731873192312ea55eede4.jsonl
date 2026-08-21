@@ -1,0 +1,96 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:c3b5c0d534", "msg1:9d7b46d382", "msg2:b9764c0453", "msg3:e4954c92d4", "msg4:342b48ff3f"], "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "I"}
+{"type": "thinking", "text": " need"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " write"}
+{"type": "thinking", "text": " a"}
+{"type": "thinking", "text": " single"}
+{"type": "thinking", "text": "-file"}
+{"type": "thinking", "text": " todo"}
+{"type": "thinking", "text": " list"}
+{"type": "thinking", "text": " web"}
+{"type": "thinking", "text": " page"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " write"}
+{"type": "thinking", "text": " it"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " chunks"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " First"}
+{"type": "thinking", "text": " chunk"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " HTML"}
+{"type": "thinking", "text": " skeleton"}
+{"type": "thinking", "text": " +"}
+{"type": "thinking", "text": " head"}
+{"type": "thinking", "text": " with"}
+{"type": "thinking", "text": " inline"}
+{"type": "thinking", "text": " CSS"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Second"}
+{"type": "thinking", "text": " chunk"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " HTML"}
+{"type": "thinking", "text": " body"}
+{"type": "thinking", "text": " structure"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Third"}
+{"type": "thinking", "text": " chunk"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " inline"}
+{"type": "thinking", "text": " JS"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " plan"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " make"}
+{"type": "thinking", "text": " it"}
+{"type": "thinking", "text": " around"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "250"}
+{"type": "thinking", "text": "+"}
+{"type": "thinking", "text": " lines"}
+{"type": "thinking", "text": " total"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " complete"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " functional"}
+{"type": "thinking", "text": ".\n\n"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " write"}
+{"type": "thinking", "text": " chunk"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": ":"}
+{"type": "thinking", "text": " doct"}
+{"type": "thinking", "text": "ype"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " html"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " head"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " style"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "CSS"}
+{"type": "thinking", "text": ")."}
+{"type": "text", "text": "分"}
+{"type": "text", "text": "块"}
+{"type": "text", "text": "写入"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "第一"}
+{"type": "text", "text": "块"}
+{"type": "text", "text": "："}
+{"type": "text", "text": "文档"}
+{"type": "text", "text": "骨架"}
+{"type": "text", "text": " +"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "内"}
+{"type": "text", "text": "联"}
+{"type": "text", "text": " CSS"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_xTYXBdgwY2qDfD70cdRK2997", "name": "write_file", "input": {"path": "index.html", "content": "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>待办清单</title>\n<style>\n  :root {\n    --bg: #f4f5f7;\n    --card: #ffffff;\n    --text: #2d3436;\n    --muted: #95a5a6;\n    --primary: #5b6ee1;\n    --primary-dark: #4a5bd0;\n    --danger: #e17055;\n    --success: #00b894;\n    --border: #e4e7eb;\n    --radius: 10px;\n    --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);\n  }\n\n  * {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n  }\n\n  body {\n    font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\",\n      \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif;\n    background: var(--bg);\n    color: var(--text);\n    line-height: 1.6;\n    min-height: 100vh;\n  }\n\n  .app {\n    max-width: 560px;\n    margin: 0 auto;\n    padding: 40px 20px 80px;\n  }\n\n  header {\n    text-align: center;\n    margin-bottom: 28px;\n  }\n\n  header h1 {\n    font-size: 28px;\n    font-weight: 700;\n    letter-spacing: 1px;\n  }\n\n  header p {\n    color: var(--muted);\n    font-size: 14px;\n    margin-top: 4px;\n  }\n\n  .card {\n    background: var(--card);\n    border-radius: var(--radius);\n    box-shadow: var(--shadow);\n    padding: 20px;\n  }\n\n  /* ---- 新增输入区 ---- */\n  .add-form {\n    display: flex;\n    gap: 10px;\n    margin-bottom: 18px;\n  }\n\n  .add-form input[type=\"text\"] {\n    flex: 1;\n    padding: 12px 14px;\n    font-size: 15px;\n    border: 2px solid var(--border);\n    border-radius: var(--radius);\n    outline: none;\n    transition: border-color 0.2s;\n  }\n\n  .add-form input[type=\"text\"]:focus {\n    border-color: var(--primary);\n  }\n\n  .btn {\n    border: none;\n    border-radius: var(--radius);\n    padding: 12px 18px;\n    font-size: 15px;\n    cursor: pointer;\n    color: #fff;\n    background: var(--primary);\n    transition: background 0.2s, transform 0.1s;\n  }\n\n  .btn:hover {\n    background: var(--primary-dark);\n  }\n\n  .btn:active {\n    transform: scale(0.97);\n  }\n\n  /* ---- 筛选栏 ---- */\n  .filters {\n    display: flex;\n    gap: 8px;\n    margin-bottom: 16px;\n  }\n\n  .filter-btn {\n    flex: 1;\n    padding: 8px 0;\n    font-size: 14px;\n    border: 2px solid var(--border);\n    border-radius: 999px;\n    background: transparent;\n    color: var(--muted);\n    cursor: pointer;\n    transition: all 0.2s;\n  }\n\n  .filter-btn.active {\n    background: var(--primary);\n    border-color: var(--primary);\n    color: #fff;\n    font-weight: 600;\n  }\n\n  /* ---- 统计 ---- */\n  .stats {\n    display: flex;\n    justify-content: space-between;\n    align-items: center;\n    font-size: 13px;\n    color: var(--muted);\n    margin-bottom: 12px;\n  }\n\n  .stats .count {\n    color: var(--primary);\n    font-weight: 600;\n  }\n\n  .clear-done {\n    background: none;\n    border: none;\n    color: var(--danger);\n    font-size: 13px;\n    cursor: pointer;\n    text-decoration: underline;\n  }\n\n  .clear-done:hover {\n    opacity: 0.8;\n  }\n</style>\n</head>\n"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 344, "output": 1114, "cache_read": 8832, "cache_write": 0}}}

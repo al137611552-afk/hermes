@@ -1,7 +1,7 @@
 {"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:40c28ff17b", "msg0:816a4aaff3"], "model": "deepseek-v4-flash", "n_messages": 1, "n_tools": 29, "provider_class": "AnthropicProvider"}
 {"type": "thinking", "text": "用户"}
-{"type": "thinking", "text": "问"}
-{"type": "thinking", "text": "的是"}
+{"type": "thinking", "text": "想"}
+{"type": "thinking", "text": "确认"}
 {"type": "thinking", "text": " funct"}
 {"type": "thinking", "text": "ools"}
 {"type": "thinking", "text": ".l"}
@@ -18,71 +18,50 @@
 {"type": "thinking", "text": "。"}
 {"type": "thinking", "text": "这是一个"}
 {"type": "thinking", "text": "简单"}
-{"type": "thinking", "text": "的事实"}
-{"type": "thinking", "text": "问题"}
-{"type": "thinking", "text": "。"}
-{"type": "thinking", "text": "我"}
+{"type": "thinking", "text": "事实"}
+{"type": "thinking", "text": "查询"}
+{"type": "thinking", "text": "，"}
 {"type": "thinking", "text": "联网"}
-{"type": "thinking", "text": "查"}
+{"type": "thinking", "text": "搜"}
 {"type": "thinking", "text": "一下"}
-{"type": "thinking", "text": "确认"}
-{"type": "thinking", "text": "。\n\n"}
-{"type": "thinking", "text": "我的"}
-{"type": "thinking", "text": "知识"}
-{"type": "thinking", "text": "："}
-{"type": "thinking", "text": "max"}
-{"type": "thinking", "text": "size"}
-{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "即可"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "我记得"}
 {"type": "thinking", "text": "默认"}
 {"type": "thinking", "text": "值是"}
 {"type": "thinking", "text": " "}
 {"type": "thinking", "text": "128"}
 {"type": "thinking", "text": "。"}
-{"type": "thinking", "text": "这是"}
-{"type": "thinking", "text": " Python"}
-{"type": "thinking", "text": " "}
-{"type": "thinking", "text": "官方"}
-{"type": "thinking", "text": "文档"}
-{"type": "thinking", "text": "里"}
-{"type": "thinking", "text": "写的"}
-{"type": "thinking", "text": "。"}
 {"type": "thinking", "text": "但"}
 {"type": "thinking", "text": "用户"}
+{"type": "thinking", "text": "明确"}
 {"type": "thinking", "text": "要求"}
 {"type": "thinking", "text": "联网"}
 {"type": "thinking", "text": "查"}
 {"type": "thinking", "text": "，"}
-{"type": "thinking", "text": "所以我"}
-{"type": "thinking", "text": "用"}
+{"type": "thinking", "text": "所以"}
+{"type": "thinking", "text": "我去"}
 {"type": "thinking", "text": " web"}
 {"type": "thinking", "text": "_search"}
 {"type": "thinking", "text": " "}
-{"type": "thinking", "text": "确认"}
 {"type": "thinking", "text": "一下"}
-{"type": "thinking", "text": "，"}
-{"type": "thinking", "text": "并"}
-{"type": "thinking", "text": "给出"}
-{"type": "thinking", "text": "来源"}
-{"type": "thinking", "text": "链接"}
 {"type": "thinking", "text": "。\n\n"}
-{"type": "thinking", "text": "不需要"}
-{"type": "thinking", "text": "修改"}
-{"type": "thinking", "text": "文件"}
-{"type": "thinking", "text": "，"}
-{"type": "thinking", "text": "只是"}
-{"type": "thinking", "text": "查"}
-{"type": "thinking", "text": "证"}
-{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "这是个"}
 {"type": "thinking", "text": "简单"}
 {"type": "thinking", "text": "咨询"}
 {"type": "thinking", "text": "，"}
-{"type": "thinking", "text": "直接"}
-{"type": "thinking", "text": " web"}
-{"type": "thinking", "text": "_search"}
-{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "不需要"}
+{"type": "thinking", "text": "委"}
+{"type": "thinking", "text": "派"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "不需要"}
+{"type": "thinking", "text": "任务"}
+{"type": "thinking", "text": "清单"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "搜"}
 {"type": "thinking", "text": "一"}
 {"type": "thinking", "text": "两次"}
 {"type": "thinking", "text": "就行"}
 {"type": "thinking", "text": "。"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_xt7E61dbN0UyFLkJTLsC6232", "name": "web_search", "input": {"query": "functools.lru_cache maxsize 默认值 Python 官方文档", "max_results": 5}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 3, "output": 161, "cache_read": 7936, "cache_write": 0}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_Y8xu9nEZzQA7TZ5DgIuN9812", "name": "web_search", "input": {"query": "functools.lru_cache maxsize default value 128 Python documentation"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 3, "output": 121, "cache_read": 7936, "cache_write": 0}}}

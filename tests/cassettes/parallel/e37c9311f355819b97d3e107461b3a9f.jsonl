@@ -1,0 +1,27 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:ae7ddefcd4", "msg1:11a81dd025", "msg2:aa7a91c5c0", "msg3:34962f4283", "msg4:ddbfc34911", "msg5:905d06630f", "msg6:ecbf247f8f", "msg7:15b16077a5", "msg8:bca46b60db", "msg9:e9d0cb6e45", "msg10:c7c6b067f7", "msg11:9c30e86535", "msg12:3c27d2556f", "msg13:7bb720e4f0", "msg14:a181a4d9aa", "msg15:a1590b91f1", "msg16:c793f82759", "msg17:550d569e7e", "msg18:59a225ab98"], "model": "deepseek-v4-flash", "n_messages": 19, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " tools"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "registry"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": "_s"}
+{"type": "thinking", "text": "che"}
+{"type": "thinking", "text": "mas"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " confirm"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " tool"}
+{"type": "thinking", "text": " schema"}
+{"type": "thinking", "text": " shape"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "An"}
+{"type": "thinking", "text": "throp"}
+{"type": "thinking", "text": "ic"}
+{"type": "thinking", "text": " native"}
+{"type": "thinking", "text": ")."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_KD9H5r8InyimoCsKKqGX2555", "name": "read_file", "input": {"limit": 40, "offset": 30, "path": "src/agentcore/tools/registry.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_wMJ9ANqitqq960yPVl8B0063", "name": "read_file", "input": {"limit": 40, "offset": 90, "path": "src/agentcore/tools/base.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 2045, "output": 176, "cache_read": 34432, "cache_write": 0}}}

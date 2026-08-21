@@ -1,0 +1,92 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:2fcef9ef74", "msg1:df651acee5", "msg2:0c6a42db6a", "msg3:e182a90359", "msg4:90e3857092", "msg5:1d8ceaa882", "msg6:a8173bf649", "msg7:f76a0e866e", "msg8:0a4575c167", "msg9:ea901a3452", "msg10:0262d44981"], "model": "deepseek-v4-flash", "n_messages": 11, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "我已经"}
+{"type": "thinking", "text": "读完"}
+{"type": "thinking", "text": "两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "并"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "注册"}
+{"type": "thinking", "text": "机制"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "这些"}
+{"type": "thinking", "text": "工具"}
+{"type": "thinking", "text": "通过"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "注册"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "name"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "属性"}
+{"type": "thinking", "text": "即"}
+{"type": "thinking", "text": "注册"}
+{"type": "thinking", "text": "名"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "快速"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "的"}
+{"type": "thinking", "text": "注册"}
+{"type": "thinking", "text": "部分"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "工具"}
+{"type": "thinking", "text": "名"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "我已经"}
+{"type": "thinking", "text": "有"}
+{"type": "thinking", "text": "足够"}
+{"type": "thinking", "text": "信息"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "看一下"}
+{"type": "thinking", "text": " registry"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "中"}
+{"type": "thinking", "text": "这些"}
+{"type": "thinking", "text": "工具的"}
+{"type": "thinking", "text": "注册"}
+{"type": "thinking", "text": "细节"}
+{"type": "thinking", "text": "（"}
+{"type": "thinking", "text": "第"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "100"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "130"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "行"}
+{"type": "thinking", "text": "左右"}
+{"type": "thinking", "text": "），"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "工具"}
+{"type": "thinking", "text": "名"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "我已"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "注册"}
+{"type": "text", "text": "机制"}
+{"type": "text", "text": "，"}
+{"type": "text", "text": "再看"}
+{"type": "text", "text": "一下"}
+{"type": "text", "text": " registry"}
+{"type": "text", "text": ".py"}
+{"type": "text", "text": " "}
+{"type": "text", "text": "中"}
+{"type": "text", "text": "实际的"}
+{"type": "text", "text": "注册"}
+{"type": "text", "text": "片段"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "工具"}
+{"type": "text", "text": "名"}
+{"type": "text", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_r0s1IIqB9sOIwYR8kuYJ5696", "name": "read_file", "input": {"limit": 40, "offset": 95, "path": "src/agentcore/tools/registry.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 22045, "output": 172, "cache_read": 6144, "cache_write": 0}}}

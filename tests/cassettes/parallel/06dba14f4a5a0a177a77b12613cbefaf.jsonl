@@ -1,0 +1,76 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:ae7ddefcd4", "msg1:11a81dd025", "msg2:aa7a91c5c0", "msg3:34962f4283", "msg4:ddbfc34911", "msg5:905d06630f", "msg6:ecbf247f8f", "msg7:15b16077a5", "msg8:bca46b60db", "msg9:e9d0cb6e45", "msg10:c7c6b067f7", "msg11:9c30e86535", "msg12:3c27d2556f"], "model": "deepseek-v4-flash", "n_messages": 13, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " look"}
+{"type": "thinking", "text": " at"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " key"}
+{"type": "thinking", "text": " parts"}
+{"type": "thinking", "text": " of"}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " for"}
+{"type": "thinking", "text": " Model"}
+{"type": "thinking", "text": "Config"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " pres"}
+{"type": "thinking", "text": "ets"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " plus"}
+{"type": "thinking", "text": " store"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "usage"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": "_k"}
+{"type": "thinking", "text": "ind"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Also"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " agent"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": " where"}
+{"type": "thinking", "text": " stream"}
+{"type": "thinking", "text": "_ch"}
+{"type": "thinking", "text": "at"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " invoked"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " stop"}
+{"type": "thinking", "text": "_re"}
+{"type": "thinking", "text": "ason"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " handled"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " lines"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "60"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "394"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "520"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " store"}
+{"type": "thinking", "text": "/"}
+{"type": "thinking", "text": "usage"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": "_k"}
+{"type": "thinking", "text": "ind"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_qfREIK9MAWpefvroIOiK0891", "name": "read_file", "input": {"path": "src/agentcore/config.py", "offset": 1, "limit": 60}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_53IWRliWhJm8Osgeefcc7147", "name": "read_file", "input": {"path": "src/agentcore/config.py", "offset": 394, "limit": 130}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_02_7NiUF5nBqlMoFlc0wiu61994", "name": "read_file", "input": {"path": "src/agentcore/store/usage.py", "offset": 40, "limit": 60}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 3182, "output": 288, "cache_read": 23552, "cache_write": 0}}}

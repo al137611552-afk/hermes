@@ -1,4 +1,0 @@
-{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:ba8a0c89c9", "msg1:a1da7f60c4", "msg2:98c8af740e"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
-{"type": "tool_use", "meta": {"call": {"id": "call_00_ET_3TDbrTMJi5Y7xKJaK4SM9564", "name": "list_dir", "input": {"path": "shop"}}}}
-{"type": "tool_use", "meta": {"call": {"id": "call_01_ET_7oeoVTwthF6TULK9VlnK9692", "name": "read_file", "input": {"path": "run_tests.py"}}}}
-{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 136, "output": 77, "cache_read": 8960, "cache_write": 0}}}

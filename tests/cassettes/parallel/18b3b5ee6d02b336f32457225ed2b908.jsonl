@@ -1,0 +1,58 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:5d19479c49", "msg1:ef4516dede", "msg2:4772db160f", "msg3:54f218d8a3", "msg4:3600dd4bd0", "msg5:1a75bb9990", "msg6:6d1202a179", "msg7:32ed976593", "msg8:e4a4a4dce3", "msg9:d30f86b114", "msg10:fb46c90296", "msg11:17f6f95232", "msg12:842a4270a8", "msg13:a2db582b85", "msg14:552d1276fc", "msg15:7352329b90", "msg16:746ec13f6e", "msg17:accae4f932", "msg18:6b1ff3d1bb"], "model": "deepseek-v4-flash", "n_messages": 19, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " Perm"}
+{"type": "thinking", "text": "issions"}
+{"type": "thinking", "text": "Config"}
+{"type": "thinking", "text": " class"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " M"}
+{"type": "thinking", "text": "CP"}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": " in"}
+{"type": "thinking", "text": " config"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Also"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " feeds"}
+{"type": "thinking", "text": " sche"}
+{"type": "thinking", "text": "mas"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "the"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "to"}
+{"type": "thinking", "text": "_s"}
+{"type": "thinking", "text": "che"}
+{"type": "thinking", "text": "mas"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": " usage"}
+{"type": "thinking", "text": ")."}
+{"type": "thinking", "text": " And"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " m"}
+{"type": "thinking", "text": "cp"}
+{"type": "thinking", "text": "_client"}
+{"type": "thinking", "text": "/t"}
+{"type": "thinking", "text": "ool"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " adapter"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Also"}
+{"type": "thinking", "text": " app"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " briefly"}
+{"type": "thinking", "text": " for"}
+{"type": "thinking", "text": " wiring"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_23p7VqoqqClFw4ZZILqd0492", "name": "read_file", "input": {"limit": 30, "offset": 28, "path": "src/agentcore/config.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_lVLPUd7BUv4w9mfK3I1W2081", "name": "read_file", "input": {"limit": 120, "offset": 180, "path": "src/agentcore/mcp_client/tool.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 5333, "output": 206, "cache_read": 31360, "cache_write": 0}}}

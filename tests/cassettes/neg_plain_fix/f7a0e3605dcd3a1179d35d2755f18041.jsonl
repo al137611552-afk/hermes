@@ -1,0 +1,273 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:594e690f40", "msg1:b1afceb7f4", "msg2:994f96c5d0", "msg3:5ddf1d15b0", "msg4:7410d2226d"], "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "看"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "：\n"}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "moving"}
+{"type": "thinking", "text": "_a"}
+{"type": "thinking", "text": "verage"}
+{"type": "thinking", "text": "(["}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "],"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " =="}
+{"type": "thinking", "text": " ["}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "]"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "窗口"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "长度"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "应有"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "完整"}
+{"type": "thinking", "text": "窗口"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "当前"}
+{"type": "thinking", "text": "代码"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "range"}
+{"type": "thinking", "text": "(len"}
+{"type": "thinking", "text": "(values"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": " window"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "range"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " ["}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "]，"}
+{"type": "thinking", "text": "只"}
+{"type": "thinking", "text": "产生"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "个"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "缺"}
+{"type": "thinking", "text": "最后一个"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "应该是"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "range"}
+{"type": "thinking", "text": "(len"}
+{"type": "thinking", "text": "(values"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": " window"}
+{"type": "thinking", "text": " +"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "这是"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "2"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "moving"}
+{"type": "thinking", "text": "_a"}
+{"type": "thinking", "text": "verage"}
+{"type": "thinking", "text": "(["}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "],"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": ")"}
+{"type": "thinking", "text": " =="}
+{"type": "thinking", "text": " ["}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "]"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "window"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "len"}
+{"type": "thinking", "text": "="}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "range"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " range"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ")，"}
+{"type": "thinking", "text": "空"}
+{"type": "thinking", "text": "列表"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "应该是"}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "range"}
+{"type": "thinking", "text": "("}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": ")`"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "产生"}
+{"type": "thinking", "text": " ["}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "]。"}
+{"type": "thinking", "text": "同样"}
+{"type": "thinking", "text": "被"}
+{"type": "thinking", "text": " bug"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "修复"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "normal"}
+{"type": "thinking", "text": "ize"}
+{"type": "thinking", "text": "(["}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "3"}
+{"type": "thinking", "text": "])"}
+{"type": "thinking", "text": " =="}
+{"type": "thinking", "text": " ["}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "]"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "hi"}
+{"type": "thinking", "text": " -"}
+{"type": "thinking", "text": " lo"}
+{"type": "thinking", "text": " ="}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "会"}
+{"type": "thinking", "text": " Zero"}
+{"type": "thinking", "text": "Division"}
+{"type": "thinking", "text": "Error"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "需要"}
+{"type": "thinking", "text": "处理"}
+{"type": "thinking", "text": "全"}
+{"type": "thinking", "text": "等"}
+{"type": "thinking", "text": "值"}
+{"type": "thinking", "text": "情况"}
+{"type": "thinking", "text": "，"}
+{"type": "thinking", "text": "返回"}
+{"type": "thinking", "text": "全"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "。\n"}
+{"type": "thinking", "text": "4"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " `"}
+{"type": "thinking", "text": "normal"}
+{"type": "thinking", "text": "ize"}
+{"type": "thinking", "text": "(["}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "10"}
+{"type": "thinking", "text": "])"}
+{"type": "thinking", "text": " =="}
+{"type": "thinking", "text": " ["}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "5"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "1"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": "0"}
+{"type": "thinking", "text": "]"}
+{"type": "thinking", "text": "`"}
+{"type": "thinking", "text": "："}
+{"type": "thinking", "text": "正常"}
+{"type": "thinking", "text": "。\n\n"}
+{"type": "thinking", "text": "跑"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": "测试"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "失败"}
+{"type": "thinking", "text": "原因"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_K1o7f6H8Z6MxxQJhzK5w9634", "name": "run_bash", "input": {"command": "python test_calc.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 408, "output": 319, "cache_read": 9088, "cache_write": 0}}}

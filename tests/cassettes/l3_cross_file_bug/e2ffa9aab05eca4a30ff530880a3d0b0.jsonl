@@ -1,0 +1,24 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:1d746b61f5", "msg1:4c5cd7b6e3", "msg2:1d13ed314d", "msg3:1722e0f99b", "msg4:b69fd853c8", "msg5:dd6a54a06c", "msg6:c4fe0b89e5", "msg7:2091bb87a1", "msg8:a45c555b21", "msg9:2e97aea775", "msg10:27c82e95d0", "msg11:dae6300ace", "msg12:37d62501c2"], "model": "deepseek-v4-flash", "n_messages": 13, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "全"}
+{"type": "thinking", "text": "绿"}
+{"type": "thinking", "text": "了"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "让我"}
+{"type": "thinking", "text": "确认"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": "改动"}
+{"type": "thinking", "text": "后的"}
+{"type": "thinking", "text": " diff"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "是否正确"}
+{"type": "thinking", "text": "。"}
+{"type": "text", "text": "全"}
+{"type": "text", "text": "绿"}
+{"type": "text", "text": "。"}
+{"type": "text", "text": "确认"}
+{"type": "text", "text": "一下"}
+{"type": "text", "text": "最终"}
+{"type": "text", "text": "改动"}
+{"type": "text", "text": "："}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_zrdOxII05HiLXLUKSLnl2248", "name": "git_diff", "input": {}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 37, "output": 48, "cache_read": 13056, "cache_write": 0}}}

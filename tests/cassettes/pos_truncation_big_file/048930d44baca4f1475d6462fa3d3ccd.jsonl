@@ -1,0 +1,15 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:c3b5c0d534", "msg1:9d7b46d382", "msg2:b9764c0453", "msg3:e4954c92d4", "msg4:342b48ff3f", "msg5:587a40bac8", "msg6:ca5bbeb3a7", "msg7:b61a56f901", "msg8:d5ae5cd353", "msg9:c545917217", "msg10:9785221ef7"], "model": "deepseek-v4-flash", "n_messages": 11, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " file"}
+{"type": "thinking", "text": " to"}
+{"type": "thinking", "text": " see"}
+{"type": "thinking", "text": " exactly"}
+{"type": "thinking", "text": " what"}
+{"type": "thinking", "text": "'s"}
+{"type": "thinking", "text": " there"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_VXVoO9h6xK8ysbtk4k5G4515", "name": "read_file", "input": {"path": "index.html", "offset": 120, "limit": 40}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 133, "output": 89, "cache_read": 11776, "cache_write": 0}}}

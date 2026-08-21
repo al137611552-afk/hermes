@@ -1,0 +1,69 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:ae7ddefcd4", "msg1:11a81dd025", "msg2:aa7a91c5c0", "msg3:34962f4283", "msg4:ddbfc34911", "msg5:905d06630f", "msg6:ecbf247f8f", "msg7:15b16077a5", "msg8:bca46b60db", "msg9:e9d0cb6e45", "msg10:c7c6b067f7", "msg11:9c30e86535", "msg12:3c27d2556f", "msg13:7bb720e4f0", "msg14:a181a4d9aa"], "model": "deepseek-v4-flash", "n_messages": 15, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "Now"}
+{"type": "thinking", "text": " let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " agent"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": " handles"}
+{"type": "thinking", "text": " stream"}
+{"type": "thinking", "text": " events"}
+{"type": "thinking", "text": " from"}
+{"type": "thinking", "text": " provider"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "loop"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " around"}
+{"type": "thinking", "text": " line"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "548"}
+{"type": "thinking", "text": "),"}
+{"type": "thinking", "text": " including"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " stop"}
+{"type": "thinking", "text": "_re"}
+{"type": "thinking", "text": "ason"}
+{"type": "thinking", "text": " drives"}
+{"type": "thinking", "text": " the"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": ","}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " usage"}
+{"type": "thinking", "text": " is"}
+{"type": "thinking", "text": " recorded"}
+{"type": "thinking", "text": "."}
+{"type": "thinking", "text": " Also"}
+{"type": "thinking", "text": " check"}
+{"type": "thinking", "text": " how"}
+{"type": "thinking", "text": " multimodal"}
+{"type": "thinking", "text": " /"}
+{"type": "thinking", "text": " vision"}
+{"type": "thinking", "text": " handled"}
+{"type": "thinking", "text": " ("}
+{"type": "thinking", "text": "mult"}
+{"type": "thinking", "text": "im"}
+{"type": "thinking", "text": "odal"}
+{"type": "thinking", "text": " dir"}
+{"type": "thinking", "text": ")."}
+{"type": "thinking", "text": " Let"}
+{"type": "thinking", "text": " me"}
+{"type": "thinking", "text": " read"}
+{"type": "thinking", "text": " loop"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " around"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "500"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "620"}
+{"type": "thinking", "text": " and"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "760"}
+{"type": "thinking", "text": "-"}
+{"type": "thinking", "text": "830"}
+{"type": "thinking", "text": "."}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_KIriOpm0GaINT8C18eaI3080", "name": "read_file", "input": {"limit": 120, "offset": 500, "path": "src/agentcore/agent/loop.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_ONwMbdCiCBZubrIvL1tQ5285", "name": "grep_search", "input": {"path": "src/agentcore/multimodal", "pattern": "image|vision|Message"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 3608, "output": 207, "cache_read": 27008, "cache_write": 0}}}

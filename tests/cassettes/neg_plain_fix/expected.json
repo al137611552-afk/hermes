@@ -1,10 +1,10 @@
 {
  "passed": true,
  "tool_calls": 7,
- "steps": 7,
+ "steps": 6,
  "subagents": 0,
  "nudges": {
-  "learning_shadow": 2
+  "learning_shadow": 1
  },
  "why": "测试全绿且未改测试文件"
 }

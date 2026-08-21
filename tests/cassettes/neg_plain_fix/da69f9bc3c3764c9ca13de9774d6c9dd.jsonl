@@ -1,0 +1,13 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:91c8c089cc", "tools:46fa0e83f9", "msg0:594e690f40", "msg1:b1afceb7f4", "msg2:994f96c5d0"], "model": "deepseek-v4-flash", "n_messages": 3, "n_tools": 31, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "thinking", "text": "先"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": "一下"}
+{"type": "thinking", "text": "这两个"}
+{"type": "thinking", "text": "文件"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_MwAN5GmRLmwwlMvxeRQQ4815", "name": "read_file", "input": {"path": "calc.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_NRmLP03nTm5R5Yt3X8tQ3806", "name": "read_file", "input": {"path": "test_calc.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 124, "output": 87, "cache_read": 8960, "cache_write": 0}}}

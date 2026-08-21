@@ -1,0 +1,30 @@
+{"_meta": true, "digests": ["model:74369f80b9", "system:ac02cec780", "tools:8e152e811c", "msg0:5d19479c49", "msg1:ef4516dede", "msg2:4772db160f", "msg3:54f218d8a3", "msg4:3600dd4bd0"], "model": "deepseek-v4-flash", "n_messages": 5, "n_tools": 17, "provider_class": "AnthropicProvider"}
+{"type": "thinking", "text": "现在"}
+{"type": "thinking", "text": "读"}
+{"type": "thinking", "text": " base"}
+{"type": "thinking", "text": ".py"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "看"}
+{"type": "thinking", "text": " Tool"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "基"}
+{"type": "thinking", "text": "类"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": "Error"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "Tool"}
+{"type": "thinking", "text": "Output"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "schema"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "结构"}
+{"type": "thinking", "text": "、"}
+{"type": "thinking", "text": "danger"}
+{"type": "thinking", "text": "ous"}
+{"type": "thinking", "text": " "}
+{"type": "thinking", "text": "标记"}
+{"type": "thinking", "text": "。"}
+{"type": "tool_use", "meta": {"call": {"id": "call_00_W2boAwc1Sak2nRBectj91076", "name": "read_file", "input": {"path": "src/agentcore/tools/base.py"}}}}
+{"type": "tool_use", "meta": {"call": {"id": "call_01_IKhQn5rPOKhQ8163x3274684", "name": "read_file", "input": {"path": "src/agentcore/permissions.py"}}}}
+{"type": "done", "meta": {"stop_reason": "tool_use", "usage": {"input": 2518, "output": 113, "cache_read": 6656, "cache_write": 0}}}
