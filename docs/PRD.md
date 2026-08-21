@@ -99,7 +99,8 @@
   （独立 SQLite `data/memory.db`；模型工具 remember/recall/forget + 离开会话自动抽取 +
   每次发消息把记忆注入 system，使新会话也「记得」。详见 ADR-0012）
 - FR-6.4b **agent 型 MCP server（Codex 委派）**。✅ Windows 真机验证通过、已定版 v3.72.0；
-  v3.72.1 起 `cwd` **强制夹回工作区**（真机踩到 agent 在别处建整个项目、工作区一个文件都没有）
+  v3.72.1 起 `cwd` **强制夹回工作区**（真机踩到 agent 在别处建整个项目、工作区一个文件都没有）；
+  v3.73.0 起贴进对话的图片**落盘到工作区**并把路径告诉模型（子 agent 只认文件路径）
   （把 Codex CLI 当 stdio MCP server 用 ChatGPT 订阅额度干活；权限「每次都问」、续话自动接续、
   面板体检、委派卡、可停止、cwd 跟随会话、结果附 git 客观改动。详见 CHANGELOG 3.72.0）
 - FR-6.4 MCP 工具接入。✅ Windows 验证通过（v0.9.0）
