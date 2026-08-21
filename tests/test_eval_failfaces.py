@@ -42,6 +42,12 @@ _POSIX_ONLY = os.name != "nt"
 
 
 def _skip_non_posix(what):
+    """只跳**真的要执行那两个脚本**的用例。
+
+    同一批里 `test_oom_check_rejects_raising_the_memory_limit` 只查源码文本、不执行，
+    在无 `resource` 的环境下照样成立——**它就不该跳**。一刀切跳掉整批，
+    等于在主力平台上白白丢掉一条还管用的门。
+    """
     print(f"  skip {what}（夹具依赖 POSIX 的 resource.setrlimit，本平台跑不了）")
 
 
@@ -172,6 +178,9 @@ def test_oom_check_rejects_raising_the_memory_limit():
 
 def test_oom_check_accepts_a_streaming_fix():
     """正解（改成流式/生成器）必须判过——判据不能只会说不。"""
+    if not _POSIX_ONLY:
+        return _skip_non_posix("test_oom_check_accepts_a_streaming_fix")
+
     d, ws = _ws(_setup_resource_oom)
     with d:
         head = _OOM_LIMIT_LINE

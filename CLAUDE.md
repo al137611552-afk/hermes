@@ -280,7 +280,10 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   ③ 读文件不给 `encoding="utf-8"` 就按 locale 解；④ Windows 临时目录是 8.3 短名
   （`C:\Users\RUNNER~1\...`），跟 `Path.resolve()` 后的长名**比对不相等**；
   ⑤ **单字节代码页解码永远"成功"**——把 cp1252 排在 GBK 前面等于吞掉一切、只是解成乱码（`_decode_best` 踩过）。
-  ⑥ **POSIX-only 的标准库在 Windows 上是 `ModuleNotFoundError`**：评测的 OOM 夹具用
+  ⑥ **POSIX-only 的标准库在 Windows 上是 `ModuleNotFoundError`**：
+  想在 Linux 上**先复现**这类失败，别等 CI——用 `PYTHONPATH` 指一个 `sitecustomize.py`，
+  在 `sys.meta_path` 里拦掉那个模块名（子进程也吃得到），再逐个函数跑一遍收集**全部**失败；
+  否则就是改一条、CI 再红一次，来回三轮（2026-08-21 就这么浪费了三轮）。评测的 OOM 夹具用
   `resource.setrlimit`，在 Windows 上题目当场变成"模块缺失"（分类没错，是夹具考不成了）——
   这类测试要显式跳过并**打印跳过原因**，别让"跳过"看着像"通过"。
   ⑦ **别在测试里写死 `bash`**：Windows 上 PATH 里的 `bash.exe` 常是 **WSL 存根**，
