@@ -159,11 +159,21 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   **deny 与毁灭性拦截仍优先**——放行档次只降不升，先例就是 `is_destructive` 那条。
   同时不给「总是允许这类」：`codex__codex` 没有 path/command 参数，`suggest_rule` 给的是
   **裸工具名**，点一次＝以后这个 agent 干什么都不问，且**会落盘、重启仍生效**。
+- **阻塞型工具要接停止令牌**（v3.75.0）：`stop()` 的契约是"回合间生效"，不打断回合内的工具执行——
+  所以**一个工具内部串了几跳网络往返，就得自己在跳与跳之间查令牌**。`web_search`/`web_fetch` 走
+  `agentcore.tools.web.is_stopped(self._cancel)`（registry 注入本对话的 `_cancel`）。
+  三条规矩：①**不打断已发出的请求**（urllib 没有取消接口），只掐掉后面的回退；
+  ②**有货就回货、没货才报停**（已经拿到的、尤其花过 credit 的结果不作废）；
+  ③**说清是"没试"而不是"试了没成"**，否则排查会去查一条根本没跑过的路。
+  真跑验证走 `python scripts/diag_stop_realrun.py`（真起 MCP server + 真出网，别只信单测）。
 - **委派型调用（agent 型 MCP）单独渲染成「委派卡」**：抬头给**目标**（prompt 首句）与
   **已用时**，默认展开——它要跑几分钟，收起来等于又变回黑箱；用时那个数字是"在跑"与"卡住"
   的唯一区分。是不是委派由**代码判定**（`AgentLoop._is_agentic`，看 `_takes_cwd`）随
   `tool_use` 事件下发，**别让前端按工具名猜**——名字是 server 起的，猜必然漏。
-- **「停止」会取消在飞的 MCP 调用**（`Conversation.stop()` → `McpManager.cancel_all()`）。
+- **「停止」会取消在飞的 MCP 调用，且按对话认人**（`Conversation.stop()` → `McpManager.cancel_all(self.cid)`）。
+  **manager 是跨对话共享的单例**，在飞调用按 owner（对话 cid）记账：不记归属就是"停 A 把 B 正在跑的
+  codex 停了"（2026-08-24 真机）。无主调用（没绑 owner）仍一起取消——它没有别的出口，
+  宁可多停也不能留下停不掉的活；`cancel_all()` 不带 owner＝全停，留给关停/退出。
   不接的话 agent 型 server 一次调用几分钟，按了停止仍要干等到 `call_timeout`（真机 900s）。
   取消后给的是**可读文案**「调用已被用户停止」——原样抛 `CancelledError` 会被包成
   "MCP 调用失败：CancelledError"，看着像故障而不是"你自己停的"；`McpTool.run` 里
