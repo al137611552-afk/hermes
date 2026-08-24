@@ -145,6 +145,7 @@ from ..profile import (
     compute_smart_defaults, describe_smart_defaults, detect_project_profile,
 )
 from ..verify import is_test_file, make_post_edit_checker
+from ..winproc import no_window
 from ..workspace import build_tree, read_conventions, read_file as read_workspace_file
 
 
@@ -788,7 +789,8 @@ class Conversation:
         try:
             proc = subprocess.run(cmd, shell=True, cwd=str(self.workspace),
                                   capture_output=True, text=True,
-                                  encoding="utf-8", errors="replace", timeout=180)
+                                  encoding="utf-8", errors="replace", timeout=180,
+                                  **no_window())
             return (proc.returncode == 0,
                     ((proc.stdout or "") + (proc.stderr or "")).strip(), proc.returncode)
         except subprocess.TimeoutExpired:

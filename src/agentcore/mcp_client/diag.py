@@ -20,6 +20,8 @@ import threading
 import time
 from pathlib import Path
 
+from ..winproc import no_window
+
 OK, WARN, BAD = "ok", "warn", "bad"
 
 
@@ -226,7 +228,7 @@ def probe_connect(spec: dict, timeout: float = 30.0) -> dict:
     try:
         p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True, bufsize=1, cwd=cwd,
-                             encoding="utf-8", errors="replace")
+                             encoding="utf-8", errors="replace", **no_window())
     except Exception as e:  # noqa: BLE001
         res["error"] = f"{type(e).__name__}: {e}"
         return res

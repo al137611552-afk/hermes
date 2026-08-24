@@ -18,6 +18,7 @@ import subprocess
 import threading
 import time
 
+from ..winproc import no_window
 from .base import Tool, ToolError
 from .shell import (hardened_env, looks_waiting_input, _StreamDecoder,
                     _win_create_job, _win_assign_job, _win_kill_job)
@@ -254,7 +255,8 @@ class ProcessManager:
                     return
                 n += 1
                 try:
-                    r = subprocess.run(argv, cwd=cwd, capture_output=True, timeout=poll * 2)
+                    r = subprocess.run(argv, cwd=cwd, capture_output=True, timeout=poll * 2,
+                                       **no_window())   # 轮询等待器：不防黑窗会周期性闪
                     code = r.returncode
                     out = (r.stdout or b"").decode("utf-8", "replace")[-_NOTIFY_TAIL_CHARS:]
                 except Exception as e:  # noqa: BLE001 — 单次探测失败不算条件成立，也不该终止等待

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import subprocess
 
+from ..winproc import no_window
+
 MAX_LINES = 20
 
 
@@ -24,7 +26,8 @@ def status_lines(cwd: str, timeout: float = 10.0) -> "list[str] | None":
         return None
     try:
         p = subprocess.run(["git", "status", "--porcelain"], cwd=cwd, capture_output=True,
-                           text=True, timeout=timeout, encoding="utf-8", errors="replace")
+                           text=True, timeout=timeout, encoding="utf-8", errors="replace",
+                           **no_window())   # GUI 进程下不给这个标志＝每次委派闪两下黑框
     except Exception:  # noqa: BLE001 — 没装 git / 超时 / 目录没了：一律当"测不了"
         return None
     if p.returncode != 0:

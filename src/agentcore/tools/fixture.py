@@ -14,6 +14,7 @@ import sys
 from datetime import date
 
 from ..verify import _PYTEST_NO_TESTS, _test_env, detect_test_argv
+from ..winproc import no_window
 from .base import Tool, ToolError
 
 FIXTURE_TIMEOUT = 30
@@ -83,7 +84,8 @@ class CaptureFixtureTool(Tool):
         try:
             proc = subprocess.run(argv, cwd=str(self.workspace), capture_output=True,
                                   text=True, encoding="utf-8", errors="replace",
-                                  timeout=FIXTURE_TIMEOUT, env=_test_env(self.workspace))
+                                  timeout=FIXTURE_TIMEOUT, env=_test_env(self.workspace),
+                                  **no_window())
             # 退出码 0 = 通过；pytest 退出码 5 = 没收集到用例（模块级 assert 全过）也算通过
             if proc.returncode == 0 or (pytest_ok and proc.returncode == _PYTEST_NO_TESTS):
                 verdict = ("⚠ 但它**当前就通过了**——说明这段没复现出 bug（输入/断言不对，"

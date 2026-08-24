@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 from ..verify import _test_env
+from ..winproc import no_window
 from .base import Tool, ToolError
 
 TRACE_TIMEOUT = 30
@@ -186,7 +187,7 @@ class TraceRunTool(Tool):
                 cwd=str(self.workspace),
                 env=_test_env(self.workspace),
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=TRACE_TIMEOUT,
+                timeout=TRACE_TIMEOUT, **no_window(),
             )
         except subprocess.TimeoutExpired:
             raise ToolError(f"追踪超时（>{TRACE_TIMEOUT}s）。可能驱动代码里有长循环/等待，缩小输入或用 target 聚焦。")

@@ -10,6 +10,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from .winproc import no_window
+
 GITHUB_REPO = "al137611552-afk/hermes"       # 默认仓库
 _TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
 
@@ -104,7 +106,8 @@ def _default_run(argv, cwd):
     try:
         p = subprocess.run(argv, cwd=cwd, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=300,
-                           env=hardened_env(), stdin=subprocess.DEVNULL)
+                           env=hardened_env(), stdin=subprocess.DEVNULL,
+                           **no_window())
         return p.returncode, (p.stdout or "") + (p.stderr or "")
     except subprocess.TimeoutExpired:
         return 124, "命令超时（>300s）已放弃"

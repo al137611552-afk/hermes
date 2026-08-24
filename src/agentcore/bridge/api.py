@@ -30,6 +30,7 @@ from ..mcp_client import McpManager
 from ..multimodal import Limits
 from ..providers import Message
 from ..store import MemoryStore, Store
+from ..winproc import no_window
 from .conversation import Conversation, Resources
 
 
@@ -726,7 +727,8 @@ class Api:
             proc = subprocess.Popen(
                 base + ["-y", "playwright@latest", "install", "chrome"],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, encoding="utf-8", errors="replace", bufsize=1)
+                text=True, encoding="utf-8", errors="replace", bufsize=1,
+                **no_window())
             last = -1
             pending = ""
             # 进度条用 \r 在同一行刷新，不能只按 \n 切行——同时按 \r/\n 切，进度才逐条冒出来。

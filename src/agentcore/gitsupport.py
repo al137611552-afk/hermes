@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 from .changes import MAX_DIFF_LINES
+from .winproc import no_window
 
 GIT_TIMEOUT = 30                        # 单条 git 命令超时（秒）
 DEFAULT_BRANCHES = ("main", "master")   # "默认分支"启发式（礼仪提醒用）
@@ -32,6 +33,7 @@ def run_git(workspace: Path, args: list[str], timeout: int = GIT_TIMEOUT) -> str
         proc = subprocess.run(
             argv, cwd=str(workspace), capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=timeout,
+            **no_window(),          # 防黑窗（GUI 进程起子进程会新建控制台）
         )
     except FileNotFoundError:
         raise GitError("未安装 git 或不在 PATH（Windows 请安装 Git for Windows）。")

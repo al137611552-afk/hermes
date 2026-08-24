@@ -20,6 +20,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .winproc import no_window
+
 _PY = {".py", ".pyi"}
 _JSON = {".json"}
 _NODE = {".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"}
@@ -243,7 +245,7 @@ def make_affected_test_runner(workspace: Path, runner: str = "auto"):
                 proc = subprocess.run(argv, capture_output=True, text=True,
                                       encoding="utf-8", errors="replace",
                                       cwd=str(workspace), timeout=TEST_TIMEOUT,
-                                      env=test_env)
+                                      env=test_env, **no_window())
                 if proc.returncode == 0 or (use_pytest and proc.returncode == _PYTEST_NO_TESTS):
                     continue
                 tail = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
@@ -314,7 +316,7 @@ def make_verifier(workspace: Path):
                 proc = subprocess.run(
                     ["node", "--check", str(p)],
                     capture_output=True, text=True, encoding="utf-8", errors="replace",
-                    timeout=NODE_TIMEOUT,
+                    timeout=NODE_TIMEOUT, **no_window(),
                 )
                 if proc.returncode != 0:
                     msg = (proc.stderr or proc.stdout or "").strip().splitlines()

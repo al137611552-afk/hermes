@@ -19,6 +19,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from .winproc import no_window
+
 PRE = "PreToolUse"
 POST = "PostToolUse"
 
@@ -78,6 +80,7 @@ class HookRunner:
                 cwd=str(self.workspace), capture_output=True, text=True,
                 encoding="utf-8", errors="replace",
                 timeout=max(1, int(getattr(hook, "timeout", 15) or 15)),
+                **no_window(),          # 防黑窗（见 winproc）
             )
         except (OSError, subprocess.TimeoutExpired, ValueError):
             return None  # hook 跑不起来/超时：不阻塞工具（pre 视为 allow、post 视为无输出）
