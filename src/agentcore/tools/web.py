@@ -76,6 +76,27 @@ _READ_CHARS = 1500               # 每条正文摘录的字符预算（按 query
 _ENGINES = ("bing", "duckduckgo")
 _RRF_K = 60                      # RRF 融合常数（业界惯用 60；越大越看重"多引擎都有"而非单引擎排名）
 
+# 停止令牌（FR-8.3 的 `_cancel` 由 registry 注入）。**这两个工具是典型的阻塞型**：
+# 一次搜索最坏要串上 firecrawl → bing rss → bing html → ddg → 读 3 条正文，每跳一个
+# timeout（默认 20s），中间一个检查点都没有——用户按了停止只能干等（2026-08-24 真机）。
+# 立场：**不打断已发出的请求**（urllib 没有取消接口，硬断会漏连接），只在"换个源再试一次"
+# 之前查一次令牌。最坏等待因此从"几个 20s 串起来"压到"当前这一跳的 20s 以内"。
+STOPPED_MSG = "已被用户停止"
+
+
+def is_stopped(cancel) -> bool:
+    """取消令牌是否已置位（纯逻辑）。None＝没接令牌，永远 False（行为同以前）。
+
+    `threading.Event` 与无参 callable 都收——本项目两种形态都在用
+    （`loop.run(cancel=event)` 与 `cancel=event.is_set`）。
+    """
+    if cancel is None:
+        return False
+    try:
+        return bool(cancel.is_set() if hasattr(cancel, "is_set") else cancel())
+    except Exception:  # noqa: BLE001 — 令牌自己出问题不该把工具带崩，按"没停"继续
+        return False
+
 
 # ---- HTTP（IO，集中一处） -----------------------------------------------------
 
@@ -1059,7 +1080,7 @@ class WebSearchTool(Tool):
     def __init__(self, *, engine: str = "auto", timeout: int = 20, max_results: int = 5,
                  widen_pages: int = 1, reranker=None,
                  read_top_n: int = 0, read_chars: int = _READ_CHARS,
-                 artifacts=None, firecrawl: str = "off") -> None:
+                 artifacts=None, firecrawl: str = "off", cancel=None) -> None:
         # 注意构造器默认＝**老行为**（不宽召回、不读正文、不重排），产品默认由 registry 从
         # config 注入（widen_pages=3 / read_top_n=3 / reranker）。同 research_judge 的做法：
         # 直接 new 出来的实例（存量单测、脚本）行为零变化，也不会在离线测试里偷偷连网。
@@ -1083,6 +1104,9 @@ class WebSearchTool(Tool):
         self._firecrawl = str(firecrawl or "off").strip().lower()
         if self._firecrawl not in FIRECRAWL_MODES:
             self._firecrawl = "off"
+        # 停止令牌（见 STOPPED_MSG 那段）：由 registry 注入本对话的 `_cancel`。
+        # None＝没接（存量单测/脚本行为零变化）。
+        self._cancel = cancel
 
     def _search_firecrawl(self, query: str, limit: int) -> list[dict]:
         """Firecrawl `/v2/search`（受控 IO）。没 key 直接抛错，由调用方按"这个源没用上"处理。"""
@@ -1105,6 +1129,8 @@ class WebSearchTool(Tool):
                     return items
             except ToolError:
                 pass                       # RSS 不通 → 降级 HTML，不让整条链路挂掉
+            if is_stopped(self._cancel):   # 已按停止：不再多等一个 HTML 往返
+                raise ToolError(STOPPED_MSG)
             # 注意：不再传 count/first——实测 Bing 无视它们（恒 10 条、翻页返回同一批），
             # 传了只是自欺欺人。加宽候选靠 DDG 翻页（见 _DDG_PAGE_OFFSETS）。
             _, page, _ = _http_get(f"https://www.bing.com/search?q={q}", self._timeout)
@@ -1168,6 +1194,8 @@ class WebSearchTool(Tool):
         query = (params.get("query") or "").strip()
         if not query:
             raise ToolError("query 不能为空")
+        if is_stopped(self._cancel):   # 停止后排队进来的调用：一个字节都别再出网
+            raise ToolError(f"搜索{STOPPED_MSG}")
         try:
             n = int(params.get("max_results") or self._max_results)
         except (TypeError, ValueError):
@@ -1193,8 +1221,13 @@ class WebSearchTool(Tool):
             except ToolError as e:
                 degraded = f"Firecrawl 不可用（{e}）"
 
-        if fc_first and not _too_few(fc_first, n):
-            per, errors = [("firecrawl", fc_first)], []      # 主源够用，免 key 链路不必跑
+        # 停止令牌：**有货就回货、没货才报停**。主源已经拿到的结果是花过钱的，
+        # 别因为"用户按了停止"连它一起丢；但绝不再往下试第二、第三个引擎。
+        stopped = is_stopped(self._cancel)
+        if fc_first and (stopped or not _too_few(fc_first, n)):
+            per, errors = [("firecrawl", fc_first)], []      # 主源够用（或已停止），免 key 链路不必跑
+        elif stopped:
+            raise ToolError(f"搜索{STOPPED_MSG}")
         else:
             if self._firecrawl == "always" and fc_on:
                 engines = (*engines, "firecrawl")   # 并发跑，与别的引擎一视同仁地进 RRF
@@ -1211,7 +1244,7 @@ class WebSearchTool(Tool):
         # 不走"提示模型重搜"那条路（块H2）：V5 计分板实测 research_hint 触发后改善只有 2/8，
         # 而这里是确定性的——判据可证伪、动作由代码执行，不赌模型听不听劝。
         upgraded = ""
-        if self._firecrawl == "fallback" and firecrawl_key():
+        if self._firecrawl == "fallback" and firecrawl_key() and not is_stopped(self._cancel):
             from ..agent.evaluators import evaluate as _evaluate     # 懒导入，避免工具层硬依赖
             why = upgrade_reason(query, fused, n, _evaluate)
             if why:
@@ -1243,7 +1276,13 @@ class WebSearchTool(Tool):
                         if firecrawl_quota_exhausted() else ""))
         if errors:
             head += f"\n[注] 部分来源未用上：{'；'.join(errors)}"
-        bodies = self._read_bodies(ranked[:self._read_top_n], query) if self._read_top_n else {}
+        # 读正文是**又一串**网络往返（默认 3 条并发、各一个 timeout）：停了就不读，
+        # 但上面已经搜到的结果照常给——这一步是增值项，缺了不影响结果本身可用。
+        if self._read_top_n and is_stopped(self._cancel):
+            bodies = {}
+            head += f"\n[已停止] 搜索{STOPPED_MSG}，未再读取正文（上面是停止前已拿到的结果）"
+        else:
+            bodies = self._read_bodies(ranked[:self._read_top_n], query) if self._read_top_n else {}
         if bodies:
             head += f"\n[已读正文] 前 {len(bodies)} 条已抓取正文并按查询摘录（下面 ↳ 的部分）"
         return head + "\n" + render_items(ranked, bodies)
@@ -1282,6 +1321,8 @@ class WebSearchTool(Tool):
         """
         if self._firecrawl == "off" or budget is None or not firecrawl_key():
             return ""
+        if is_stopped(self._cancel):
+            return ""   # 已按停止：不为兜底再多花一个往返（两个调用点共用这一道闸）
         if _LOGIN_MARKERS.search((baseline or "")[:3000]):
             return ""
         if not budget.acquire(blocking=False):
@@ -1364,7 +1405,8 @@ class WebFetchTool(Tool):
     }
 
     def __init__(self, *, timeout: int = 20, max_chars: int = DEFAULT_FETCH_CHARS,
-                 browser_reader=None, artifacts=None, firecrawl: str = "off") -> None:
+                 browser_reader=None, artifacts=None, firecrawl: str = "off",
+                 cancel=None) -> None:
         self._timeout = timeout
         self._max_chars = max_chars
         # ADR 0021：抓到了却被 cap 掉的原文落成产物（None=照旧丢弃）。
@@ -1381,6 +1423,9 @@ class WebFetchTool(Tool):
         self._firecrawl = str(firecrawl or "off").strip().lower()
         if self._firecrawl not in FIRECRAWL_MODES:
             self._firecrawl = "off"
+        # 停止令牌（见 STOPPED_MSG 那段）：本工具的阶梯是 HTTP → Firecrawl → 浏览器，
+        # **每一档都是一次几十秒的等待**，档与档之间必须能停。None＝没接。
+        self._cancel = cancel
 
     def _clip_and_keep(self, text: str, cap: int, focus: str, url: str) -> str:
         """裁剪正文；被 cap 掉的原文落产物并附句柄（省上下文的同时不丢数据）。"""
@@ -1432,6 +1477,8 @@ class WebFetchTool(Tool):
         except (TypeError, ValueError):
             cap = self._max_chars
         cap = max(500, min(cap, 100_000))
+        if is_stopped(self._cancel):   # 停止后排队进来的调用：别再出网
+            raise ToolError(f"抓取{STOPPED_MSG}")
 
         try:
             final_url, body, ctype = _http_get(url, self._timeout)
@@ -1439,24 +1486,30 @@ class WebFetchTool(Tool):
             # HTTP 层就失败（403/429 多半是反爬）。**此前这里直接抛**，浏览器兜底根本够不着——
             # 而 web_search 读不动时给的指路正是"用 web_fetch 读它（会自动改用浏览器）"，
             # 那是张空头支票。现在按同一条阶梯降级：Firecrawl → 浏览器 → 才报错。
-            md, fc_why = self._read_via_firecrawl(url)
+            # 停止令牌：**每一档之间查一次**。已发出的请求不打断（就是刚失败的那个），
+            # 但不再为兜底往下多押两次几十秒。
+            md, fc_why = ("", "") if is_stopped(self._cancel) else self._read_via_firecrawl(url)
             if md:
                 return (f"[URL] {url}\n[读取方式] HTTP 直读失败 → **已自动改用 Firecrawl 读取**"
                         "（托管源，不带你的登录态）\n\n"
                         + self._clip_and_keep(md, cap, focus, url))
-            via = self._read_via_browser(url)
+            via = None if is_stopped(self._cancel) else self._read_via_browser(url)
             if via and not via.startswith("[浏览器兜底失败]"):
                 return (f"[URL] {url}\n[读取方式] HTTP 直读失败 → **已自动改用浏览器读取**"
                         "（浏览器带你的登录态，内容可能包含登录后才可见的信息）\n\n"
                         + self._clip_and_keep(via, cap, focus, url))
             # 三条路都没走通：**每一条的原因都带上**，否则排查时只能看到最后一层的错
             tried = [str(e)]
-            if fc_why:
-                tried.append(f"Firecrawl：{fc_why}")
-            if via:
-                tried.append(via.strip("[]"))
-            elif not self._browser_reader:
-                tried.append("浏览器：未接穿透")
+            if is_stopped(self._cancel):
+                # **说清楚是"没试"而不是"试了没成"**：否则排查时会去查根本没跑过的兜底
+                tried.append(f"{STOPPED_MSG}，未再试 Firecrawl/浏览器兜底")
+            else:
+                if fc_why:
+                    tried.append(f"Firecrawl：{fc_why}")
+                if via:
+                    tried.append(via.strip("[]"))
+                elif not self._browser_reader:
+                    tried.append("浏览器：未接穿透")
             raise ToolError("；".join(tried)) from None
         is_html = "html" in ctype.lower() or bool(re.search(r"<\s*html", body[:2000], re.I))
         if is_html:
@@ -1470,19 +1523,24 @@ class WebFetchTool(Tool):
         if blocked:
             # 先试托管源：JS 空壳正是它最见效的一档（实测 141 → 1874 字符），
             # 且比起浏览器穿透，它不带登录态——读到的必是公开内容，副作用更小。
-            md, fc_why = self._read_via_firecrawl(final_url, text)
+            md, fc_why = ("", "") if is_stopped(self._cancel) \
+                else self._read_via_firecrawl(final_url, text)
             if md:
                 return (f"[URL] {final_url}\n[读取方式] HTTP 受阻（{blocked}）→ "
                         "**已自动改用 Firecrawl 读取**（托管源，不带你的登录态）\n\n"
                         + self._clip_and_keep(md, cap, focus, final_url))
-            via = self._read_via_browser(final_url)
+            via = None if is_stopped(self._cancel) else self._read_via_browser(final_url)
             if via and not via.startswith("[浏览器兜底失败]"):
                 return (f"[URL] {final_url}\n[读取方式] HTTP 受阻（{blocked}）→ **已自动改用浏览器读取**"
                         "（浏览器带你的登录态，内容可能包含登录后才可见的信息）\n\n"
                         + self._clip_and_keep(via, cap, focus, final_url))
-            hint = (f"（{via}）" if via else "（未接浏览器穿透）")
-            if fc_why:
-                hint += f"（Firecrawl：{fc_why}）"
+            if is_stopped(self._cancel):
+                # 受阻但**手上有东西**：照常把读到的给出去，只说明兜底没试（不是试了没成）
+                hint = f"（{STOPPED_MSG}，未再试 Firecrawl/浏览器兜底）"
+            else:
+                hint = (f"（{via}）" if via else "（未接浏览器穿透）")
+                if fc_why:
+                    hint += f"（Firecrawl：{fc_why}）"
             return (f"⚠ 抓取受阻（{blocked}）{hint}——下面内容可能是拦截页或不完整。\n"
                     "换官方 API / 其它来源，或开启浏览器穿透后重试。\n\n"
                     f"{head}\n\n{text if text.strip() else '(页面没有可提取的文本)'}")

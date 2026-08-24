@@ -15,9 +15,9 @@ from agentcore.config import WebConfig  # noqa: E402
 from agentcore.tools import build_registry  # noqa: E402
 from agentcore.tools.base import Tool, ToolError  # noqa: E402
 from agentcore.tools.web import (  # noqa: E402
-    WebFetchTool, WebSearchTool, _clip, bing_real_url, canonical_url, excerpt_for_query,
-    extract_main_text, extract_text, fuse_results, looks_blocked, parse_bing, parse_bing_rss,
-    parse_ddg_lite, rerank_results, score_node,
+    STOPPED_MSG, WebFetchTool, WebSearchTool, _clip, bing_real_url, canonical_url,
+    excerpt_for_query, extract_main_text, extract_text, fuse_results, is_stopped, looks_blocked,
+    parse_bing, parse_bing_rss, parse_ddg_lite, rerank_results, score_node,
 )
 
 
@@ -348,6 +348,163 @@ def test_fetch_url_validation(tmp: Path):
             assert False, bad
         except ToolError:
             pass
+
+
+# ---- 停止令牌（阻塞型工具的回退闸） -------------------------------------------
+# 病根：一次搜索最坏串上 firecrawl → bing rss → bing html → ddg → 读 3 条正文，
+# 每跳一个 timeout，中间没有任何检查点——按了停止只能干等（2026-08-24 真机）。
+# 下面每条都盯住一个**串行回退点**：停了就不再往下押，且已经拿到的东西照常给。
+
+
+def test_is_stopped_accepts_event_callable_and_nothing():
+    import threading
+    ev = threading.Event()
+    assert is_stopped(None) is False          # 没接令牌＝永远不停（存量调用方行为不变）
+    assert is_stopped(ev) is False
+    ev.set()
+    assert is_stopped(ev) is True
+    assert is_stopped(lambda: True) is True   # 无参 callable 形态（loop 里也在用）
+
+    class Broken:
+        def is_set(self):
+            raise RuntimeError("坏了")
+    assert is_stopped(Broken()) is False       # 令牌自己出问题不该把工具带崩
+
+
+def test_search_and_fetch_refuse_to_start_when_already_stopped():
+    """停止后排队进来的调用：一个字节都别再出网。"""
+    import threading
+    ev = threading.Event()
+    ev.set()
+    for tool, params in ((WebSearchTool(cancel=ev), {"query": "显卡"}),
+                         (WebFetchTool(cancel=ev), {"url": "https://example.com/a"})):
+        try:
+            tool.run(params)
+            assert False, tool.name
+        except ToolError as e:
+            assert STOPPED_MSG in str(e), e
+
+
+def test_search_stops_between_bing_rss_and_html():
+    """bing 的 RSS→HTML 是串行回退：RSS 失败时若已按停止，不该再多等一个 HTML 往返。"""
+    import threading
+
+    from agentcore.tools import web as W
+    ev = threading.Event()
+    calls = []
+
+    def fake_get(url, timeout):
+        calls.append(url)
+        ev.set()                       # 第一跳跑着的时候用户按了停止
+        raise ToolError("请求失败（超时）")
+
+    old, W._http_get = W._http_get, fake_get
+    try:
+        WebSearchTool(cancel=ev)._search_one("bing", "显卡")
+        assert False, "应当因停止而中断"
+    except ToolError as e:
+        assert STOPPED_MSG in str(e), e
+    finally:
+        W._http_get = old
+    assert len(calls) == 1, calls      # HTML 那一跳根本没发生
+
+
+def test_search_keeps_what_it_already_paid_for_when_stopped():
+    """停止发生在主源返回之后：**有货就回货**（那批结果是花过钱的），但不再跑免 key 链路。"""
+    import threading
+
+    from agentcore.tools import web as W
+    ev = threading.Event()
+
+    class T(WebSearchTool):
+        def _search_firecrawl(self, query, limit):
+            ev.set()                   # 主源跑着的时候按的停止
+            return [{"url": "https://a.com/x", "title": "只有一条", "snippet": "s"}]
+
+        def _gather(self, engines, query):
+            raise AssertionError("停止后不该再跑免 key 链路")
+
+    old, W.firecrawl_key = W.firecrawl_key, (lambda: "fake-key")
+    W.reset_firecrawl_quota()
+    try:
+        out = T(firecrawl="primary", max_results=5, cancel=ev).run({"query": "q"})
+    finally:
+        W.firecrawl_key = old
+    assert "只有一条" in out
+
+
+def test_search_skips_body_reading_when_stopped():
+    """读正文是又一串网络往返：停了就不读，但搜到的结果照常给，并说明为什么没有正文。"""
+    import threading
+    ev = threading.Event()
+
+    class T(WebSearchTool):
+        def _gather(self, engines, query):
+            ev.set()                   # 搜索跑着的时候按的停止
+            return [("bing", [{"url": "https://a.com/1", "title": "标题一", "snippet": "s1"}])], []
+
+        def _read_bodies(self, results, query):
+            raise AssertionError("停止后不该再读正文")
+
+    out = T(read_top_n=3, cancel=ev).run({"query": "q"})
+    assert "[已停止]" in out and "标题一" in out
+
+
+def test_fetch_does_not_climb_the_fallback_ladder_after_stop():
+    """HTTP → Firecrawl → 浏览器每档都是几十秒。停了就不再往下押，且**说清是没试而不是试了没成**。"""
+    import threading
+
+    from agentcore.tools import web as W
+    ev = threading.Event()
+
+    def fake_get(url, timeout):
+        ev.set()
+        raise ToolError("请求失败（HTTP 403）")
+
+    def boom(url):
+        raise AssertionError("停止后不该再起浏览器")
+
+    old, W._http_get = W._http_get, fake_get
+    try:
+        WebFetchTool(firecrawl="always", browser_reader=boom, cancel=ev).run(
+            {"url": "https://x.com/a"})
+        assert False, "应当报错"
+    except ToolError as e:
+        assert STOPPED_MSG in str(e) and "未再试" in str(e), e
+    finally:
+        W._http_get = old
+
+
+def test_fetch_returns_what_it_read_when_stopped_on_blocked_page():
+    """受阻但手上有东西：照常把读到的给出去，只说明兜底没试。"""
+    import threading
+
+    from agentcore.tools import web as W
+    ev = threading.Event()
+
+    def fake_get(url, timeout):
+        ev.set()
+        return url, "<html><body><div id=app></div></body></html>", "text/html"
+
+    def boom(url):
+        raise AssertionError("停止后不该再起浏览器")
+
+    old, W._http_get = W._http_get, fake_get
+    try:
+        out = WebFetchTool(browser_reader=boom, cancel=ev).run({"url": "https://x.com/a"})
+    finally:
+        W._http_get = old
+    assert "抓取受阻" in out and "未再试" in out
+
+
+def test_registry_wires_cancel_token_into_web_tools(tmp: Path):
+    """令牌得真的接到工具上——注入不上等于没做（conversation 传的是本对话的 _cancel）。"""
+    import threading
+    ev = threading.Event()
+    reg = build_registry(tmp, web=WebConfig(), cancel=ev)
+    assert reg.get("web_search")._cancel is ev
+    assert reg.get("web_fetch")._cancel is ev
+    assert build_registry(tmp, web=WebConfig()).get("web_search")._cancel is None   # 不传＝老行为
 
 
 def _run_all():
