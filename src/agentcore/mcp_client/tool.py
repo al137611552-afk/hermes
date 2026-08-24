@@ -214,6 +214,9 @@ class McpTool(Tool):
         self._thread_key = thread_param(self.input_schema)
         # 当前会话的工作区（由 build_registry 绑）。None＝不补 cwd，行为同以前。
         self.workspace = None
+        # 发起调用的对话 cid（同样由 build_registry 绑）。**「停止」按它归属**——
+        # manager 跨对话共享，不带归属就会停错人。None＝无主（行为同以前）。
+        self.owner = None
         # **「schema 收 cwd」＝agent 型**：它在某个目录里自己干活（codex 就是）。
         # 用它同时决定"补不补 cwd"和"要不要用 git 记录改动"。
         # 别用 thread key 当判据——`codex__codex` 的 schema 里根本没有 threadId（只有 reply 有）。
@@ -226,18 +229,23 @@ class McpTool(Tool):
     # 之前只是没人接（2026-08-20 真机反馈）。不发进度的 server 不受影响——没通知就没增量。
     wants_stream = True
 
-    def bind_workspace(self, workspace):
-        """绑定**当前会话**的工作区，返回一个轻副本（server 侧进程与续话记忆仍共享）。
+    def bind_workspace(self, workspace, owner=None):
+        """绑定**当前会话**的工作区与 owner，返回一个轻副本（server 侧进程与续话记忆仍共享）。
 
         agent 型 server 的 `cwd` 是**按调用**给的参数，不是 server 配置——所以不必为换工作区
         重启子进程。绑成副本而不是改自己：同一个 McpTool 实例被所有会话共用，
         直接改字段会在并发会话之间串台。
+
+        `owner`（对话 cid）随工作区一起绑：它决定「停止」时这次在飞调用算谁的。
         """
         import copy
-        if not workspace:
+        if not workspace and owner is None:
             return self
         t = copy.copy(self)
-        t.workspace = str(workspace)
+        if workspace:
+            t.workspace = str(workspace)
+        if owner is not None:
+            t.owner = owner
         return t
 
     def prepare(self, params: dict) -> dict:
@@ -283,7 +291,11 @@ class McpTool(Tool):
                 except Exception:  # noqa: BLE001
                     pass
         try:
-            result = self._caller(self.server, self.tool_name, params, stream)
+            # owner 只在绑过时才传：caller 的老签名只收 4 个参数（单测里的假 caller 就是），
+            # 无主调用照旧走原路。
+            result = (self._caller(self.server, self.tool_name, params, stream, self.owner)
+                      if self.owner is not None
+                      else self._caller(self.server, self.tool_name, params, stream))
         except ToolError:
             raise           # 已经是可读文案（如"调用已被用户停止"），别再套一层"MCP 调用失败"
         except Exception as e:  # 连接断开 / 超时 / 子进程已退出等

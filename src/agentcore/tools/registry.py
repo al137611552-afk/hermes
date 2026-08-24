@@ -74,6 +74,8 @@ def build_registry(
     browser_reader=None,
     artifacts=None,
     search_reranker=None,
+    owner=None,
+    cancel=None,
 ) -> ToolRegistry:
     """按 config 构造默认工具集。
 
@@ -91,6 +93,8 @@ def build_registry(
     skill_binding 非 None 时注册技能加载工具 load_skill（FR-13.S，只读、免 gate、子 Agent 也可用）。
     search_reranker 为模型语义重排器（FR-11.1c 块2）：注入给 web_search，从宽召回候选池里按语义挑；
     None 时只用确定性重排（行为同 3.54）。
+    cancel 为本对话的停止令牌（threading.Event）：注入给阻塞型的 web_search/web_fetch，
+    让它们在"换个源再试"之间能收手（已发出的请求不打断）；None 时行为同 3.74。
     artifacts 为产物入口（ADR 0021）：注入给 run_<shell> / web_fetch，大输出落盘回「摘要 + 句柄」；
     None 时超限照旧直接截断丢弃（行为同 3.53）。主与子 Agent 传同一个（共用工作区的产物集）。
     """
@@ -134,12 +138,14 @@ def build_registry(
                           read_top_n=getattr(web, "read_top_n", 3),
                           read_chars=getattr(web, "read_chars", 1500),
                           artifacts=artifacts,
-                          firecrawl=getattr(web, "firecrawl", "off")),
+                          firecrawl=getattr(web, "firecrawl", "off"),
+                          cancel=cancel),
             WebFetchTool(timeout=web.timeout, max_chars=web.fetch_max_chars,
                          browser_reader=(browser_reader
                                          if getattr(web, "browser_fallback", True) else None),
                          firecrawl=getattr(web, "firecrawl", "off"),
-                         artifacts=artifacts),
+                         artifacts=artifacts,
+                         cancel=cancel),
         ]
     if screenshot:
         tools.append(ScreenshotTool(workspace))
@@ -166,7 +172,8 @@ def build_registry(
     if mcp_tools:
         # agent 型 MCP server 的 cwd 该跟着**当前会话的工作区**走（按调用给参数，
         # 不必重启子进程）。绑成副本：同一批工具实例被所有会话共用。
-        tools += [t.bind_workspace(workspace) if hasattr(t, "bind_workspace") else t
+        # owner（对话 cid）一并绑：MCP manager 是跨对话共享的，「停止」要靠它认人。
+        tools += [t.bind_workspace(workspace, owner) if hasattr(t, "bind_workspace") else t
                   for t in mcp_tools]
     if extra_dirs is not None:  # 额外授权目录（add-dir）：注入共享引用，add/remove 后所有工具实时生效
         for t in tools:

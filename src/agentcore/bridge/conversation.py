@@ -470,7 +470,10 @@ class Conversation:
         try:
             mcp = getattr(self.res, "mcp", None)
             if mcp is not None and hasattr(mcp, "cancel_all"):
-                mcp.cancel_all()
+                # **只停本对话的**：manager 跨对话共享，无差别取消就是
+                # 「停 A 把 B 正在跑的 codex 停了」（2026-08-24 真机）。
+                mcp.cancel_all(self.cid)
+
         except Exception:  # noqa: BLE001 — 取消失败不该阻断停止本身
             pass
         with self.lock:  # 停止：连待注入的执行中追加一起清掉
@@ -2461,6 +2464,8 @@ class Conversation:
             browser_reader=self._make_browser_reader(),
             artifacts=self.artifacts,
             search_reranker=self._make_search_reranker(),
+            owner=self.cid,          # 「停止」要能只停本对话的在飞 MCP 调用
+            cancel=self._cancel,     # 阻塞型工具（web_search/web_fetch）的停止令牌
         )
 
     def _make_artifact_sink(self):
@@ -2778,6 +2783,8 @@ class Conversation:
             browser_reader=self._make_browser_reader(),
             artifacts=self.artifacts,     # 与主 Agent 共用产物集（同一工作区）
             search_reranker=self._make_search_reranker(),   # 子 Agent 搜索同样走模型重排
+            owner=self.cid,               # 子 Agent 的调用算本对话的：停本对话要连它一起停
+            cancel=self._cancel,          # 停止级联：子 Agent 的检索与主 Agent 共用同一个令牌
         )
         # 子 Agent 与主 Agent 同一套分工（见 _make_browser_reader）：搜索走 HTTP、
         # 读不动的页面由 web_fetch 自动升级到浏览器；会浏览的角色照常还有 browser_* 可主动下钻。

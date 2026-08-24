@@ -271,10 +271,39 @@ def test_cancel_all_stops_inflight_calls():
     running = concurrent.futures.Future()
     done = concurrent.futures.Future()
     done.set_result("已经跑完了")
-    m._inflight = {running, done}
+    m._inflight = {running: None, done: None}
     assert m.cancel_all() == 1          # 只取消得动没跑完的那个
     assert running.cancelled() and done.result() == "已经跑完了"
     assert m.cancel_all() == 0          # 再来一次不会重复计数
+
+
+def test_cancel_all_only_touches_its_own_conversation():
+    """2026-08-24 真机：A 会话（联网搜索）点停止，把 B 会话正在跑的 codex 停了。
+    manager 是跨对话共享的单例，取消必须按 owner 认人。"""
+    import concurrent.futures
+
+    from agentcore.config import MCPConfig
+    from agentcore.mcp_client.manager import McpManager
+
+    m = McpManager(MCPConfig(enabled=True))
+    a, b, orphan = (concurrent.futures.Future() for _ in range(3))
+    m._inflight = {a: 1, b: 2, orphan: None}
+    assert m.cancel_all(1) == 2         # 自己的 + 无主的（无主没有别的出口）
+    assert a.cancelled() and orphan.cancelled()
+    assert not b.cancelled()            # **别人的活不许动**
+    assert m.cancel_all() == 1          # 不带 owner = 全停（关停/退出用）
+    assert b.cancelled()
+
+
+def test_bind_workspace_carries_owner_into_call():
+    """owner 得真的传到 manager.call——绑了不传等于没绑。"""
+    seen = []
+    t = McpTool("codex", "codex", "d", {"properties": {"cwd": {}}},
+                caller=lambda *a: seen.append(a) or _Result([_Text("ok")]))
+    bound = t.bind_workspace("/w", 7)
+    bound.run({"prompt": "x"})
+    assert seen[0][0] == "codex" and seen[0][-1] == 7
+    assert t.owner is None              # 原实例不受影响（跨会话共用）
 
 
 def test_cancelled_call_reads_as_user_stop_not_as_failure():

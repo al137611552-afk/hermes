@@ -115,7 +115,10 @@ class McpManager:
         self._ev_bound: dict = {}            # (server, requestId) -> stream 回调
         # 在飞的工具调用（供「停止」取消）。agent 型 server 一次调用几分钟，
         # 没有出口就只能干等到 call_timeout——**长任务的基本尊严**。
-        self._inflight: set = set()
+        # **按 owner（对话 cid）记账**：manager 是跨对话共享的单例，不记归属的话
+        # "停止 A"会把 B 正在跑的 codex 一起取消（2026-08-24 真机：A 是联网搜索、
+        # B 在委派 codex，停 A 停掉了 B）。
+        self._inflight: dict = {}            # future -> owner（None = 无主）
 
     @property
     def errors(self) -> dict:
@@ -264,12 +267,15 @@ class McpManager:
             self._sessions.pop(name, None)
 
     # ---- 调用（同步入口，供 McpTool.run 用） -----------------------------
-    def call(self, server: str, tool_name: str, params: dict, stream=None):
+    def call(self, server: str, tool_name: str, params: dict, stream=None, owner=None):
         """调用一个工具。`stream(kind, delta)` 非空时，把 server 的**过程通知**实时推出去。
 
         MCP 的进度是**按调用**走的（客户端给 progressToken、server 回 notifications/progress），
         所以能准确归属到这一次调用，不会串台。老 SDK 没有 `progress_callback` 参数就自动跳过，
         行为退回原样（拿不到过程，但不影响调用本身）。
+
+        `owner`＝发起这次调用的对话 cid（由 `McpTool.bind_workspace` 绑）。只用于「停止」
+        的归属判定，不进请求。
         """
         if self._loop is None or server not in self._sessions:
             raise RuntimeError(f"MCP server '{server}' 未连接")
@@ -292,7 +298,7 @@ class McpManager:
         try:
             fut = self._submit(session.call_tool(tool_name, params, **kw))
             with self._ev_lock:
-                self._inflight.add(fut)
+                self._inflight[fut] = owner
             return fut.result(timeout=self.call_timeout_for(server))
         except concurrent.futures.CancelledError:
             # 用户按了停止。**给可读文案**：原样抛 CancelledError 会被上层包成
@@ -301,7 +307,7 @@ class McpManager:
         finally:
             if fut is not None:
                 with self._ev_lock:
-                    self._inflight.discard(fut)
+                    self._inflight.pop(fut, None)
             if stream is not None:
                 with self._ev_lock:
                     pend = self._ev_pending.get(server) or []
@@ -342,15 +348,21 @@ class McpManager:
         return {"notification_bindings": [
             NotificationBinding(method=CODEX_EVENT, params_type=_AnyParams, handler=_handler)]}
 
-    def cancel_all(self) -> int:
-        """取消所有在飞的工具调用（供 `Conversation.stop()`）。返回取消掉几个。
+    def cancel_all(self, owner=None) -> int:
+        """取消在飞的工具调用（供 `Conversation.stop()`）。返回取消掉几个。
 
         取消 future 会连带取消底层协程，SDK 随之给 server 发 `notifications/cancelled`；
         已经跑完的取消不动（`Future.cancel()` 返回 False）。**已取消的要显式跳过**——
         `cancel()` 对它仍返回 True，直接累加会让"取消掉几个"虚高。
+
+        **`owner` 非 None＝只取消这个对话的**（外加无主调用）。manager 跨对话共享，
+        无差别取消就是"停 A 停掉了 B"（2026-08-24 真机）。无主的仍然一起取消：
+        没绑 owner 的调用没有别的出口，宁可多停也不能留下停不掉的活。
+        `owner=None`（不传）＝全部取消，给关停/退出这类场景用。
         """
         with self._ev_lock:
-            futs = list(self._inflight)
+            futs = [f for f, o in self._inflight.items()
+                    if owner is None or o is None or o == owner]
         return sum(1 for f in futs if not f.cancelled() and f.cancel())
 
     async def _tap(self, server: str, source, sink) -> None:
