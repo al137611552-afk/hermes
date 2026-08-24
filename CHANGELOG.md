@@ -4,6 +4,37 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.75.1] - 2026-08-24
+
+**不再闪黑框**。用户真机反馈：调用 codex 干活时经常弹出一个终端窗口然后秒关。
+
+### 修复
+
+- **GUI 进程起子进程会在 Windows 上新建控制台窗口**。hermes 是没有控制台的 GUI 进程
+  （pywebview 窗口 / windowed exe），从这种进程 spawn 子进程时不给 `CREATE_NO_WINDOW`，
+  系统就会给它新建一个控制台窗口，子进程一结束窗口立刻消失——**黑框一闪**。
+  最密的一处正是 agent 型 MCP 调用：`gitwatch` 在每次调用**前后各跑一次** `git status`
+  （v3.72.1 加的"不信 agent 自述、用 git 对账"），于是**委派一次闪两下**。
+  codex server 本身的启动不闪——mcp SDK 自己给了这个标志。
+  收成一个 helper `winproc.no_window()`，补齐 11 处此前裸着的调用点：
+  `gitwatch`（委派前后的 git status）、`gitsupport`（git 工具）、
+  `procs` 的等待器轮询（**周期性**闪）、`verify`（写入后跑测试 / `node --check`）、
+  `hooks` / `trace` / `fixture`、跑测试命令、装 Chrome 的 npx、MCP 体检。
+
+  **纪律本来就有**——`shell.py`/`procs.py` 起 shell 那两处一直带着"防黑窗"的注释，
+  是后加的这批 spawn 点没跟上。所以同时加了一道**扫描闸**
+  （`tests/test_winproc.py`）：AST 扫全库每一个 `subprocess.run/Popen`，
+  不防黑窗就红；两张名单（`**kwargs` 形态的人工核对项、确实不需要的豁免项）都必须写理由，
+  另有一条测试盯着"名单不许长草"。**发现口径是扫源码而不是手抄清单**，
+  下一个新加的调用点天然被逮到。
+
+> 验证：扫描闸活性验过（塞一个裸 spawn 进去当场变红）；"假 Windows"真调用录到
+> 7 处真实 spawn 全部带上了 `CREATE_NO_WINDOW`；全回归绿（Python 88 个测试文件 0 失败、
+> 前端 145/145）。**Windows 真机待确认**——这修只有在真机上才看得见效果。
+> 另：若打上仍剩一些闪，那多半是 **codex 自己在沙箱里执行命令**时起的 shell 子进程
+> （它的孩子、标志由它决定，hermes 够不着）；两者可分辨：hermes 这批是调用开始/结束各一下、
+> 次数固定，codex 那批是跑到一半、每执行一条命令闪一下。
+
 ## [3.75.0] - 2026-08-24
 
 **「停止」这一下真的能停下来**的一版。起点是两条真机现象：点停止后 A 会话的联网搜索照跑不误，

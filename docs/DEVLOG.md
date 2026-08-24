@@ -4,6 +4,53 @@
 
 ---
 
+## 2026-08-24（晚）— v3.75.1：不再闪黑框（GUI 进程的子进程全部防控制台窗口）
+
+**状态**：✅ 已完成并定版 v3.75.1；本地全回归全绿（Python 88 个测试文件 0 失败、前端 145/145）。
+⏳ **Windows 真机待确认**——这修只有在真机上才看得见效果。
+
+### 起因：用户一句"调用 codex 时经常弹出一个终端窗口然后秒关"
+
+机制很干脆：hermes 是**没有控制台的 GUI 进程**，Windows 从这种进程起子进程时，
+只要不给 `CREATE_NO_WINDOW`，系统就**给它新建一个控制台窗口**，进程一结束窗口立刻消失。
+
+**为什么偏偏在调用 codex 的时候**：不是 codex，是 hermes 自己在**每次 agent 型调用前后
+各跑一次** `git status`（`mcp_client/tool.py:280/321` → `gitwatch.py`，v3.72.1 加的
+"不信 agent 自述、用 git 对账"）——**一次委派闪两下**，而不调用 codex 时一下也没有，
+所以症状和"调用 codex"精确绑定。codex server 本身的启动不闪：mcp SDK 自己给了这个标志
+（`mcp/os/win32/utilities.py:160`）。
+
+### 这不是新纪律，是新代码没跟上老纪律
+
+`shell.py:567` 和 `procs.py:126` 起 shell 时一直带着"防黑窗"的注释——**说明这事早就知道**，
+只是后加的 git / verify / hooks / trace / fixture / 体检那批 spawn 点全裸着。
+**同一个坑靠"记得"守不住**，所以这一版做的是两件事：
+
+1. 收一个 helper `winproc.no_window()`（Windows 给标志、别处空字典，带 `win=` 注入口便于测试），
+   补齐 11 处调用点；
+2. 加一道**扫描闸** `tests/test_winproc.py`——AST 扫全库每个 `subprocess.run/Popen`，
+   不防黑窗就红。`**kwargs` 形态（标志在上面几行按平台塞进 dict、AST 看不进去）与
+   确实不需要的（`workspace.py` 那处只在 mac/linux 用，Windows 走 `os.startfile`）
+   各进一张名单、**都要写理由**，另有一条测试盯着"名单里的项还得真实存在"，防止名单长草。
+
+### 自检
+
+- `tests/test_winproc.py` 4 测（helper 纯逻辑 + 全库扫描 + 名单不长草 + 最密那处的接线）。
+  **活性验过**：塞一个裸 `subprocess.run` 进去、再把 gitwatch 的标志摘掉，两条当场全红。
+- **"假 Windows"真调用**：把改过的点真跑一遍并录 `creationflags`——7 处真实 spawn
+  （gitwatch / gitsupport / updater / diag / hooks / `node --check` / trace）**全部带上了
+  `0x08000000`**。**加了 import 不等于用上了**，这一步就是为了钉死这句。
+  剩下 4 处（fixture、procs 轮询、跑测试命令、装 Chrome）路径较深，只由扫描闸覆盖。
+
+### 遗留
+
+- ⏳ Windows 真机确认黑框是否消失。
+- **可能仍有一批闪不归我们管**：codex 在沙箱里执行命令时会起 shell 子进程，那是它的孩子、
+  标志由它决定。两者可分辨——**hermes 这批是调用开始/结束各一下、次数固定**；
+  **codex 那批是跑到一半、每执行一条命令闪一下**。真剩下的话按后者去 codex 侧提。
+
+---
+
 ## 2026-08-24 — v3.75.0：「停止」按对话认人 + 阻塞型检索工具的停止令牌
 
 **状态**：✅ 已完成并定版 v3.75.0；本地全回归全绿（Python 87 个测试文件 0 失败、前端 145/145）；

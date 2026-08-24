@@ -250,6 +250,14 @@ config.yaml       模型档案 + 各功能开关        .env  密钥（gitignore
   调用时会喊一句（`inside_hermes_dir`），体检也报 BAD。
   **但别一刀切**：`data/workspaces/<名字>` 是 hermes 的**具名会话工作区、完全正当**，
   只有草稿区 `_scratch` 与安装目录里的其它位置才该警告（一刀切在真机上误报过）。
+- **每一个 `subprocess.run/Popen` 都要 `**no_window()`**（`agentcore/winproc.py`，v3.75.1）：
+  hermes 是**没有控制台的 GUI 进程**，Windows 从这种进程起子进程时不给 `CREATE_NO_WINDOW`
+  就会**新建一个控制台窗口**——用户看到"黑框一闪"。真机上最密的是 `gitwatch` 在每次
+  agent 型 MCP 调用**前后各跑一次** `git status`（一次委派闪两下，2026-08-24 用户反馈）。
+  纪律早就有（shell/procs 起 shell 时就带着"防黑窗"注释），**是后加的 spawn 点没跟上**，
+  所以现在有一道 AST 扫描闸盯着：`tests/test_winproc.py`，漏了当场红；
+  确实不需要的要进豁免名单**并写理由**。注意它只管"不新建窗口"、**不脱离控制台**，
+  需要交互的命令照样挂住——那归 `hardened_env()` 管，两件事别混。
 - **起子进程读输出必须有硬看门狗**：`p.stdout.readline()` 在对端一个字都不吐时会
   **永久阻塞**，`while time.time() < deadline` 那种循环根本跑不到——体检因此把按钮
   卡在「体检中…」再也不动（2026-08-20 真机）。用 `threading.Timer(timeout, p.kill)`：
