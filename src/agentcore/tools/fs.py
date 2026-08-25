@@ -18,6 +18,7 @@ MAX_READ_CHARS = 200_000  # 单次输出字符上限（防灌爆上下文；可�
 MAX_READ_LINES = 2000     # 单次最多行数（默认与上限）
 MAX_LINE_CHARS = 2000     # 超长单行截断
 MAX_DIR_ENTRIES = 1000    # list_dir 单次最多列出条目（防大目录灌爆上下文）
+MAX_COUNT_LINES = 200_000 # 没读完时为报「共几行」而数行的封顶：别为一个数字读穿 100MB 的文件
 
 
 def _read_text_or_die(p, path_label: str) -> str:
@@ -127,7 +128,8 @@ class ReadFileTool(Tool):
     parallel_safe = True  # 只读，同轮多个调用并发执行（FR-10.5 扩展到只读工具）
     description = (
         "读取工作区内文本文件，输出带行号（每行格式：行号+制表符+内容）。"
-        "大文件用 offset/limit 分段读，没读完会提示下次的 offset。"
+        "大文件用 offset/limit 分段读；**没读完时会告诉你这个文件一共多少行**和下次的 offset——"
+        "据此判断是接着读完，还是文件太大该改用 grep_search / code_outline 定位。"
         "注意：行号前缀只是显示用，编辑工具的 old_string 里不要包含它。"
     )
     input_schema = {
@@ -172,13 +174,25 @@ class ReadFileTool(Tool):
                 out.append(f"{lineno}\t{line}")
                 chars += len(line) + 8
 
+            # 没读完才数总行数：**读完了的话最后一行的行号就是总数**，再报一遍是纯噪音。
+            # 接着用同一个句柄往下数（只数行、不留内容），封顶防超大文件。
+            total_lines, counted_all = last_line, True
+            if not finished:
+                for _ in f:
+                    total_lines += 1
+                    if total_lines >= MAX_COUNT_LINES:
+                        counted_all = False
+                        break
+
         if not out:
             if last_line == 0 and offset == 1:
                 return "(空文件)"
             raise ToolError(f"offset={offset} 超出文件末尾（文件共 {last_line} 行）。")
         body = "\n".join(out)
         if not finished:
-            body += f"\n... (未到文件末尾，继续读请用 offset={offset + len(out)})"
+            total = f"{total_lines}+" if not counted_all else str(total_lines)
+            body += (f"\n... (未到文件末尾：本文件共 {total} 行，本次读了 {offset}–{offset + len(out) - 1}；"
+                     f"继续读请用 offset={offset + len(out)}）")
         return body
 
 

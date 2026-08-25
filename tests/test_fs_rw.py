@@ -41,6 +41,29 @@ def test_read_offset_limit_and_continue_hint(tmp: Path):
     assert "10\tL10" in out2 and "offset=" not in out2  # 读到末尾无提示
 
 
+def test_read_partial_reports_total_lines(tmp: Path):
+    """没读完时要报**本文件共几行**——模型据此判断"接着读"还是"太大改用 grep"。
+    读完了则不报：最后一行的行号本身就是总数，再说一遍是纯噪音。"""
+    (tmp / "a.txt").write_text("".join(f"L{i}\n" for i in range(1, 51)), encoding="utf-8")
+    out = _reg(tmp).get("read_file").run({"path": "a.txt", "offset": 4, "limit": 3})
+    assert "共 50 行" in out and "本次读了 4–6" in out and "offset=7" in out
+    full = _reg(tmp).get("read_file").run({"path": "a.txt", "offset": 48})
+    assert "共" not in full and "offset=" not in full     # 读到末尾：不加尾巴
+
+
+def test_read_total_line_count_is_capped(tmp: Path):
+    """为一个数字读穿超大文件不划算：数到封顶就报 `N+`，别假装精确。"""
+    from agentcore.tools import fs as fsmod
+    (tmp / "a.txt").write_text("".join(f"L{i}\n" for i in range(1, 31)), encoding="utf-8")
+    orig = fsmod.MAX_COUNT_LINES
+    fsmod.MAX_COUNT_LINES = 10
+    try:
+        out = _reg(tmp).get("read_file").run({"path": "a.txt", "offset": 1, "limit": 2})
+    finally:
+        fsmod.MAX_COUNT_LINES = orig
+    assert "共 10+ 行" in out
+
+
 def test_read_offset_beyond_eof(tmp: Path):
     (tmp / "a.txt").write_text("x\ny\n", encoding="utf-8")
     try:
