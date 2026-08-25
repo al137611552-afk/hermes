@@ -128,8 +128,7 @@ class ReadFileTool(Tool):
     parallel_safe = True  # 只读，同轮多个调用并发执行（FR-10.5 扩展到只读工具）
     description = (
         "读取工作区内文本文件，输出带行号（每行格式：行号+制表符+内容）。"
-        "大文件用 offset/limit 分段读；**没读完时会告诉你这个文件一共多少行**和下次的 offset——"
-        "据此判断是接着读完，还是文件太大该改用 grep_search / code_outline 定位。"
+        "大文件用 offset/limit 分段读，没读完会提示下次的 offset。"
         "注意：行号前缀只是显示用，编辑工具的 old_string 里不要包含它。"
     )
     input_schema = {
@@ -191,8 +190,13 @@ class ReadFileTool(Tool):
         body = "\n".join(out)
         if not finished:
             total = f"{total_lines}+" if not counted_all else str(total_lines)
+            # 「文件太大就别翻了」这句提示**写在结果里、不写进工具说明**，两个理由：
+            # ① 时机对——只在真读了一半时才说，而不是每一轮都占 schema 的篇幅；
+            # ② 工具说明进**请求指纹**，动一个字就让整套评测录音失效（2026-08-25 踩过：
+            #    只改了这段描述，CI 回放门当场红，`bugfix` 报"第 1 次模型请求没有对应录音"）。
             body += (f"\n... (未到文件末尾：本文件共 {total} 行，本次读了 {offset}–{offset + len(out) - 1}；"
-                     f"继续读请用 offset={offset + len(out)}）")
+                     f"继续读请用 offset={offset + len(out)}。文件很大就别一段段翻，"
+                     f"用 grep_search / code_outline 直接定位更省）")
         return body
 
 
