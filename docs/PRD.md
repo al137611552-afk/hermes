@@ -388,6 +388,9 @@ screenshot 绕道修复（system 声明法）、Claude Fable 5 模型档案（�
 - 新增 `multi_edit`（危险，过 gate，挂改动台账）：同文件多处编辑**按序在内存应用、原子落盘**
   （任意一处失败→整体不写、报第几处因何失败）；每处含 old_string/new_string/可选 replace_all。
 - 不加 config 开关（行号默认开）；前端不改；只读角色白名单不变（read_file 本就在）。
+- **补充（v3.76.0，2026-08-25）**：没读完时除了续读 offset，**再报「本文件共几行」**（封顶
+  20 万行、超了报 `200000+`），工具说明写明据此判断"接着读完"还是"改用 grep_search/code_outline"。
+  起因是实跑观测到模型反复用 45–120 行的小窗口翻一个 3000 行的文件——它拿不到文件有多大这个事实。
 - [x] 实现：`tools/fs.py` 重写 ReadFileTool（行号/offset/limit/流式/继续提示）+ EditFileTool
   （replace_all + 可操作失败信息，匹配诊断 `diagnose_not_found` 抽纯函数）+ 新 MultiEditTool
   （`apply_edits` 纯函数原子多处替换）；`build_registry` 注册 multi_edit（危险、挂台账）；
