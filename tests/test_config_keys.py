@@ -180,6 +180,17 @@ def test_user_hooks_crud_and_index():
     assert len(read_user_hooks(p)) == 1
 
 
+def test_user_hooks_accepts_new_events():
+    p = Path(tempfile.mktemp())
+    upsert_user_hook(None, {"event": "UserPromptSubmit", "command": "echo p"}, path=p)
+    upsert_user_hook(None, {"event": "Stop", "command": "echo s"}, path=p)
+    hooks = read_user_hooks(p)
+    assert [h["event"] for h in hooks] == ["UserPromptSubmit", "Stop"]
+    # 白名单扩容不改回退：非法事件仍按原有方式归一 PreToolUse
+    upsert_user_hook(None, {"event": "bogus", "command": "x"}, path=p)
+    assert read_user_hooks(p)[2]["event"] == "PreToolUse"
+
+
 def test_apply_user_hooks_filters_and_strips_enabled():
     user = [
         {"event": "PreToolUse", "command": "scan.sh", "matcher": "write_file", "enabled": True},

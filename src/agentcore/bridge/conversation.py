@@ -149,6 +149,16 @@ from ..winproc import no_window
 from ..workspace import build_tree, read_conventions, read_file as read_workspace_file
 
 
+def _append_prompt_context(content, ctx: str):
+    """把 UserPromptSubmit hook 注入的附加上下文并进一条 user 消息 content（str 或 blocks）。"""
+    block = {"type": "text", "text": f"[hook 注入上下文]\n{ctx}"}
+    if isinstance(content, list):
+        return content + [block]
+    if isinstance(content, str):
+        return f"{content}\n\n{block['text']}"
+    return content
+
+
 class Resources:
     """跨对话共享的资源与账本（单实例，由 Api 持有、注入给各 Conversation）。"""
 
@@ -566,6 +576,18 @@ class Conversation:
         if (not text or not text.strip()) and not attachments:
             return {"ok": False, "error": "空消息"}
 
+        # UserPromptSubmit hooks：用户消息进内核前——退出码 2=拦截本轮（消息不发模型，
+        # stdout 作拒绝理由告诉用户）、0 且 stdout 非空=作为附加上下文注入本轮
+        # （如每轮自动注入项目上下文）。拦截发生在落库/进循环之前，本轮即终止。
+        runner = self._make_hook_runner()
+        inject = None
+        if runner is not None:
+            ok, inject = runner.prompt_submit(text)
+            if not ok:
+                reason = inject or "本轮被 UserPromptSubmit hook 拦截。"
+                self.emit("error", reason)
+                return {"ok": False, "error": reason}
+
         # 贴进来的图**同时落盘到工作区**，并把路径写进这条消息。
         # 子 agent（codex 那类）只认文件路径——它的 MCP 工具没有图片入参，CLI 是 `-i <FILE>`，
         # 所以"用户贴图 → agent 看图"这条路上落盘是唯一通路。落工作区而不是 /tmp：
@@ -574,6 +596,8 @@ class Conversation:
         text = (text or "") + render_saved_note(saved)
         content = build_user_content(text, attachments, res.limits)
         content = self._maybe_preprocess_vision(content, text)
+        if inject:  # hook 注入的附加上下文：并进本条 user 消息，模型本轮即见
+            content = _append_prompt_context(content, inject)
 
         self._reset_turn_checkpoint(text)
 
@@ -612,10 +636,14 @@ class Conversation:
         fresh=True（crazy Ralph 式）：**不喂累积历史**，只把 `messages`（本轮目标+状态）原样喂模型——
         每轮 fresh context、与历史隔离、跨轮记忆靠 notes/tasks。新增消息仍落 history/DB 供前端显示。"""
         res = self.res
+        # 在 provider 之前就建好：**四个终态出口都要用它**，其中"模型档/密钥配错"这条正好
+        # 发生在 provider 构造失败时——建晚了那条出口就没得用（合并 B3 时真漏过一次）。
+        hook_runner = self._make_hook_runner()
         try:
             provider = build_provider(res.config, self.active_model)
         except Exception as e:  # 配置/密钥错误
             self.emit("error", str(e))
+            self._fire_stop(hook_runner, "error", fresh=fresh)
             return {"ok": False, "error": str(e)}
 
         if fresh:
@@ -630,7 +658,7 @@ class Conversation:
             else self.registry
         loop = AgentLoop(
             provider, registry, self.gate, max_steps=res.config.agent.max_steps,
-            hook_runner=self._make_hook_runner(),
+            hook_runner=hook_runner,
             stuck_threshold=res.config.agent.stuck_edit_threshold,
             browse_nudge=self._browse_nudge_enabled(),
             auto_retry=res.config.agent.auto_retry,
@@ -657,6 +685,7 @@ class Conversation:
                 self._auto_test_loop(loop, result, system)
         except Exception as e:  # noqa: BLE001 — 兜底，避免前端卡死
             self.emit("error", f"{type(e).__name__}: {e}")
+            self._fire_stop(hook_runner, "error", fresh=fresh)
             return {"ok": False, "error": str(e)}
 
         new_msgs = result[n_in:]  # 主轮 + auto_test 修复轮的全部新增（取消时为已完成部分）
@@ -669,11 +698,13 @@ class Conversation:
 
         if self._cancel.is_set():  # 被用户停止：已生成部分已落库，不再生成规范
             self.emit("stopped", "")
+            self._fire_stop(hook_runner, "stopped", fresh=fresh)
             return {"ok": True, "stopped": True}
 
         self._maybe_generate_conventions()  # 工作区有内容但缺 hermes.md -> 后台生成一版
         self._maybe_auto_review(new_msgs)   # 本轮改过文件 -> 收尾自动派 reviewer 审 diff（FR-11.2b）
         self.emit("done", "")
+        self._fire_stop(hook_runner, "done", fresh=fresh)
         return {"ok": True}
 
     # ---- 重新生成 / 编辑重发（覆盖式截断后重跑，FR-易用性 P1）---------------
@@ -2209,6 +2240,21 @@ class Conversation:
         return new_content
 
     # ---- 工作区切换（按会话隔离） ----------------------------------------
+
+    def _fire_stop(self, runner, reason: str, *, fresh: bool) -> None:
+        """一轮跑到终态：跑 Stop hooks。**四个出口唯一的收口处**（见 _run_turn 顶部注释）。
+
+        `fresh`（crazy 自驱轮）**不触发**：一个自驱任务动辄十几二十轮，每轮响一次会把
+        「Stop 时自动跑测试/发通知」变成跑二十遍——那不是用户配这条 hook 时想要的东西。
+        代价是整个 crazy 任务结束时也没有 Stop（任务级收尾是另一件事，要做另开）。
+
+        hook 挂了最多是少一次通知，**绝不能反过来影响这一轮的结局**（那轮已经结束了），故整段吞异常。"""
+        if runner is None or fresh:
+            return
+        try:
+            runner.stop(reason)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _make_hook_runner(self):
         """按当前工作区 + config.agent.hooks 建可编程 hooks 运行器（无 hook 时返回 None，零开销）。"""

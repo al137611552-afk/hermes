@@ -16,7 +16,7 @@ from _shellenv import (  # noqa: E402
     hook_deny_if_stdin_has, hook_echo, hook_echo_exit, hook_exit, hook_stdin_to_file,
 )
 from agentcore.hooks import (  # noqa: E402
-    HookRunner, make_hook_runner, match_hooks, parse_pre_result,
+    HookRunner, make_hook_runner, match_hooks, parse_pre_result, parse_prompt_result,
 )
 
 
@@ -109,6 +109,70 @@ def test_runner_bad_command_does_not_block(tmp: Path):
 def test_make_hook_runner_none_when_empty(tmp: Path):
     assert make_hook_runner(tmp, []) is None
     assert make_hook_runner(tmp, [H("PreToolUse", command="x")]) is not None
+
+
+# ---- UserPromptSubmit / Stop 新事件 -------------------------------------------
+
+def test_match_prompt_and_stop_empty_matcher():
+    # 新事件无工具名可匹配：matcher 空视为匹配全部
+    assert len(match_hooks([H("UserPromptSubmit")], "UserPromptSubmit", "")) == 1
+    assert len(match_hooks([H("Stop")], "Stop", "")) == 1
+    assert match_hooks([H("UserPromptSubmit", matcher="write_file")], "UserPromptSubmit", "") == []
+    assert match_hooks([H("Stop")], "PreToolUse", "") == []   # 事件不对不触发
+
+
+def test_parse_prompt_result():
+    assert parse_prompt_result(2, "拒绝", "") == ("deny", "拒绝")
+    assert parse_prompt_result(2, "", "")[0] == "deny"        # 无消息也有兜底
+    assert parse_prompt_result(0, "ctx", "") == ("inject", "ctx")
+    assert parse_prompt_result(0, "", "") == ("allow", "")   # 0 但无输出 -> 不注入
+    assert parse_prompt_result(1, "x", "") == ("allow", "")  # 未定义码 -> 放行不注入
+    assert parse_prompt_result(7, "x", "") == ("allow", "")  # 未知码 -> allow
+
+
+def test_prompt_submit_deny_blocks(tmp: Path):
+    hook = H("UserPromptSubmit", name="准入", command=hook_exit(2))
+    ok, msg = HookRunner(tmp, [hook]).prompt_submit("帮我改 bug")
+    assert ok is False and "准入" in msg
+
+
+def test_prompt_submit_injects_stdout(tmp: Path):
+    hook = H("UserPromptSubmit", name="注入", command=hook_echo("PROJECT-CTX"))
+    ok, ctx = HookRunner(tmp, [hook]).prompt_submit("hello")
+    assert ok is True and ctx and "PROJECT-CTX" in ctx and "注入" in ctx
+
+
+def test_prompt_submit_payload_on_stdin(tmp: Path):
+    hook = H("UserPromptSubmit", command=hook_stdin_to_file(tmp / "got.json"))
+    HookRunner(tmp, [hook]).prompt_submit("给个计划")
+    import json
+    data = json.loads((tmp / "got.json").read_text(encoding="utf-8"))
+    assert data["event"] == "UserPromptSubmit" and data["prompt"] == "给个计划"
+    assert data["workspace"] == str(tmp.resolve())
+
+
+def test_prompt_submit_no_hook_zero_overhead(tmp: Path):
+    r = HookRunner(tmp, [H("PreToolUse", command=hook_exit(2))])
+    assert r.prompt_submit("x") == (True, None)   # 无该事件 hook -> 直接放行
+
+
+def test_stop_receives_payload_and_reason(tmp: Path):
+    hook = H("Stop", command=hook_stdin_to_file(tmp / "stop.json"))
+    HookRunner(tmp, [hook]).stop("done")
+    import json
+    data = json.loads((tmp / "stop.json").read_text(encoding="utf-8"))
+    assert data["event"] == "Stop" and data["reason"] == "done"
+    assert data["workspace"] == str(tmp.resolve())
+
+
+def test_stop_stdout_not_returned(tmp: Path):
+    # stop 无返回值：stdout 不回灌模型，能跑、不抛即通过
+    HookRunner(tmp, [H("Stop", command=hook_echo("NOTIFY"))]).stop("error")
+
+
+def test_stop_no_match_zero_overhead(tmp: Path):
+    # 无 Stop 事件 hook -> 不跑任何命令、不抛
+    HookRunner(tmp, [H("PreToolUse", command=hook_exit(2))]).stop("done")
 
 
 # ---- 经 AgentLoop._exec_tool 端到端 ----------------------------------------

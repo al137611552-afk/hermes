@@ -13,6 +13,9 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/_shellenv.py
+
+from _shellenv import hook_exit, hook_stdin_to_file  # noqa: E402
 
 from agentcore.bridge import Api, Conversation  # noqa: E402
 from agentcore.config import (  # noqa: E402
@@ -144,6 +147,66 @@ def test_run_autonomous_token_budget(tmp: Path):
     conv._run_crazy_round = fake_round
     r = conv.run_autonomous("做", max_rounds=10)
     assert r["reason"] == "token_budget" and r["rounds"] == 1
+
+
+def test_prompt_hook_denies_before_model(tmp: Path):
+    """UserPromptSubmit 拦截：消息不进内核（拦在 build_provider 之前，不触网）、返回拒绝理由。"""
+    from agentcore.config import HookConfig
+    from agentcore.hooks import PROMPT
+    conv = _api(tmp).active
+    conv.res.config.agent.hooks = [HookConfig(event=PROMPT, command=hook_exit(2), name="准入")]
+    ret = conv.send_message("别问我")
+    assert ret.get("ok") is False and "准入" in ret.get("error", "")
+    # 拦截不落库：history 里没有这条用户消息
+    assert all(m.role != "user" or "别问我" not in str(m.content) for m in conv.history)
+
+
+def test_append_prompt_context():
+    """UserPromptSubmit 注入文本的拼接：str 与 blocks 两种 content 形态。"""
+    from agentcore.bridge.conversation import _append_prompt_context
+    assert _append_prompt_context("hi", "CTX") == "hi\n\n[hook 注入上下文]\nCTX"
+    out = _append_prompt_context([{"type": "text", "text": "hi"}], "CTX")
+    assert out[-1] == {"type": "text", "text": "[hook 注入上下文]\nCTX"}
+    assert len(out) == 2
+
+
+def test_stop_hook_fires_on_provider_failure(tmp: Path):
+    """Stop 的第四个终态出口：**模型档/密钥配错**时 build_provider 就炸了，那也是一轮的终态。
+    （合并 B3 时正是这条被漏掉——四个出口各写一遍的写法，漏一个不会有任何测试发现。）"""
+    from agentcore.config import HookConfig
+    from agentcore.hooks import STOP
+    conv = _api(tmp).active
+    mark = tmp / "stop.json"
+    conv.res.config.agent.hooks = [HookConfig(event=STOP, command=hook_stdin_to_file(mark))]
+    ret = conv.send_message("干点活")            # 测试配置里的 api_key_env 未设 -> provider 构造失败
+    assert ret.get("ok") is False
+    data = json.loads(mark.read_text(encoding="utf-8"))
+    assert data["event"] == "Stop" and data["reason"] == "error"
+
+
+def test_stop_hook_not_fired_in_crazy_round(tmp: Path):
+    """crazy 自驱轮**不触发** Stop：一个任务十几二十轮，每轮响一次会把「收尾自动跑测试」
+    变成跑二十遍。走的是与上一条完全相同的失败路径，差别只在 fresh。"""
+    from agentcore.config import HookConfig
+    from agentcore.hooks import STOP
+    conv = _api(tmp).active
+    mark = tmp / "stop.json"
+    conv.res.config.agent.hooks = [HookConfig(event=STOP, command=hook_stdin_to_file(mark))]
+    ret = conv._run_crazy_round("把测试跑一遍")
+    assert ret.get("ok") is False               # 同样因 provider 构造失败而终止
+    assert not mark.exists()                    # 但没有 Stop
+
+
+def test_prompt_hook_not_fired_in_crazy_round(tmp: Path):
+    """UserPromptSubmit 只挂用户消息入口：crazy 的轮次目标是模型自己生成的，不是用户说的话，
+    所以不过这道闸（拦截 hook 在这里不该生效）。"""
+    from agentcore.config import HookConfig
+    from agentcore.hooks import PROMPT
+    conv = _api(tmp).active
+    conv.res.config.agent.hooks = [HookConfig(event=PROMPT, command=hook_exit(2), name="准入")]
+    ret = conv._run_crazy_round("把测试跑一遍")
+    assert ret.get("ok") is False               # 因 provider 构造失败而终止……
+    assert "准入" not in ret.get("error", "")    # ……而不是被 UserPromptSubmit 拦下
 
 
 def test_run_autonomous_stalls(tmp: Path):

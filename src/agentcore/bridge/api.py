@@ -1184,7 +1184,7 @@ class Api:
         tools = self._reconnect_mcp()
         return {"ok": True, "servers": read_user_mcp(), "tools": tools}
 
-    # ---- 统一管理面：hooks 增删改（Tier2-①，PreToolUse/PostToolUse 守卫）--------
+    # ---- 统一管理面：hooks 增删改（Tier2-①，PreToolUse/PostToolUse/UserPromptSubmit/Stop）----
     def _reload_agent_hooks(self) -> None:
         """重读 config（含 merge_user_hooks）刷新活动 config 的 hooks——下一轮 _make_hook_runner 即生效。
         config 是全对话共享的同一对象（self.config is self.res.config），改它即全局生效。"""
@@ -1198,7 +1198,8 @@ class Api:
 
     def save_hook(self, index, spec: dict) -> dict:
         """新增（index=null/-1）或改（合法 index）一个 hook 并即时生效。
-        spec: {event(PreToolUse|PostToolUse), command, matcher(工具名正则), name, timeout, enabled}。"""
+        spec: {event(PreToolUse|PostToolUse|UserPromptSubmit|Stop), command, matcher(工具名正则),
+        name, timeout, enabled}。"""
         from ..config import read_user_hooks, upsert_user_hook
         if not (spec or {}).get("command"):
             return {"ok": False, "error": "hook 命令不能为空"}

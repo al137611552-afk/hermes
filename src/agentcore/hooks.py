@@ -8,9 +8,16 @@
 - **PreToolUse**（工具执行前）：退出码 **2=拦截**（工具不执行，stdout 作为拒绝理由回灌模型）、
   **1=放行但警告**（stdout 警告并入工具结果回灌）、**0=放行**。
 - **PostToolUse**（工具成功执行后）：stdout 追加到工具结果回灌模型（如 linter 诊断）。
+- **UserPromptSubmit**（用户消息进内核前）：退出码 **2=拦截本轮**（消息不发模型，stdout 作为
+  拒绝理由告诉用户）、**0 且 stdout 非空=stdout 作为附加上下文注入本轮**（每轮自动注入项目
+  上下文）。无工具名可匹配，matcher 空视为匹配全部。
+- **Stop**（一轮任务终态：正常结束/出错/被用户停止）：stdout 不回灌模型，只作通知/副作用
+  （如收尾自动跑测试、发通知）。**crazy 自驱轮不触发**——一个任务十几二十轮，每轮响一次
+  会把「收尾跑测试」变成跑二十遍。
 
-hook 命令通过 **stdin 收到 JSON**：{event, tool, params, workspace[, result]}，cwd=工作区。
-纯逻辑（match_hooks / parse_pre_result）与受控 IO（HookRunner 子进程）分离，便于单测。
+hook 命令通过 **stdin 收到 JSON**：Pre/Post 为 {event, tool, params, workspace[, result]}，
+UserPromptSubmit 为 {event, prompt, workspace}，Stop 为 {event, workspace, reason}，cwd=工作区。
+纯逻辑（match_hooks / parse_pre_result / parse_prompt_result）与受控 IO（HookRunner 子进程）分离，便于单测。
 """
 from __future__ import annotations
 
@@ -23,8 +30,10 @@ from .winproc import no_window
 
 PRE = "PreToolUse"
 POST = "PostToolUse"
+PROMPT = "UserPromptSubmit"
+STOP = "Stop"
 
-# 退出码语义（PreToolUse）
+# 退出码语义（PreToolUse / UserPromptSubmit）
 EXIT_DENY = 2
 EXIT_WARN = 1
 
@@ -62,8 +71,24 @@ def parse_pre_result(returncode: int, stdout: str, stderr: str) -> "tuple[str, s
     return "allow", ""
 
 
+def parse_prompt_result(returncode: int, stdout: str, stderr: str) -> "tuple[str, str]":
+    """把 UserPromptSubmit hook 的退出码 + 输出解析成 (decision, message)（纯逻辑）。
+
+    decision ∈ {"deny","inject","allow"}：2=拦截本轮（message 作拒绝理由告诉用户）、
+    0 且 stdout 非空=message 作为附加上下文注入本轮。其余退出码（含 1）按 allow 处理——
+    坏 hook 不阻塞用户消息进内核。
+    """
+    msg = (stdout or "").strip() or (stderr or "").strip()
+    if returncode == EXIT_DENY:
+        return "deny", msg or "本轮被 UserPromptSubmit hook 拦截。"
+    if returncode == 0 and msg:
+        return "inject", msg
+    return "allow", ""
+
+
 class HookRunner:
-    """按配置在工具调用前/后跑用户命令。无匹配 hook 时零开销。线程安全（仅子进程，无共享态）。"""
+    """按配置在工具调用前/后、用户消息进内核前/一轮终态跑用户命令。无匹配 hook 时零开销。
+    线程安全（仅子进程，无共享态）。"""
 
     def __init__(self, workspace: Path, hooks: list) -> None:
         self.workspace = Path(workspace).resolve()
@@ -122,6 +147,43 @@ class HookRunner:
                 label = (getattr(h, "name", "") or "hook").strip()
                 outs.append(f"🪝 hook「{label}」：\n{text}")
         return "\n".join(outs) if outs else None
+
+    def prompt_submit(self, prompt: str) -> "tuple[bool, str | None]":
+        """UserPromptSubmit：用户消息进内核前。返回 (是否放行, 拒绝理由/注入上下文)。
+
+        退出码 2=拦截本轮（消息不发模型，stdout 作为拒绝理由告诉用户）；
+        0 且 stdout 非空=stdout 作为附加上下文注入本轮。任一 hook 拦截即整体拦截；
+        多个 hook 都注入时按配置顺序拼接。无工具名可匹配，matcher 空视为匹配全部。
+        """
+        matched = match_hooks(self.hooks, PROMPT, "")
+        if not matched:
+            return True, None
+        payload = {"event": PROMPT, "prompt": prompt, "workspace": str(self.workspace)}
+        injects: list[str] = []
+        for h in matched:
+            proc = self._run(h, payload)
+            if proc is None:
+                continue
+            decision, msg = parse_prompt_result(proc.returncode, proc.stdout, proc.stderr)
+            label = (getattr(h, "name", "") or "hook").strip()
+            if decision == "deny":
+                return False, f"⛔ 被 hook「{label}」拦截：{msg}"
+            if decision == "inject":
+                injects.append(f"🪝 hook「{label}」：\n{msg}")
+        return True, ("\n".join(injects) if injects else None)
+
+    def stop(self, reason: str) -> None:
+        """Stop：一轮任务跑到终态后触发（reason ∈ {done, error, stopped}）。
+
+        stdout 不回灌模型，只作通知/副作用（如收尾自动跑测试、发通知）。
+        无工具名可匹配，matcher 空视为匹配全部。
+        """
+        matched = match_hooks(self.hooks, STOP, "")
+        if not matched:
+            return
+        payload = {"event": STOP, "workspace": str(self.workspace), "reason": reason}
+        for h in matched:
+            self._run(h, payload)
 
 
 def _posix() -> bool:

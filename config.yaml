@@ -136,10 +136,17 @@ agent:
                                 # 「单模型自审」而不是继续叫「多模型讨论」——同模型的错误高度相关，
                                 # 空=全用当前主模型（同模型双角色，离线零成本）。大设计才给某角色配异构档降低错误相关性
   # 可编程 hooks（对标 Claude Code PreToolUse/PostToolUse）：在工具调用前/后跑你的命令，做自定义
-  # 守卫/动作。命令的 stdin 会收到 {event,tool,params,workspace[,result]} 的 JSON，cwd=工作区。
+  # 守卫/动作。Pre/Post 的 stdin 收到 {event,tool,params,workspace[,result]} 的 JSON，cwd=工作区。
   #  - PreToolUse：退出码 2=拦截工具（stdout 作拒绝理由回灌）、1=放行但警告、0=放行。
   #  - PostToolUse：stdout 追加到工具结果回灌模型（如把 linter 诊断喂回去）。
-  # matcher 是对工具名的正则（空=全部）。默认空列表（不启用）。示例（去掉注释即生效）：
+  #  - UserPromptSubmit：用户消息进内核前触发，stdin 收 {event,prompt,workspace}——退出码 2=拦截
+  #    本轮（消息不发模型，stdout 作拒绝理由告诉用户）、0 且 stdout 非空=作为附加上下文注入本轮
+  #    （如每轮自动注入项目上下文）。
+  #  - Stop：一轮任务终态（正常结束/出错/被用户停止）触发，stdin 收 {event,workspace,reason}，
+  #    reason∈{done,error,stopped}；stdout 不回灌，只作通知/副作用（如收尾自动跑测试、发通知）。
+  #    注意：crazy 自驱轮**不触发** Stop（否则一个二十轮的任务会把收尾动作跑二十遍）。
+  # matcher 是对工具名的正则（空=全部；UserPromptSubmit/Stop 无工具名，matcher 空视为全部）。
+  # 默认空列表（不启用）。示例（去掉注释即生效）：
   # hooks:
   #   - {event: PreToolUse, matcher: "write_file|edit_file", name: 扫密钥,
   #      command: "python scripts/check_secret.py"}      # 内容含密钥就 exit 2 拦截

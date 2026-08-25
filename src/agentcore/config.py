@@ -48,13 +48,17 @@ class RoleSpec(BaseModel):
 
 
 class HookConfig(BaseModel):
-    """可编程生命周期 hook（对标 Claude Code PreToolUse/PostToolUse）。
+    """可编程生命周期 hook（对标 Claude Code PreToolUse/PostToolUse/UserPromptSubmit/Stop）。
 
-    event：`PreToolUse`（工具执行前，退出码 2=拦截/1=警告/0=放行）或 `PostToolUse`（执行后，stdout 追加到结果）。
+    event：`PreToolUse`（工具执行前，退出码 2=拦截/1=警告/0=放行）、`PostToolUse`（执行后，stdout 追加到结果）、
+    `UserPromptSubmit`（用户消息进内核前，2=拦截本轮 / 0 且 stdout 非空=注入本轮上下文）、
+    `Stop`（一轮终态通知，stdout 不回灌；**crazy 自驱轮不触发**）。
     matcher：对工具名 re.search 的正则（如 `write_file|edit_file`、`run_`）；空=匹配全部。
-    command：要跑的命令（cwd=工作区，stdin 收到 {event,tool,params,workspace[,result]} 的 JSON）。
+    UserPromptSubmit/Stop 没有工具名，只有空 matcher 才匹配得上。
+    command：要跑的命令（cwd=工作区，stdin 收到 JSON：Pre/Post 为 {event,tool,params,workspace[,result]}，
+    UserPromptSubmit 为 {event,prompt,workspace}，Stop 为 {event,workspace,reason}）。
     """
-    event: str                       # PreToolUse | PostToolUse
+    event: str                       # PreToolUse | PostToolUse | UserPromptSubmit | Stop
     command: str                     # shell 命令
     matcher: str = ""                # 工具名正则，空=全部
     name: str = ""                   # 显示名（回灌信息里标注哪个 hook）
@@ -1086,7 +1090,7 @@ def merge_user_mcp(data: dict) -> dict:
 # 运行时覆盖文件：GUI 增删改写它，load_config 把 enabled 的追加进 data['agent']['hooks']。
 # 与 config.yaml 手编的 hooks 共存（都生效）。
 USER_HOOKS_FILE = "user_hooks.json"
-_HOOK_EVENTS = ("PreToolUse", "PostToolUse")
+_HOOK_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop")
 
 
 def read_user_hooks(path: "Path | None" = None) -> list:
