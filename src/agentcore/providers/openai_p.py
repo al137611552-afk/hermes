@@ -146,7 +146,7 @@ class OpenAIProvider(BaseProvider):
         try:
             yield from retry_stream(lambda: self._stream(kwargs), label=self.model)
         except Exception as e:  # noqa: BLE001 — 重试用尽/非瞬时错误：转 error 事件
-            yield StreamEvent("error", explain_stream_failure(e))
+            yield StreamEvent("error", explain_stream_failure(e, endpoint=self.endpoint_label()))
 
     def _stream(self, kwargs: dict) -> Iterator[StreamEvent]:
         """单次流式调用；出错直接抛（由 stream_chat 决定重试或转 error）。"""

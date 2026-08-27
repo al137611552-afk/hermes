@@ -1182,7 +1182,7 @@ def test_subagent_retries_once_on_failure(tmp: Path):
 
     class FlakyLoop:
         def __init__(self, *a, **k): pass
-        def run(self, messages, system, emit, cancel=None):
+        def run(self, messages, system, emit, cancel=None, **kw):
             calls["n"] += 1
             if calls["n"] == 1:
                 raise RuntimeError("第一次崩了")
@@ -1197,6 +1197,124 @@ def test_subagent_retries_once_on_failure(tmp: Path):
     finally:
         cv.AgentLoop, cv.build_provider = orig_loop, orig_prov
     assert calls["n"] == 2 and "摘要OK" in summary
+
+
+def _patch_loop(cls):
+    """替掉 AgentLoop + build_provider（跳过真实 SDK/密钥），返回还原用的闭包。"""
+    import agentcore.bridge.conversation as cv
+    orig = (cv.AgentLoop, cv.build_provider)
+    cv.AgentLoop = cls
+    cv.build_provider = lambda cfg, model: object()
+    def restore():
+        cv.AgentLoop, cv.build_provider = orig
+    return restore
+
+
+def test_subagent_retries_once_on_model_side_error(tmp: Path):
+    """模型侧错误不抛异常（provider 转成 error 事件、loop 记 stream_error 后正常返回）。
+    也要走重试一次——否则残缺结果被当成功交出去。"""
+    from agentcore.providers import Message
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    calls = {"n": 0}
+
+    class ErrLoop:
+        def __init__(self, *a, **k): self.stream_error = ""
+        def run(self, messages, system, emit, cancel=None, **kw):
+            calls["n"] += 1
+            self.stream_error = "RemoteProtocolError: peer closed" if calls["n"] == 1 else ""
+            return list(messages) + [Message("assistant", f"第{calls['n']}次的产出")]
+
+    restore = _patch_loop(ErrLoop)
+    try:
+        summary = conv.run_subagent("调研一下", role="researcher")
+    finally:
+        restore()
+    assert calls["n"] == 2
+    assert "第2次的产出" in summary and "子任务未完成" not in summary
+
+
+def test_subagent_account_error_does_not_retry_and_is_reported(tmp: Path):
+    """账户级（402 没钱/key 无效）重试无意义：只跑一次；且**必须**标成未完成，
+    否则主 Agent 拿半截调研当完整结论（2026-08-26 真机踩到的正是这条）。"""
+    from agentcore.providers import Message
+    api = _api(tmp)
+    conv = api.active
+    conv._ensure_session("x")
+    events = []
+    conv.emit = lambda e, d: events.append((e, d))
+    calls = {"n": 0}
+    err = ("APIStatusError: Error code: 402 - {'error': {'code': 'insufficient_credits', "
+           "'type': 'billing_error'}}")
+
+    class DeadLoop:
+        def __init__(self, *a, **k): self.stream_error = ""
+        def run(self, messages, system, emit, cancel=None, **kw):
+            calls["n"] += 1
+            self.stream_error = err
+            return list(messages) + [Message("assistant", "只查到一半")]
+
+    restore = _patch_loop(DeadLoop)
+    try:
+        summary = conv.run_subagent("调研一下", role="researcher")
+    finally:
+        restore()
+    assert calls["n"] == 1                                   # 账户问题不重试
+    assert "子任务未完成" in summary and "402" in summary     # 主 Agent 看得见原因
+    assert "只查到一半" in summary                            # 部分成果仍保留
+    done = next(d for e, d in events if e == "subagent_done")
+    assert done["ok"] is False
+
+
+def test_rerank_account_error_is_not_silently_degraded(tmp: Path):
+    """web_search 内的模型重排失败一律降级，但账户级（402/401）必须吵出来一次：
+    这是最早能发现"模型 API 挂了"的地方，静默吞掉就会被误判成搜索配额用尽。"""
+    import agentcore.bridge.conversation as cv
+    from agentcore.providers import StreamEvent
+    api = _api(tmp)
+    conv = api.active
+    events = []
+    conv.emit = lambda e, d: events.append((e, d))
+    err = ("APIStatusError: Error code: 402 - {'code': 'insufficient_credits', "
+           "'type': 'billing_error'}\n——这是**模型 API** 的计费问题（m1 @ relay.example.com）")
+
+    class ErrProvider:
+        def stream_chat(self, messages, system=None, tools=None):
+            yield StreamEvent("error", err)
+
+    orig = cv.build_provider
+    cv.build_provider = lambda cfg, model: ErrProvider()
+    try:
+        fn = conv._make_search_reranker()
+        assert fn("排一下") == ""            # 仍然降级，搜索不受影响
+        assert fn("再排一下") == ""
+    finally:
+        cv.build_provider = orig
+    errs = [d for e, d in events if e == "error"]
+    assert len(errs) == 1 and "计费" in errs[0]   # 吵一次就够，别每次搜索都刷
+
+
+def test_rerank_ordinary_failure_stays_quiet(tmp: Path):
+    """网络抖动那类是正常降级，吵出来只是噪音。"""
+    import agentcore.bridge.conversation as cv
+    from agentcore.providers import StreamEvent
+    api = _api(tmp)
+    conv = api.active
+    events = []
+    conv.emit = lambda e, d: events.append((e, d))
+
+    class FlakyProvider:
+        def stream_chat(self, messages, system=None, tools=None):
+            yield StreamEvent("error", "APITimeoutError: request timed out")
+
+    orig = cv.build_provider
+    cv.build_provider = lambda cfg, model: FlakyProvider()
+    try:
+        assert conv._make_search_reranker()("排一下") == ""
+    finally:
+        cv.build_provider = orig
+    assert not [d for e, d in events if e == "error"]
 
 
 def test_open_external_validates_scheme(tmp: Path):

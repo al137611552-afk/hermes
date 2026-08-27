@@ -3,13 +3,13 @@ from __future__ import annotations
 
 from ..config import AppConfig, ModelConfig
 from .anthropic_p import AnthropicProvider
-from .base import BaseProvider, Message, StreamEvent, ToolCall
+from .base import BaseProvider, Message, StreamEvent, ToolCall, account_problem
 from .cassette import (CassetteMiss, cassette_mode, cassette_store, make_replay,
                        wrap_recording)
 from .openai_p import OpenAIProvider
 
 __all__ = ["BaseProvider", "CassetteMiss", "Message", "StreamEvent", "ToolCall",
-           "build_provider"]
+           "account_problem", "build_provider"]
 
 _REGISTRY = {
     "anthropic": AnthropicProvider,

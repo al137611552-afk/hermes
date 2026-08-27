@@ -71,6 +71,11 @@ const sessionSearch = document.getElementById("session-search");
 input.disabled = true;
 sendBtn.disabled = true;
 
+// 流式渲染的最小间隔（FR-12.3）。**必须比模型出字慢**才叫节流：模型通常 30~50 token/s
+// （20~33ms 一个），rAF 的 16ms 反而比它还快，一帧一 token 等于没节流。80ms ≈ 12 次/秒，
+// 读起来仍是连续流动的，渲染次数却降到原来的 1/3~1/4，再叠加"流式不高亮"，是数量级的差别。
+const STREAM_FLUSH_MS = 80;
+
 // ---- 多对话视图（FR-8.2b）---------------------------------------------
 // 每个对话(cid)有独立的 chat 容器与渲染状态；只有活动对话挂载在 #chat 里，
 // 后台对话的 DOM 离屏保留、事件照常渲染进去，切回时挂载即"续看"。
@@ -93,7 +98,12 @@ function makeView(cid) {
     tasks: [],               // 任务清单（FR-9.1）[{content, status}]
     subBlocks: {},           // 子任务块（FR-9.3）sub_id -> {stream,streamText,activity,status,details}
     currentBubble: null,     // 当前 assistant 文本气泡 DOM
-    currentText: "",         // 当前 assistant 累积文本
+    currentText: "",         // 当前 assistant 累积文本（**只在节流器 flush 时增长**）
+    // 流式节流（FR-12.3）：增量先进节流器攒着，到点才渲染一次。每个视图各一套——
+    // 并发会话各自节流，互不影响；也不会因为某个后台会话吐得快就拖累前台。
+    pacer: createStreamPacer(STREAM_FLUSH_MS),
+    thinkPacer: createStreamPacer(STREAM_FLUSH_MS),
+    flushTimer: null,        // 已排程的 flush（rAF/定时器句柄）；null = 没排
     userTurns: 0,            // 已出现的用户消息数（= 用户轮次序号，供重新生成/编辑重发定位）
     toolBlocks: {},          // tool_use_id -> 工具块 DOM
     visionBlock: null,       // 当前视觉预处理提示块 DOM
@@ -213,7 +223,12 @@ function ensureMermaid() {
 }
 
 // ---- markdown 渲染（带离线降级） ---------------------------------------
-function renderMarkdown(el, text) {
+// full=false 是**流式档**：只做 marked.parse，跳过高亮与那三趟 DOM 遍历。
+// 为什么这么切：高亮是 `querySelectorAll("pre code")` 后对**每一个**代码块重跑一遍，
+// 流式期间每渲染一次就全量重跑一次——它才是这条路径上最贵的一段，而且中途高亮出来的
+// 还是半截代码，白花。定稿时（finalizeTextBubble）再做一次完整的，视觉结果一模一样。
+function renderMarkdown(el, text, full) {
+  if (full === undefined) full = true;
   if (window.marked) {
     try {
       el.innerHTML = window.marked.parse(text);   // 畸形/流式半截 markdown 抛错也不破坏气泡（降级纯文本）
@@ -221,6 +236,7 @@ function renderMarkdown(el, text) {
       el.textContent = text;
       return;
     }
+    if (!full) return;                            // 流式档到此为止
     if (window.hljs) {
       el.querySelectorAll("pre code").forEach((b) => {
         if (b.classList.contains("language-mermaid")) return; // mermaid 交给 renderMermaidIn
@@ -571,6 +587,9 @@ function hasLaterTurns(v, turn) {
 }
 // 重跑前的公共收尾：断开流式引用、清待发指示器
 function resetStreamRefs(v) {
+  // 节流器里可能还压着上一轮的残留：**必须一起清掉**，否则重跑时那几个字会串到新气泡开头
+  cancelFlush(v);
+  v.pacer.drain(nowMs()); v.thinkPacer.drain(nowMs());
   v.currentBubble = null; v.currentText = "";
   v.thinkingEl = null; v.thinkingText = ""; v.toolBlocks = {}; v.subBlocks = {};
   hideWorking(v);
@@ -1319,8 +1338,14 @@ async function attachHandoffBrowserHint(bar, target) {
         row.className = "handoff-browser info";
         row.textContent = "已切到有头并打开目标页——请在弹出的那个浏览器窗口里登录，完成后点「我做完了」。";
       } else {
-        b.disabled = false; b.textContent = "切到有头并打开这页";
-        showToast((r && r.error) || "切换失败");
+        b.disabled = false; b.textContent = "重试";
+        // **失败要留在原地、并说清出路**：这条信息此前只弹了个 toast，几秒就没了——
+        // 而"浏览器没弹出来"恰恰是用户要照着办的那条（装浏览器 / 改用 Edge）。
+        // 同一份文案也已经作为系统通知送进了模型上下文（api._report_browser_failure）。
+        row.className = "handoff-browser warn";
+        row.textContent = (r && r.error) || "切换失败";
+        row.style.whiteSpace = "pre-wrap";
+        row.appendChild(b);
       }
     });
     row.appendChild(b);
@@ -1342,18 +1367,16 @@ window.__onAgentEvent = function (msg) {
   if (event === EV.CHUNK) {
     hideWorking(v);
     finalizeThinking(v);
-    if (!v.currentBubble) {
-      v.currentBubble = addMessage(v, "assistant", "");
-      v.currentText = "";
-    }
-    v.currentText += data;
-    renderMarkdown(v.currentBubble, v.currentText);
-    v.currentBubble.classList.add("cursor");
-    scrollView(v);
+    // 增量先进节流器；flushStream 到点才真渲染，没到点会自己排下一次。
+    // 首片因为"从没渲染过"会立刻出去，所以开头依然是秒有反应。
+    v.pacer.push(data);
+    flushStream(v);
     markActivity(v);
   } else if (event === EV.THINKING) {
     hideWorking(v);
-    renderThinking(v, data);
+    ensureThinkingEl(v);
+    v.thinkPacer.push(data);
+    flushStream(v);
     markActivity(v);
   } else if (event === EV.TOOL_USE) {
     hideWorking(v);
@@ -1606,34 +1629,86 @@ function stopWorking(v) {
 }
 
 // ---- 思考过程块（T2：模型推理实时流入淡色可折叠块） --------------------
-function renderThinking(v, delta) {
-  if (!v.thinkingEl) {
-    v.thinkingText = "";
-    v.thinkingEl = document.createElement("details");
-    v.thinkingEl.className = "thinking-block";
-    v.thinkingEl.open = true;
-    const sum = document.createElement("summary");
-    sum.textContent = "💭 思考过程";
-    const body = document.createElement("div");
-    body.className = "thinking-body";
-    v.thinkingEl.appendChild(sum);
-    v.thinkingEl.appendChild(body);
-    appendRow(v, v.thinkingEl);
+// ---- 流式渲染节流（FR-12.3）--------------------------------------------
+// 时间源单独抽一个函数：Node 单测和某些 WebView 没有 performance.now。
+function nowMs() {
+  return (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+}
+
+// 还有攒着的增量就排一次 flush（已排过就不重复排——否则并发 chunk 会排出一堆定时器）
+function scheduleFlush(v) {
+  if (v.flushTimer !== null) return;
+  v.flushTimer = setTimeout(() => { v.flushTimer = null; flushStream(v); }, STREAM_FLUSH_MS);
+}
+
+// 把节流器里到点的增量真正渲染出去。**流式档**：只 marked.parse，不高亮
+// （高亮留到 finalizeTextBubble 定稿时做一次，见 renderMarkdown 的 full 参数）。
+function flushStream(v) {
+  const now = nowMs();
+  const text = v.pacer.take(now);
+  if (text !== null) {
+    if (!v.currentBubble) { v.currentBubble = addMessage(v, "assistant", ""); v.currentText = ""; }
+    v.currentText += text;
+    renderMarkdown(v.currentBubble, v.currentText, false);
+    v.currentBubble.classList.add("cursor");
   }
-  v.thinkingText += delta;
-  v.thinkingEl.querySelector(".thinking-body").textContent = v.thinkingText;
-  scrollView(v);
+  const think = v.thinkPacer.take(now);
+  if (think !== null && v.thinkingEl) {
+    v.thinkingText += think;
+    v.thinkingEl.querySelector(".thinking-body").textContent = v.thinkingText;
+  }
+  if (text !== null || think !== null) scrollView(v);
+  if (v.pacer.pending() || v.thinkPacer.pending()) scheduleFlush(v);  // 还有剩的，接着排
+}
+
+// 清掉已排程的 flush（重置/定稿时用，别留下打在空视图上的定时器）
+function cancelFlush(v) {
+  if (v.flushTimer !== null) { clearTimeout(v.flushTimer); v.flushTimer = null; }
+}
+
+function ensureThinkingEl(v) {
+  if (v.thinkingEl) return;
+  v.thinkingText = "";
+  v.thinkingEl = document.createElement("details");
+  v.thinkingEl.className = "thinking-block";
+  v.thinkingEl.open = true;
+  const sum = document.createElement("summary");
+  sum.textContent = "💭 思考过程";
+  const body = document.createElement("div");
+  body.className = "thinking-body";
+  v.thinkingEl.appendChild(sum);
+  v.thinkingEl.appendChild(body);
+  appendRow(v, v.thinkingEl);
 }
 
 function finalizeThinking(v) {
-  if (v.thinkingEl) v.thinkingEl.open = false; // 答案/工具到来后自动折叠
+  // **先把攒着的思考文本吐干净再折叠**：否则最后一截永远显示不出来（节流器里还压着）
+  if (v.thinkingEl) {
+    const tail = v.thinkPacer.drain(nowMs());
+    if (tail) {
+      v.thinkingText += tail;
+      v.thinkingEl.querySelector(".thinking-body").textContent = v.thinkingText;
+    }
+    v.thinkingEl.open = false; // 答案/工具到来后自动折叠
+  } else {
+    v.thinkPacer.drain(nowMs());   // 没有块了，丢掉残留，别串进下一段思考
+  }
   v.thinkingEl = null;
   v.thinkingText = "";
 }
 
 // 工具调用前，把当前文本气泡定稿（停止光标、断开引用）
 function finalizeTextBubble(v) {
+  cancelFlush(v);
+  // **先把节流器里压着的最后一截吐出来**——不然消息结尾会缺字（流式期最后一片可能没到点）
+  const tail = v.pacer.drain(nowMs());
+  if (tail) {
+    if (!v.currentBubble) { v.currentBubble = addMessage(v, "assistant", ""); v.currentText = ""; }
+    v.currentText += tail;
+  }
   if (v.currentBubble) {
+    // 这里才做**完整**渲染：高亮 + 任务项 + 宽表格包裹。整条消息一生只做一次。
+    renderMarkdown(v.currentBubble, v.currentText, true);
     v.currentBubble.classList.remove("cursor");
     decorateAssistant(v.currentBubble, v.currentText); // 定稿后挂复制按钮
     renderMermaidIn(v.currentBubble); // 气泡定稿后再渲染 mermaid 图
@@ -3217,6 +3292,7 @@ const SLASH_COMMANDS = [
   { cmd: "/add-dir", arg: "<目录路径>", desc: "授权一个工作区外的目录，文件工具之后可读其中文件" },
   { cmd: "/crazy", arg: "<目标>", desc: "🤖 自主模式：无人值守，AI 自己写目标+循环干到底（免确认，慎用）" },
   { cmd: "/技能化", arg: "<程序入口或路径>", desc: "🧪 把一个程序做成技能：摸接口→真跑取样→写 SKILL.md→自检" },
+  { cmd: "/诊断", arg: "", desc: "🔍 自查：这次对话用的哪个模型档、走什么协议、连哪个端点（不含 key，可直接贴出来）" },
   { cmd: "/help", arg: "", desc: "列出所有可用命令" },
 ];
 const slashMenu = document.getElementById("slash-menu");
@@ -3356,6 +3432,13 @@ async function handleSlashCommand(v, text) {
   } else if (cmd === "/技能化") {
     // 入口只负责把统一的提示词发出去，真正的流程写在内置 skill-creator 技能里
     submitMessage(v, skillCreatorPrompt(arg), []);
+  } else if (cmd === "/诊断") {
+    // 报错不带档名，而一台机器上常有好几个档在同时工作——让 hermes 自己把记录摊开，
+    // 省得用户凭记忆报一个档、实际查的是另一个账户。
+    let r;
+    try { r = await window.pywebview.api.get_diagnostics(v.cid); }
+    catch (e) { addSysLine(v, "⚠ 自查失败：" + e); return; }
+    addSysLine(v, (r && r.text) || "⚠ 自查没拿到内容");
   } else if (cmd === "/help") {
     const list = allSlashCommands();
     const fmt = (c) => `  ${c.cmd}${c.arg ? " " + c.arg : ""}　—　${c.desc}`;
@@ -3453,6 +3536,8 @@ function submitMessage(v, text, atts) {
     // 首次发送：正常启动流式
     v.streaming = true;
     updateComposerButtons();
+    cancelFlush(v);
+    v.pacer.drain(nowMs()); v.thinkPacer.drain(nowMs());   // 同 resetStreamRefs：别把残留串进新一轮
     v.currentBubble = null;
     v.currentText = "";
     v.thinkingEl = null;

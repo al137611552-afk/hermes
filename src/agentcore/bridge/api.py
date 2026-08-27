@@ -18,8 +18,10 @@ import os
 import re
 import sys
 import threading
+import time
 from pathlib import Path
 
+from ..context import repair_interrupted_tail
 from ..config import (
     APP_DIR, PROVIDER_PRESETS, AppConfig, ModelConfig, collect_key_requirements,
     effective_user_providers, load_config, load_user_models, load_user_providers, mask_key,
@@ -30,6 +32,7 @@ from ..mcp_client import McpManager
 from ..multimodal import Limits
 from ..providers import Message
 from ..store import MemoryStore, Store
+from .coalesce import ChunkCoalescer
 from ..winproc import no_window
 from .conversation import Conversation, Resources
 
@@ -65,6 +68,11 @@ class Api:
         # 无头入口（FR-11.7 CLI）可注入 emit(event, data, cid) 钩子，替代 evaluate_js 推事件
         self._emit_hook = emit
         self._emit_lock = threading.Lock()  # 串行化 evaluate_js（多对话 worker 并发调用）
+        # 流式事件合并（FR-12.3）：evaluate_js 是同步跨进程调用，一 token 一次太贵，
+        # 并发会话时全堵在上面这把锁上。文本增量按对话攒一小段再发；**其它事件一律直通**，
+        # 且发它之前先把同一对话攒着的文本冲掉——顺序不能乱（见 coalesce.py）。
+        self._coalescer = ChunkCoalescer()
+        self._flush_timer = None
         # 技能市场仓库归档缓存（FR-13.S2）：预览完接着安装时不重复下载
         self._skill_cache: dict = {}
         self._skill_cache_lock = threading.Lock()
@@ -178,6 +186,60 @@ class Api:
         return {"models": list(self.config.models.keys()),
                 "active": self.active_model,
                 "subagent": self.config.agent.subagent_model}  # None = 委派跟随主模型
+
+    def get_diagnostics(self, cid: "int | None" = None, limit: int = 10) -> dict:
+        """「这次到底用的哪个模型档」自查报告（FR-12.2）。
+
+        取数在这里（配置 / 环境变量 / 会话库），格式在 `modeldiag.build_model_report`（纯函数、可单测）。
+        **报告不含 key**——它就是给人贴出来求助用的，见 modeldiag 模块头的两条纪律。
+        """
+        import os
+        from datetime import datetime
+
+        from .. import __version__
+        from ..modeldiag import FOLLOW, ProfileInfo, build_model_report
+
+        cfg = self.config
+        conv = self._conv_by_cid(cid)
+        profiles = [
+            ProfileInfo(name=n, provider=mc.provider, model=mc.model,
+                        base_url=mc.base_url or "", key_env=mc.api_key_env,
+                        key_set=bool(os.getenv(mc.api_key_env, "").strip()))
+            for n, mc in cfg.models.items()
+        ]
+        sid = getattr(conv, "session_id", None)
+        label = f"#{sid}" if sid is not None else "（草稿对话，尚未落库）"
+        # **把能指定模型档的地方一个不落地列全**：漏一项就等于把排查引向错误的账户。
+        # 按角色配的模型（`agent.roles.<角色>.model`）尤其容易忘——`research-report` 那类技能
+        # 委派时带 role=researcher，走的可能压根不是主对话那个档（2026-08-26 就栽在这一项上）。
+        sub = cfg.agent.subagent_model or FOLLOW
+        extras = [
+            ("委派子任务（delegate）", sub),
+            ("上下文压缩摘要（大段结果回灌后触发）", getattr(cfg.context, "summary_model", "") or FOLLOW),
+            ("搜索结果语义重排", FOLLOW if getattr(cfg.web, "model_rerank", True) else "（已关闭）"),
+        ]
+        for rname, spec in sorted((getattr(cfg.agent, "roles", None) or {}).items()):
+            m = getattr(spec, "model", None) if not isinstance(spec, dict) else spec.get("model")
+            extras.append((f"子 Agent 角色 {rname}", m or f"{sub}（按委派档）"))
+        for rv, m in sorted((getattr(cfg.agent, "design_review_models", None) or {}).items()):
+            extras.append((f"方案评审 {rv}", m or FOLLOW))
+        vf = getattr(cfg, "vision_fallback", None)
+        if getattr(vf, "enabled", False):
+            extras.append(("视觉预处理（独立端点，不走模型档）",
+                           f"{getattr(vf, 'model', '?')} @ {getattr(vf, 'endpoint', '?')}"))
+        recent: list = []
+        if self.res.store:
+            try:
+                for r in self.res.store.list_sessions()[:max(0, int(limit))]:
+                    ts = r.get("updated_at") or r.get("created_at")
+                    when = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else "?"
+                    recent.append((f"#{r.get('id')}", when, r.get("model") or ""))
+            except Exception:  # noqa: BLE001 — 自查报告缺一块也要出得来，不能自己把自己弄崩
+                recent = []
+        text = build_model_report(version=__version__, session_label=label,
+                                  active=conv.active_model, profiles=profiles,
+                                  extras=extras, recent=recent)
+        return {"ok": True, "text": text}
 
     def set_active_model(self, name: str) -> dict:
         if name not in self.config.models:
@@ -769,11 +831,19 @@ class Api:
     def _reconnect_mcp(self) -> int:
         """重启 MCP manager（读最新配置，含浏览器开关）+ 重建各对话 registry，让工具变更即时生效。"""
         from ..config import load_config
+        old = self.res.mcp
         try:
             self.res.mcp.close()
         except Exception:  # noqa: BLE001
             pass
         mgr = McpManager(load_config().mcp)
+        # **先接交班线再 start**：正在跑的那一轮握着回合开始时快照的 registry，里面的 McpTool
+        # 绑死在老 manager 上（见 McpManager.succeed_to）。不接这根线，重连之后那一轮剩下的
+        # MCP 调用会一路报「未连接」到本轮结束，而面板读新 manager 显示一切正常。
+        try:
+            old.succeed_to(mgr)
+        except Exception:  # noqa: BLE001 — 接不上线不该把重连本身拖下水
+            pass
         try:
             tools = mgr.start()
         except Exception:  # noqa: BLE001
@@ -1419,7 +1489,8 @@ class Api:
     def list_sessions(self) -> dict:
         if not self.res.store:
             return {"sessions": [], "active": None, "active_cid": self.active.cid}
-        return {"sessions": self.res.store.list_sessions(),
+        sessions = self.res.store.list_sessions()
+        return {"sessions": sessions,
                 "active": self.active.session_id, "active_cid": self.active.cid}
 
     def search_messages(self, query: str) -> dict:
@@ -1456,6 +1527,14 @@ class Api:
         msgs = store.get_messages(sid)
         old = self.active
         history = [Message(m["role"], m["content"]) for m in msgs]
+        # 边跑边落库之后，非正常退出可能把历史停在"assistant 发了 tool_use、tool_result 还没落库"
+        # 的位置。这种历史直接喂回模型会被 Anthropic 当场打回（tool_use 没有配对的 tool_result），
+        # 于是"崩溃丢内容"就变成"这个会话再也发不出消息"。补一条说明是中断的 tool_result，
+        # 并把补过的那条也落库——否则每次打开都要现补一遍。
+        history, repaired = repair_interrupted_tail(history)
+        if repaired:
+            store.add_message(sid, history[-1].role, history[-1].content)
+            msgs = store.get_messages(sid)
         self.active = self._make_conversation(sid, history, None)
         if self.res.per_session:  # 切到该会话的工作区
             self._emit_workspace_changed()
@@ -1601,9 +1680,18 @@ class Api:
 
         只在用户点面板上的按钮时才执行——不偷偷弹浏览器窗口。
         """
+        from ..browsers import explain as explain_browsers
+        from ..browsers import find_browsers, pick_channel
         from ..config import browser_mcp_enabled, browser_mcp_headed
         if not browser_mcp_enabled():
             return {"ok": False, "error": "未启用浏览器穿透：设置 →「🌐 浏览器穿透」先打开"}
+        # **切换之前先看本机有没有浏览器**：没有的话切了也弹不出来，而"点了没反应"是最难查的症状。
+        # 这一步只看文件在不在（毫秒级），不起进程。
+        found = find_browsers()
+        if pick_channel(found) is None:
+            why = explain_browsers(found)
+            self._report_browser_failure(why)
+            return {"ok": False, "switched": False, "error": why, "no_browser": True}
         switched = False
         if not browser_mcp_headed():
             self.set_browser_headed(True)     # 重启 MCP server（有头）+ 重建各对话工具表
@@ -1613,12 +1701,36 @@ class Api:
             tools = {t.name.split("__", 1)[-1]: t for t in (self.res.mcp_tools or [])}
             nav = tools.get("browser_navigate")
             if nav is None:
-                return {"ok": False, "switched": switched, "error": "浏览器工具未连上"}
+                why = "浏览器工具未连上（MCP 侧）——设置面板里对 browser 跑一次「体检」看具体原因。"
+                self._report_browser_failure(why)
+                return {"ok": False, "switched": switched, "error": why}
             try:
                 nav.run({"url": url})
             except Exception as e:  # noqa: BLE001 — 打不开也别让换手卡住，人可以自己导航
-                return {"ok": False, "switched": switched, "error": f"打开失败：{e}"}
+                why = (f"切到有头了，但打开目标页失败：{e}\n{explain_browsers(found)}\n"
+                       "（**不需要重启 hermes**：切有头只是重启了 MCP server，"
+                       "装好浏览器后再点一次这个按钮即可。）")
+                self._report_browser_failure(why)
+                return {"ok": False, "switched": switched, "error": why}
         return {"ok": True, "switched": switched}
+
+    def _report_browser_failure(self, why: str) -> None:
+        """把"浏览器没起来"作为**事实**送进当前对话的上下文，而不是只弹个 toast。
+
+        2026-08-26 真机踩到的核心：`handoff_open_target` 的失败此前只回给前端弹一下，
+        模型完全不知道浏览器没弹出来——于是它按"人已经去登录了"继续走，最后猜出一条
+        代价最大的出路（重启应用），而用户重启后丢了整轮的检索成果。
+        **模型看不到的失败，等于没有发生过。**
+        """
+        conv = self.active
+        if conv is None:
+            return
+        conv.notify_system(
+            f"浏览器没能打开：{why}\n"
+            "**别据此判断用户已经登录成功**，也别建议重启 hermes——"
+            "切有头模式只是重启了 MCP server，不需要重启应用。"
+            "在浏览器可用之前，这条路走不通：要么等用户装好后再点一次面板上的按钮，"
+            "要么改走不需要登录的来源，并把已经拿到的结果先沉淀下来（update_notes）。")
 
     def resolve_handoff(self, req_id: int, outcome: str, note: str = "",
                         cid: int | None = None) -> dict:
@@ -1899,6 +2011,12 @@ class Api:
     def close(self) -> None:
         """应用退出时收尾：先**同步整理活动会话记忆**（否则直接关程序、没切换过会话会丢最后一段），
         再优雅停所有对话 worker、关 MCP 子进程、存储连接（由 app.py 在窗口关闭后调用）。"""
+        with self._emit_lock:      # 攒着的最后一截也要发出去，别让退出前的收尾文字凭空消失
+            if self._flush_timer is not None:
+                self._flush_timer.cancel()
+                self._flush_timer = None
+            if self._window is not None:
+                self._send_all(self._coalescer.flush_all())
         for conv in list(self.conversations.values()):
             try:
                 conv.shutdown(timeout=2.0)
@@ -1942,6 +2060,34 @@ class Api:
             return
         if self._window is None:
             return
-        payload = json.dumps({"event": event, "data": data, "cid": cid})
         with self._emit_lock:
-            self._window.evaluate_js(f"window.__onAgentEvent({payload})")
+            ready = self._coalescer.feed(event, data, cid, time.monotonic())
+            self._send_all(ready)
+            # 出字一停就没人再喂了，攒着的最后一截得靠定时器吐出去
+            self._arm_flush_locked()
+
+    def _send_all(self, events) -> None:
+        """把已排好序的事件真正推给前端。**调用方须持 _emit_lock**（evaluate_js 非线程安全）。"""
+        for ev, data, cid in events:
+            payload = json.dumps({"event": ev, "data": data, "cid": cid})
+            try:
+                self._window.evaluate_js(f"window.__onAgentEvent({payload})")
+            except Exception:  # noqa: BLE001 — 窗口正在关/桥断了，别让它把 worker 带崩
+                return
+
+    def _arm_flush_locked(self) -> None:
+        """还有积压就排一个一次性定时器把它冲掉（已排过就不重复排）。"""
+        if self._flush_timer is not None or not self._coalescer.pending():
+            return
+        t = threading.Timer(self._coalescer.window_s, self._flush_due)
+        t.daemon = True
+        self._flush_timer = t
+        t.start()
+
+    def _flush_due(self) -> None:
+        with self._emit_lock:
+            self._flush_timer = None
+            if self._window is None:
+                return
+            self._send_all(self._coalescer.due(time.monotonic()))
+            self._arm_flush_locked()

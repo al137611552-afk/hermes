@@ -19,7 +19,7 @@ import anthropic
 
 from .base import (
     MAX_RETRIES, BaseProvider, Message, StreamEvent, ToolCall,
-    backoff_delay, blocks_retry, is_transient_error,
+    backoff_delay, blocks_retry, explain_stream_failure, is_transient_error,
 )
 
 # 实测不支持 cache_control 的端点（base_url, model）；进程级记账，避免每轮白付一次失败
@@ -158,7 +158,7 @@ class AnthropicProvider(BaseProvider):
                     if not yielded:
                         continue
                 if yielded or attempt >= MAX_RETRIES or not is_transient_error(e):
-                    yield StreamEvent("error", explain_stream_failure(e, attempt, yielded))
+                    yield StreamEvent("error", explain_stream_failure(e, attempt, yielded, self.endpoint_label()))
                     return
                 delay = backoff_delay(attempt)
                 print(f"[provider {self.model}] 瞬时错误，{delay:.1f}s 后重试"

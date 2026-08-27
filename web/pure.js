@@ -13,6 +13,40 @@
     for (const k in api) root[k] = api[k]; // 浏览器：挂全局，app.js 直接用同名函数
   }
 })(typeof self !== "undefined" ? self : this, function () {
+  // ---- 流式节流器（FR-12.3 性能）------------------------------------------
+  // 病根：原来**每来一个 token 就把整条消息重新 marked.parse + 全量重跑高亮**，
+  // 于是一条 n token 的回复要做 n 次全文渲染 —— O(n²)；并发几个会话时，这些渲染
+  // 全挤在同一个 UI 线程上，界面就卡住了。
+  //
+  // 主流 agent（Claude Code 的 Ink fork、Codex 的 ratatui）都是**按帧**渲染 + 差分输出，
+  // 而不是按 token。这里做同一件事的 DOM 版：增量先攒着，到点才渲染一次。
+  //
+  // 为什么不是 requestAnimationFrame 就够：rAF 是 60Hz，而模型吐字通常 30~50 token/s，
+  // **一帧一 token，等于没节流**。所以必须显式定一个比出字更慢的最小间隔。
+  //
+  // 不变量（单测钉死）：push 进去的字，经过若干 take + 最后一次 drain，**一个字都不能少、
+  // 顺序不能乱**。丢字比卡顿严重得多。
+  function createStreamPacer(minIntervalMs) {
+    let buf = "";        // 攒着还没交出去的增量
+    let lastAt = null;   // 上次真正交出去的时刻；null = 还没渲染过（首片立刻出，别让开头显得没反应）
+    return {
+      push(delta) { if (delta) buf += delta; },
+      pending() { return buf; },
+      // 到点且有货才交出累积的全部；否则返回 null（调用方稍后再问）
+      take(now) {
+        if (!buf) return null;
+        if (lastAt !== null && now - lastAt < minIntervalMs) return null;
+        lastAt = now;
+        const out = buf; buf = ""; return out;
+      },
+      // 收尾：不看时间，把剩下的全交出去（定稿必须把最后一截吐干净）
+      drain(now) {
+        lastAt = now;
+        const out = buf; buf = ""; return out;
+      },
+    };
+  }
+
   // 把任意值压成一行简短预览（工具入参摘要等），超 80 字省略
   // 高影响力工具确认条用的参数摘要：**先把短标量列出来**（sandbox / cwd 这种决定影响范围的），
   // 长文本（prompt）截短放最后。默认的 summarize 是 JSON 截 80 字，
@@ -1069,6 +1103,7 @@
     needsKeySetup, validateModelProfile,
     usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
+    createStreamPacer,
     accumulateUsage,
     summarizeKeyParams, delegationGoal, formatElapsed, tailLines,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,

@@ -153,7 +153,10 @@ def test_event_goes_through_enqueue_marked_as_system():
     seen = []
 
     class _Fake:
+        # 两个都要借：回投走 _on_external_event → notify_system → enqueue
+        # （notify_system 是抽出来给"浏览器没弹出来"这类系统事实共用的同一条通路）
         _on_external_event = convmod.Conversation._on_external_event
+        notify_system = convmod.Conversation.notify_system
         def enqueue(self, text, attachments=None):
             seen.append(text)
             return {"ok": True}

@@ -39,7 +39,7 @@ MODES = ("prompt", "exec")
 ARG_TOKEN = "$ARGUMENTS"
 
 # 内置命令（前端 SLASH_COMMANDS 的权威副本）：自定义命令不得占用这些名字
-BUILTIN_NAMES = ("add-dir", "crazy", "help", "技能化")
+BUILTIN_NAMES = ("add-dir", "crazy", "help", "技能化", "诊断")
 
 
 class CommandError(Exception):

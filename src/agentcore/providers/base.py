@@ -31,11 +31,45 @@ def is_transient_error(exc: Exception) -> bool:
     """是否为值得重试的瞬时错误（网络抖动 / 429 限流 / 5xx 服务端）。"""
     code = getattr(exc, "status_code", None) or getattr(exc, "status", None)
     if isinstance(code, int) and code in _TRANSIENT_STATUS:
-        return True
+        return True                      # 状态码优先：429 是限流，即便文案里带"quota"也该退避重试
+    if account_problem(exc):
+        return False                     # 账户级（没钱/无权/key 无效）：重试多少次都是同一个答案
     if any(n in type(exc).__name__ for n in _TRANSIENT_NAMES):
         return True
     msg = str(exc).lower()
     return any(s in msg for s in _TRANSIENT_MSGS)
+
+
+# ---- 账户级硬错误：**不是瞬时故障，也不是搜索配额** ------------------------
+# 2026-08-26 真机踩到：中转端点回 402 insufficient_credits，界面只打
+# `APIStatusError: Error code: 402 - {...}`，用户据此以为是 Firecrawl 搜索配额用尽
+# （那条路根本不经过这里：web.py 的 402 走 FirecrawlQuotaError 自动降级）。
+# 文案不说"这是模型 API 的钱/权限问题、哪个模型档、哪个端点"，排查就必然跑偏。
+_ACCOUNT_STATUS = {401: "鉴权", 402: "计费", 403: "权限"}
+# **只认明确的计费/额度字样**：宽松匹配会把普通异常也吃进来（如 ValueError("invalid api key")）。
+_ACCOUNT_MSGS = (
+    "insufficient_credits", "insufficient credits", "insufficient balance",
+    "insufficient_quota", "billing_error", "not in good standing",
+    "quota exceeded", "欠费", "余额不足",
+)
+
+
+def account_problem(exc: "Exception | str") -> str:
+    """模型 API 的账户级硬错误（鉴权/计费/权限）→ 返回分类名，否则空串。
+
+    与 `is_transient_error` 互斥且**永不重试**：账户没钱/key 无效，重试多少次都是同一个答案。
+    也接受**已成文的错误串**（provider 把流式失败转成 error 事件后，下游拿到的就是字符串）。
+    """
+    code = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    if isinstance(code, int):
+        if code in _ACCOUNT_STATUS:
+            return _ACCOUNT_STATUS[code]
+        if code in _TRANSIENT_STATUS:
+            return ""        # 状态码优先：429 限流的文案里也常有 "quota"，别据此判死付费链路
+    msg = str(exc).lower()
+    if any(s in msg for s in _ACCOUNT_MSGS):
+        return "计费"
+    return ""
 
 
 def backoff_delay(attempt: int, base: float = 1.0, cap: float = 20.0) -> float:
@@ -55,14 +89,27 @@ def blocks_retry(ev) -> bool:
     return getattr(ev, "type", "") in _ANSWER_EVENTS
 
 
-def explain_stream_failure(e, attempt: int = 0, after_answer: bool = False) -> str:
+def explain_stream_failure(e, attempt: int = 0, after_answer: bool = False,
+                           endpoint: str = "") -> str:
     """把流式失败翻成**能照着做点什么**的一句话（纯函数）。
 
     原样抛 `RemoteProtocolError: peer closed connection without sending complete message body`
     对用户等于没说——它既不说明谁断的，也不说明还能怎么办。
+
+    endpoint：出错的模型档标识（`模型 @ 端点主机`），账户级错误时**必须说出来**——
+    委派子任务可能用的是另一个模型档（`agent.subagent_model`），不指名就查错账户。
     """
     name = type(e).__name__
     base = f"{name}: {e}"
+    kind = account_problem(e)
+    if kind:
+        where = f"（{endpoint}）" if endpoint else ""
+        return (f"{base}\n——这是**模型 API** 的{kind}问题{where}，"
+                "与搜索/抓取配额无关（Firecrawl 没额度会自动降级到免 key 链路，不会报到这里）。"
+                "请依次核对：① 这个模型档用的服务账户余额与状态（欠费/冻结/风控都会回这个码）；"
+                "② API key 是否有效、是否配到了对的端点；③ 该模型是否在你的套餐/分组内；"
+                "④ 若发生在委派子任务里，子 Agent 用的是 `agent.subagent_model` 指定的模型档，"
+                "**可能与主对话不是同一个账户**。此类错误不会自动重试（重试结果相同）。")
     tail = ""
     if "incompletechunked" in str(e).replace(" ", "").replace("_", "").lower() \
             or name == "RemoteProtocolError":
@@ -162,6 +209,13 @@ class BaseProvider(ABC):
         self.temperature = temperature
         # FR-10.4b：anthropic 协议加 cache_control 前缀缓存；openai 端点自动缓存、忽略本开关
         self.prompt_cache = prompt_cache
+
+    def endpoint_label(self) -> str:
+        """出错时用来指名道姓的标识：`模型 @ 端点主机`（**不含 key**）。"""
+        host = ""
+        if self.base_url:
+            host = str(self.base_url).split("//", 1)[-1].split("/", 1)[0]
+        return f"{self.model} @ {host}" if host else str(self.model)
 
     @abstractmethod
     def stream_chat(

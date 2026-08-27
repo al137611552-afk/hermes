@@ -73,12 +73,20 @@ class Store:
         self._conn.commit()
 
     def _migrate(self) -> None:
-        """轻量迁移：给旧库的 sessions 表补列（向后兼容）。"""
+        """轻量迁移：给旧库补列（向后兼容）。"""
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(sessions)")}
         if "workspace" not in cols:
             self._conn.execute("ALTER TABLE sessions ADD COLUMN workspace TEXT")
         if "pinned" not in cols:   # P3：会话置顶
             self._conn.execute("ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+        mcols = {r["name"] for r in self._conn.execute("PRAGMA table_info(messages)")}
+        if "sidechain" not in mcols:
+            # 子 Agent（委派）的消息：**只为存档，不进模型上下文**。
+            # 对齐 Claude Code 存档里的 `isSidechain`——同一份记录里放着、靠标记区分主链与旁链。
+            # 不落库的话，委派型调研任务里搜索量最大的那部分（子 Agent 的检索）中途退出就全没了；
+            # 混进主历史又会污染上下文（子 Agent 的独立上下文正是委派的意义）。
+            self._conn.execute(
+                "ALTER TABLE messages ADD COLUMN sidechain INTEGER NOT NULL DEFAULT 0")
 
     # ---- 会话 ------------------------------------------------------------
     def create_session(self, title: str, model: str | None, workspace: str | None = None) -> int:
@@ -189,20 +197,29 @@ class Store:
         return row is not None
 
     # ---- 消息 ------------------------------------------------------------
-    def add_message(self, session_id: int, role: str, content) -> None:
+    def add_message(self, session_id: int, role: str, content, sidechain: bool = False) -> None:
+        """落一条消息。`sidechain=True`＝子 Agent 的消息：存档留着，但**读回主历史时不给**。"""
         stored = blobs.dehydrate(content, self._blobs_dir) if self._externalize else content
         with self._lock:
             self._conn.execute(
-                "INSERT INTO messages(session_id, role, content, created_at) VALUES (?,?,?,?)",
-                (session_id, role, json.dumps(stored, ensure_ascii=False), time.time()),
+                "INSERT INTO messages(session_id, role, content, created_at, sidechain) "
+                "VALUES (?,?,?,?,?)",
+                (session_id, role, json.dumps(stored, ensure_ascii=False), time.time(),
+                 1 if sidechain else 0),
             )
             self._conn.commit()
 
-    def get_messages(self, session_id: int) -> list[dict]:
-        """返回 [{role, content}]，content 已还原为 str | list[dict]（含图片 rehydrate）。"""
+    def get_messages(self, session_id: int, include_sidechain: bool = False) -> list[dict]:
+        """返回 [{role, content}]，content 已还原为 str | list[dict]（含图片 rehydrate）。
+
+        **默认不给子 Agent 的消息**（sidechain）——这条是要害：恢复会话时它们要是混进主历史，
+        就等于把子 Agent 的中间过程塞回主模型上下文，委派"独立上下文、只回摘要"的意义当场没了。
+        存档/导出这类要看全貌的场合才传 include_sidechain=True。
+        """
+        where = "" if include_sidechain else " AND sidechain=0"
         with self._lock:
             rows = self._conn.execute(
-                "SELECT role, content FROM messages WHERE session_id=? ORDER BY id",
+                f"SELECT role, content FROM messages WHERE session_id=?{where} ORDER BY id",
                 (session_id,),
             ).fetchall()
         out = []
@@ -219,10 +236,21 @@ class Store:
         if keep < 0:
             keep = 0
         with self._lock:
+            # keep 数的是**主链**条数（调用方按 history 的下标给），而 sidechain 行与主链
+            # 交错躺在同一张表里——直接按行号切会把子 Agent 的消息算进去，砍错位置。
+            # 先找主链第 keep 条的 id 作分界，再把它之后的**全部**（含 sidechain）删掉：
+            # 那些旁链本就属于被丢弃的那几轮。
             rows = self._conn.execute(
-                "SELECT id FROM messages WHERE session_id=? ORDER BY id", (session_id,)
+                "SELECT id FROM messages WHERE session_id=? AND sidechain=0 ORDER BY id",
+                (session_id,),
             ).fetchall()
-            doomed = [(r["id"],) for r in rows[keep:]]
+            if keep >= len(rows):
+                return
+            cutoff = rows[keep - 1]["id"] if keep > 0 else -1
+            doomed = [(r["id"],) for r in self._conn.execute(
+                "SELECT id FROM messages WHERE session_id=? AND id>? ORDER BY id",
+                (session_id, cutoff),
+            ).fetchall()]
             if not doomed:
                 return
             self._conn.executemany("DELETE FROM messages WHERE id=?", doomed)

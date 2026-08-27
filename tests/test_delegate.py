@@ -6,6 +6,7 @@ delegate/update_tasks"的注册表性质。运行：python tests/test_delegate.p
 from __future__ import annotations
 
 import sys
+import time
 import tempfile
 from pathlib import Path
 
@@ -394,6 +395,50 @@ def test_loop_no_hit_flag_on_normal_finish(tmp: Path):
     loop = AgentLoop(FakeProv(), build_registry(tmp), PermissionGate(lambda d: None), max_steps=3)
     loop.run([Message("user", "hi")], None, lambda *a: None)
     assert loop.hit_max_steps is False
+
+
+def test_loop_wallclock_budget_forces_summary(tmp: Path):
+    """撞**时间上限**：走与撞步数上限同一条收尾路径——不杀线程，让它把已有成果总结交回。"""
+    from agentcore.agent.gate import PermissionGate
+    from agentcore.agent.loop import AgentLoop
+    from agentcore.providers.base import StreamEvent, ToolCall
+
+    class SlowProv:
+        def stream_chat(self, messages, system=None, tools=None):
+            if not tools:  # 收尾轮
+                yield StreamEvent("text", "总结：时间到，已拿到 A、B 两条数据。")
+                yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+                return
+            time.sleep(0.12)   # 每步都比预算长：第二步开始前就该判超时
+            yield StreamEvent("tool_use", meta={"call": ToolCall("c", "list_dir", {"path": "."})})
+            yield StreamEvent("done", meta={"stop_reason": "tool_use"})
+
+    errs = []
+    loop = AgentLoop(SlowProv(), build_registry(tmp), PermissionGate(lambda d: None),
+                     max_steps=50, time_budget_s=0.1)
+    msgs = loop.run([Message("user", "查点东西")], None,
+                    lambda e, d=None: errs.append(d) if e == "error" else None)
+    assert loop.hit_deadline is True
+    assert loop.hit_max_steps is False, "撞的是时间不是步数，两个标志不能混"
+    assert msgs[-1].role == "assistant" and "总结" in msgs[-1].content
+    assert any("时间上限" in str(x) for x in errs), errs
+
+
+def test_loop_wallclock_zero_means_unlimited(tmp: Path):
+    """0 = 不限（默认行为零变化）：跑得再久也不该置位。"""
+    from agentcore.agent.gate import PermissionGate
+    from agentcore.agent.loop import AgentLoop
+    from agentcore.providers.base import StreamEvent
+
+    class P:
+        def stream_chat(self, messages, system=None, tools=None):
+            time.sleep(0.05)
+            yield StreamEvent("text", "答完")
+            yield StreamEvent("done", meta={"stop_reason": "end_turn"})
+
+    loop = AgentLoop(P(), build_registry(tmp), PermissionGate(lambda d: None), time_budget_s=0)
+    loop.run([Message("user", "hi")], None, lambda *a: None)
+    assert loop.hit_deadline is False
 
 
 def _run_all():

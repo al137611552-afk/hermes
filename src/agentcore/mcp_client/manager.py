@@ -119,6 +119,38 @@ class McpManager:
         # "停止 A"会把 B 正在跑的 codex 一起取消（2026-08-24 真机：A 是联网搜索、
         # B 在委派 codex，停 A 停掉了 B）。
         self._inflight: dict = {}            # future -> owner（None = 无主）
+        # 重连后的接班人（见 succeed_to）。close() 掉的 manager 不是死了，是**交班**了。
+        self._successor: "McpManager | None" = None
+
+    # ---- 交班（重连）-----------------------------------------------------
+    def succeed_to(self, mgr: "McpManager") -> None:
+        """把本 manager 的后续调用转交给接班人（重连时由 `_reconnect_mcp` 接这根线）。
+
+        重连（切有头 / 开关某个 server）是 **close 老的 + 建新的**，各对话的 registry 也会重建。
+        但**正在跑的那一轮握着的是回合开始时快照的 registry**（conversation.py 里
+        `registry = self.registry...` 那句），里面的 McpTool 把 caller 绑死在老 manager 的
+        `call` 上。不接这根线，那一轮剩下的每一次 MCP 调用都撞老 manager 的空 `_sessions`
+        报「未连接」，直到本轮结束——而设置面板读的是新 manager，显示一切正常。
+        2026-08-26 真机就是这样：换手中途点了「切到有头」，之后 browser_* 全废，
+        模型据此判定「浏览器服务故障」，用户看着面板说"我这边连接是好的"，两边都没说错。
+        """
+        if mgr is not self:
+            self._successor = mgr
+
+    def _live_successor(self) -> "McpManager | None":
+        """沿交班链找到当前真正在跑的 manager；没有则 None。
+
+        带环保护：交班链正常是一条直线（每次重连都 new 一个），但成环就是死循环，
+        这个代价不值得赌。
+        """
+        seen = {id(self)}
+        mgr = self._successor
+        while mgr is not None and id(mgr) not in seen:
+            if mgr._loop is not None:
+                return mgr
+            seen.add(id(mgr))
+            mgr = mgr._successor
+        return None
 
     @property
     def errors(self) -> dict:
@@ -278,6 +310,11 @@ class McpManager:
         的归属判定，不进请求。
         """
         if self._loop is None or server not in self._sessions:
+            # 本 manager 已交班（重连换掉）→ 把这次调用转给接班人，别让在飞的那一轮
+            # 陪葬到本轮结束（见 succeed_to）。没有接班人才是真的没连上。
+            live = self._live_successor()
+            if live is not None:
+                return live.call(server, tool_name, params, stream=stream, owner=owner)
             raise RuntimeError(f"MCP server '{server}' 未连接")
         session = self._sessions[server]
         kw = {}

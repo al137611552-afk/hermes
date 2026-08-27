@@ -40,7 +40,7 @@ from ..multimodal import (Limits, build_user_content, describe_image, preprocess
                           render_saved_note, save_images)
 from ..paths import APP_DIR, BUNDLE_DIR
 from ..skills import Skill, build_skills_block, discover_skills, skill_dirs
-from ..providers import Message, build_provider
+from ..providers import Message, account_problem, build_provider
 from ..store import make_title
 from ..trajectory import TrajectoryRecorder, build_skill_prompt, steps_from_dicts
 from ..tools import build_registry
@@ -217,6 +217,9 @@ class Conversation:
         # 轨迹录制（ADR 0023 决策 4~8）：**人手动开关**，不录时 observe 直接返回、零开销。
         # 挂在 emit 这个咽喉上而不是各处埋点：工具事件（含子 Agent 的）本就全从这过，采集面不新增。
         self._trace = TrajectoryRecorder()
+        # 模型 API 账户级异常（402/401/403）已提醒过的原因。**一条原因只吵一次**：
+        # 同一把 key 挂了，每次搜索的重排都会撞一遍，刷屏反而盖掉别的信息。
+        self._account_warned: set[str] = set()
         def _emit(event, data):
             if self._trace.recording:
                 self._trace.observe(event, data)
@@ -349,9 +352,19 @@ class Conversation:
         文案上**明确标成系统通知**：这不是用户说的话，模型不该把它当人的指令来讨好；
         它只是一条事实，怎么处理由模型自己判断（决策 3）。
         """
+        self.notify_system(body)
+
+    def notify_system(self, body: str) -> None:
+        """把一条**事实**送进本对话（忙则并入当前轮、闲则起新一轮），走 enqueue 那条已验证的通路。
+
+        给"发生了模型看不见的事"用：后台进程终态、以及浏览器没弹出来这类
+        **只到了 UI 却没到模型**的失败（2026-08-26 真机：换手打开目标页失败只弹了个 toast，
+        模型据此毫不知情地继续走，最后猜出"重启应用"，用户因此丢了整轮检索成果）。
+        **模型看不到的失败，等于没有发生过。**
+        """
         try:
             self.enqueue(f"［系统通知·非用户输入］{body}")
-        except Exception:  # noqa: BLE001 — 通知失败不该把进程管理拖下水
+        except Exception:  # noqa: BLE001 — 通知失败不该把调用方拖下水
             pass
 
     def _take_injects(self) -> list[str]:
@@ -406,9 +419,44 @@ class Conversation:
 
     def _on_handoff_request(self, req: dict) -> None:
         """换手（FR-15）阻塞等待人接管：进 awaiting。这是本 FR 最要紧的一条——
-        换手请求只是会话内的一条消息，不冒泡到全局的话，用户不切进来就不知道它在等。"""
+        换手请求只是会话内的一条消息，不冒泡到全局的话，用户不切进来就不知道它在等。
+
+        **同时把本轮已经拿到的东西落盘**（见 `_snapshot_handoff`）：换手是最容易发生
+        "人去操作、中途出岔子、最后重启应用"的节点，而换手请求本身只活在内存里、
+        重启即蒸发（2026-08-26 真机：用户被建议重启，重启后整轮检索成果全没了）。
+        **靠模型自觉写 notes 是不够的**——它想不起来的时候正是最该记的时候，所以由代码做。
+        """
         self._enter_awaiting("handoff")
+        self._snapshot_handoff(req)
         self.emit("handoff_request", req)
+
+    def _snapshot_handoff(self, req: dict) -> str:
+        """把换手目标 + 本轮已获得的执行证据写进工作区文件，返回路径（失败返回空串）。
+
+        **落工作区文件而不是 session_notes**：notes 要回到同一个会话才看得见，
+        而这条路径上最常见的恰恰是"重启后落在新会话里"。工作区文件跨会话、跨重启都在，
+        模型用现成的 read_file / grep_search 就能找回来，不必为它造新机制。
+        """
+        from ..tools.delegate import summarize_activity
+        try:
+            evidence = summarize_activity(self.history, max_items=40, max_chars=400)
+            target = str(req.get("target") or "").strip()
+            safe = "".join(c for c in target if c.isalnum() or c in "-_.")[:40] or "handoff"
+            d = self.workspace / ".hermes" / "handoff"
+            d.mkdir(parents=True, exist_ok=True)
+            # 文件名带时间戳：同一个目标换手两次不该互相覆盖（覆盖会让"上一次的现场"凭空消失）
+            path = d / f"{time.strftime('%Y%m%d-%H%M%S')}-{safe}.md"
+            path.write_text(
+                f"# 换手记录 · {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"- 目标：{target}\n"
+                f"- 需要人做的：{str(req.get('reason') or '').strip()}\n"
+                f"- 交回后怎么验：{str(req.get('verify') or '').strip()}\n\n"
+                "## 换手时已经拿到的东西\n\n"
+                "（**自动记录**，防止中途重启/换会话后成果丢失。下面是本轮实际调用的工具与结果摘要。）\n\n"
+                f"{evidence}\n", encoding="utf-8")
+            return str(path)
+        except Exception:  # noqa: BLE001 — 记录失败绝不能反过来挡住换手本身
+            return ""
 
     def _persist_permission_rule(self, rule: str) -> None:
         """把「总是允许这类」推导出的规则写进用户覆盖层，并同步到内存 config（本进程立即一致）。"""
@@ -636,6 +684,9 @@ class Conversation:
         fresh=True（crazy Ralph 式）：**不喂累积历史**，只把 `messages`（本轮目标+状态）原样喂模型——
         每轮 fresh context、与历史隔离、跨轮记忆靠 notes/tasks。新增消息仍落 history/DB 供前端显示。"""
         res = self.res
+        # 新回合：清空检索缓存。**不跨回合复用**——用户说"再搜一下最新的"却拿到上一轮的旧结果，
+        # 比多搜一次危险得多（webcache 模块注释）。回合内的重复搜索则是纯浪费。
+        self._get_retrieval_cache().new_turn()
         # 在 provider 之前就建好：**四个终态出口都要用它**，其中"模型档/密钥配错"这条正好
         # 发生在 provider 构造失败时——建晚了那条出口就没得用（合并 B3 时真漏过一次）。
         hook_runner = self._make_hook_runner()
@@ -675,9 +726,22 @@ class Conversation:
             workspace=self.workspace,
         )
         n_in = len(model_messages)  # 压缩后喂入条数；loop 仅在其后追加新消息
+        # 边跑边落库（2026-08-27）：此前是**跑完才一次性落库**，于是应用中途非正常退出
+        # （崩溃/强关/断电）＝这一轮搜到的东西全部蒸发，库里一条都没有。一条消息一次
+        # SQLite 写入，代价可忽略；换来的是"退出时最多只丢正在进行的那一步"。
+        # 顺带修好了换手落盘：`_snapshot_handoff` 读 self.history，而本轮的工具调用
+        # 以前要等回合结束才进 history——它记下来的其实是**上一轮**的现场。
+        live_persisted: list = []
+
+        def _on_msg(m) -> None:
+            with self.lock:
+                self.history.append(m)
+            self._persist(m)
+            live_persisted.append(m)
+
         try:
             result = loop.run(model_messages, system, self.emit, cancel=self._cancel,
-                              take_injects=self._take_injects)
+                              take_injects=self._take_injects, on_message=_on_msg)
             self._last_turn_hit_max = getattr(loop, "hit_max_steps", False)  # 供 crazy 外层判断本轮是否被步数截断
             # B 验证闭环（FR-11.2c）：本轮改过文件 -> 收尾跑 test_command；失败回灌输出、复用同一
             # loop 续跑让模型修，限 test_max_iters 次。原地往 result 追加修复轮消息（下方统一落库）。
@@ -689,9 +753,12 @@ class Conversation:
             return {"ok": False, "error": str(e)}
 
         new_msgs = result[n_in:]  # 主轮 + auto_test 修复轮的全部新增（取消时为已完成部分）
+        # 绝大多数已由 _on_msg 边跑边落过；这里只补尾巴（异常路径下 on_message 没接上时
+        # 一条都没落，`rest` 就是全部——行为退回加这个机制之前）。
+        rest = new_msgs[len(live_persisted):]
         with self.lock:
-            self.history.extend(new_msgs)
-        for m in new_msgs:
+            self.history.extend(rest)
+        for m in rest:
             self._persist(m)
         if res.store and self.session_id is not None:
             res.store.touch_session(self.session_id)
@@ -1915,6 +1982,9 @@ class Conversation:
         loop = AgentLoop(
             provider, self._subagent_registry(role_obj), self.gate,
             max_steps=cfg.agent.subagent_max_steps,
+            # 墙钟上限只给**子 Agent**（0=不限）：主循环是用户全程盯着的，卡了自己会按停止；
+            # 子任务在后台跑、主 Agent 干等最慢那个，没人替它喊停。
+            time_budget_s=getattr(cfg.agent, "subagent_timeout_s", 0),
             hook_runner=self._make_hook_runner(),  # 子 Agent 同样受 hooks 约束
             stuck_threshold=cfg.agent.stuck_edit_threshold,
             browse_nudge=self._browse_nudge_enabled(),
@@ -1931,9 +2001,20 @@ class Conversation:
             tool_budget=self._get_tool_budget(cfg),   # 与主 Agent 同一实例：子 Agent 的搜索也计入总数
             workspace=self.workspace,   # 与主 Agent 同口径，否则同一条路两种指纹
         )
+        def _persist_sub(m) -> None:
+            """子 Agent 的消息**只落库、不进 self.history**（sidechain）。
+
+            委派型调研里搜索量最大的恰恰是这部分，不落库就等于"中途退出＝子 Agent 白搜"；
+            但混进主历史就把它的中间过程塞回了主模型上下文，委派"独立上下文、只回摘要"
+            的意义当场没了。所以进同一张表、打标记区分——与 Claude Code 存档里的
+            `isSidechain` 同一个思路。落库后模型可以用 recall_history 把它捞回来。
+            """
+            self._persist(m, sidechain=True)
+
         # 子循环抛异常时自动重试一次（附上失败原因），仍失败才回灌主 Agent（FR-11.6b）。
         # 取消时不重试（用户主动停止）。
         result = None
+        sub_err = ""          # 子循环是否死在模型侧（见下方 stream_error）
         for attempt in range(2):
             ctx = context
             if attempt == 1:  # 重试：把上次失败原因补进上下文
@@ -1942,14 +2023,24 @@ class Conversation:
             messages = [Message("user", compose_task(task, ctx))]
             try:
                 result = loop.run(messages, self._subagent_system(role_obj), sub_emit,
-                                  cancel=self._cancel)
-                break
+                                  cancel=self._cancel, on_message=_persist_sub)
             except Exception as e:  # noqa: BLE001
                 last_err = f"{type(e).__name__}: {e}"
                 if attempt == 1 or self._cancel.is_set():
                     self.emit("subagent_done", {"id": sub_id, "ok": False, "summary": last_err})
                     return f"子任务出错（已重试）：{last_err}"
                 sub_emit("error", f"出错，自动重试一次：{last_err}")
+                continue
+            # 模型侧错误（端点 402/鉴权失败/流式断且重试用尽）**不抛异常**：provider 把它转成
+            # error 事件，loop 记在 stream_error 上后正常返回。不在这里认领，残缺结果就会被
+            # 当成"子任务完成"交给主 Agent——主模型据此下结论，错得毫无察觉（2026-08-26 真机）。
+            sub_err = getattr(loop, "stream_error", "")
+            if not sub_err:
+                break
+            last_err = sub_err
+            if attempt == 1 or self._cancel.is_set() or account_problem(sub_err):
+                break          # 账户级问题重试无意义；余下情形已重试过。保留部分结果，下方统一标注
+            sub_emit("error", f"模型侧出错，自动重试一次：{last_err}")
 
         summary = extract_summary(result)
 
@@ -1979,6 +2070,22 @@ class Conversation:
                     break
                 summary = extract_summary(result)
 
+        if sub_err:  # 子任务死在模型侧：**必须**让主 Agent 知道这份结果是半截的
+            summary = (
+                f"⚠【子任务未完成 · 模型调用失败】子 Agent 中途因模型侧错误停止：{last_err}\n"
+                "下面只是它停止前的**部分**成果，**不完整、不可直接当最终答案**。你必须："
+                "①先说明这份调研缺了什么；②能补就自己补检索，补不了就如实告诉用户"
+                "「子任务因模型调用失败未完成」并停下。**禁止**把它当完整结果总结输出。部分成果如下：\n"
+                + summary
+            )
+        if getattr(loop, "hit_deadline", False):   # 子任务撞时间上限：同样是半成品，但原因不同
+            summary = (
+                "⚠【子任务未完成 · 撞时间上限】下面只是子 Agent 在时间用尽前的**部分**成果，"
+                "**不完整、不可直接当最终答案**。它是被墙钟截断的（不是查不到），"
+                "所以缺口多半集中在它还没来得及做的那部分。你必须：①先判断还缺什么；"
+                "②自己补齐或另派一个更聚焦的子任务；③补全后再给结论。部分成果如下：\n"
+                + summary
+            )
         if getattr(loop, "hit_max_steps", False):  # 子任务撞步数上限：强命令式告知主 Agent 别直接用
             summary = (
                 "⚠【子任务未完成 · 撞步数上限】下面只是子 Agent 在步数用尽前的**部分**成果，"
@@ -1987,7 +2094,7 @@ class Conversation:
                 "**禁止**把这段不完整的部分结果直接当成完整结果总结输出、也不要据此就判定任务完成。部分成果如下：\n"
                 + summary
             )
-        self.emit("subagent_done", {"id": sub_id, "ok": True, "summary": summary})
+        self.emit("subagent_done", {"id": sub_id, "ok": not sub_err, "summary": summary})
         return summary
 
     # ---- 长期记忆（P6.3）：离开会话时自动抽取 ---------------------------
@@ -2141,10 +2248,10 @@ class Conversation:
             self._pending_workspace = None
             self.emit("session_created", {"id": self.session_id})
 
-    def _persist(self, msg: Message) -> None:
+    def _persist(self, msg: Message, sidechain: bool = False) -> None:
         res = self.res
         if res.store and self.session_id is not None:
-            res.store.add_message(self.session_id, msg.role, msg.content)
+            res.store.add_message(self.session_id, msg.role, msg.content, sidechain=sidechain)
 
     # ---- 自动生成项目规范 hermes.md --------------------------------------
 
@@ -2369,6 +2476,19 @@ class Conversation:
             self._tool_budget_cache = tb
         return tb
 
+    def _get_retrieval_cache(self):
+        """同回合共享检索缓存：懒建并复用**单个** RetrievalCache，主 Agent 与所有子 Agent 传同一个。
+
+        与 ToolBudget 同构——共用是要害，各拿一份等于没有缓存。开关在 registry 里判
+        （`web.turn_cache`），这里只负责"全会话一个实例"。
+        """
+        rc = getattr(self, "_retrieval_cache", None)
+        if rc is None:
+            from ..webcache import RetrievalCache
+            rc = RetrievalCache()
+            self._retrieval_cache = rc
+        return rc
+
     def _make_research_judge(self, provider, enabled: bool):
         """块H3a/H3b：构造模型裁判 judge_fn(prompt, images)->str，用当前 provider 跑一次只读判断。
 
@@ -2412,10 +2532,32 @@ class Conversation:
             provider = build_provider(cfg, self.active_model)
             out = []
             for ev in provider.stream_chat([Message("user", prompt)], system=None, tools=[]):
-                if getattr(ev, "type", None) == "text":
+                kind = getattr(ev, "type", None)
+                if kind == "text":
                     out.append(ev.text)
+                elif kind == "error":
+                    # 重排失败一律降级（搜索绝不能因此挂掉），但**账户级不是普通降级**：
+                    # 这里是全流程**最早**能发现"模型 API 的钱/权限出问题了"的地方——每次
+                    # web_search 都会打一发模型。静默吞掉的代价是：用户要等到某个子 Agent
+                    # 半路死掉才知道，还会因为搜索显示"完成"而误判成搜索配额用尽
+                    # （2026-08-26 真机踩到的正是这条）。
+                    self._warn_model_account(ev.text)
+                    return ""
             return "".join(out)
         return rerank_fn
+
+    def _warn_model_account(self, err: str) -> None:
+        """模型 API 账户级异常（计费/鉴权/权限）→ 明着告诉用户一次。
+
+        只认账户级：网络抖动、解析失败那类是**正常降级**，吵出来只会制造噪音。
+        """
+        if not account_problem(err):
+            return
+        key = err[:120]
+        if key in self._account_warned:
+            return
+        self._account_warned.add(key)
+        self.emit("error", err)
 
     def _browse_nudge_enabled(self) -> bool:
         """情境自启：项目代码文件数 ≥ 阈值时，启用「浏览太多→提示 search_code」。"""
@@ -2514,6 +2656,7 @@ class Conversation:
             search_reranker=self._make_search_reranker(),
             owner=self.cid,          # 「停止」要能只停本对话的在飞 MCP 调用
             cancel=self._cancel,     # 阻塞型工具（web_search/web_fetch）的停止令牌
+            retrieval_cache=self._get_retrieval_cache(),   # 同回合共享检索缓存（与子 Agent 同一个）
         )
 
     def _make_artifact_sink(self):
@@ -2833,6 +2976,9 @@ class Conversation:
             search_reranker=self._make_search_reranker(),   # 子 Agent 搜索同样走模型重排
             owner=self.cid,               # 子 Agent 的调用算本对话的：停本对话要连它一起停
             cancel=self._cancel,          # 停止级联：子 Agent 的检索与主 Agent 共用同一个令牌
+            retrieval_cache=self._get_retrieval_cache(),   # **与主 Agent 同一个实例**：
+            # 各拿一份等于没有缓存。（注：真跑实测跨子 Agent 的逐字重复是 0 次，
+            # 这道保险平时不响——别据此以为它接错了，见 webcache 模块注释）
         )
         # 子 Agent 与主 Agent 同一套分工（见 _make_browser_reader）：搜索走 HTTP、
         # 读不动的页面由 web_fetch 自动升级到浏览器；会浏览的角色照常还有 browser_* 可主动下钻。

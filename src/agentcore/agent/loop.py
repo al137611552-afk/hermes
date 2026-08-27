@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
@@ -431,6 +432,30 @@ def truncation_nudge(n_done: int) -> "str | None":
     return _TRUNCATION_NUDGES[n_done]
 
 
+class _LiveList(list):
+    """append 时回调一次的消息列表——让"边跑边落库"不必在十来个 append 点各加一句。
+
+    回合内的消息此前是**跑完才一次性落库**的，于是应用中途退出（崩溃/强关/断电）＝
+    这一轮搜到的东西全部蒸发，库里一条都没有（2026-08-27 用户第三次报同一个现象）。
+    按停止不受影响——那条路 loop 正常返回、照常落库；丢的只有**非正常退出**。
+
+    用 list 子类而不是在每个 append 点加回调：`AgentLoop.run` 里有十来处 append，
+    往后还会加，逐点埋钩子迟早漏一处，而漏掉的那处正好是"某类消息永远不落库"这种静默的坑。
+    """
+    __slots__ = ("_hook",)
+
+    def __init__(self, items, hook) -> None:
+        super().__init__(items)
+        self._hook = hook
+
+    def append(self, item) -> None:
+        super().append(item)
+        try:
+            self._hook(item)
+        except Exception:  # noqa: BLE001 — 落库失败绝不能把正在跑的这一轮带走
+            pass
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -439,6 +464,7 @@ class AgentLoop:
         gate: PermissionGate,
         *,
         max_steps: int = 25,
+        time_budget_s: float = 0,
         hook_runner=None,
         stuck_threshold: int = 0,
         browse_nudge: bool = False,
@@ -459,6 +485,11 @@ class AgentLoop:
         self.registry = registry
         self.gate = gate
         self.max_steps = max_steps
+        # 本轮墙钟上限（秒，0=不限）。治的是**木桶效应**：并行委派时主 Agent 要等最慢的那个子任务
+        # （2026-08-26 真跑：三个 subagent_done 落在 537.6/629.7/646.4s，白等 109s）。
+        # 撞上限**不是杀线程**——走与撞步数上限完全相同的收尾路径：禁掉工具、让它把已拿到的
+        # 东西总结出来交回。半成品明确标注比硬杀掉一个跑了十分钟的子任务有用得多。
+        self.time_budget_s = float(time_budget_s or 0)
         self.hook_runner = hook_runner  # 可编程 hooks（PreToolUse/PostToolUse）；None=无
         self.stuck_threshold = stuck_threshold  # 情境自启：反复改同一文件失败→提示 trace_run；0=关
         self.browse_nudge = browse_nudge        # 情境自启：大库里浏览太多→提示 search_code（按工作区规模启用）
@@ -489,6 +520,7 @@ class AgentLoop:
         emit: Callable[[str, object], None],
         cancel: threading.Event | None = None,
         take_injects=None,
+        on_message=None,
     ) -> list[Message]:
         """跑完一整轮对话（可能含多步工具调用）。
 
@@ -501,7 +533,14 @@ class AgentLoop:
         take_injects：可选 `() -> list[str]` 回调，返回并清空"用户在执行中追加的补充消息"
         （steering）。每次工具往返回灌时拉取，把补充附进同一条 user 消息——模型下一轮即看到
         「工具结果 + 用户补充」，可据此重新评估、调整当前任务方向，而非等任务做完再当新事处理。
+
+        on_message：可选 `(Message) -> None` 回调，**每追加一条消息就调一次**，供调用方
+        边跑边落库（见 `_LiveList`）。给了它，返回的就是包装后的列表（行为与 list 一致）。
         """
+        if on_message is not None and not isinstance(messages, _LiveList):
+            # 边跑边落库（见 _LiveList）。**已经包过就不再包**——auto_test 修复轮会拿着同一个
+            # 列表再调一次 run，重复包等于每条消息落两遍。
+            messages = _LiveList(messages, on_message)
         tools = self.registry.to_schemas()
         # 用量累计（FR-11.8 / ADR 0025）：跨步累加 token，记步数，回合末发 usage 事件。
         # `input` 一律指**未命中缓存**的输入；缓存写/读分列（单价不同，合并即丢失可算性）。
@@ -512,6 +551,12 @@ class AgentLoop:
         steps = 0
         warned = False
         self.hit_max_steps = False   # 本轮是否撞步数上限（供委派标注"子任务未完成"）
+        self.hit_deadline = False    # 本轮是否撞墙钟上限（同上，两者标注文案不同）
+        deadline = (time.monotonic() + self.time_budget_s) if self.time_budget_s > 0 else None
+        # 本轮是否死在模型侧错误（provider 把流式失败转成 error 事件，loop 正常返回、**不抛异常**）。
+        # 不暴露出去，委派侧就分不清"子任务做完了"和"子任务半路挂了"，会把残缺结果当成功交给主 Agent
+        # ——2026-08-26 模型端点 402 时真机踩到。
+        self.stream_error = ""
         edit_counts: dict[str, int] = {}  # 情境自启：本轮各文件被编辑次数
         nudged: set[str] = set()          # 已提示过 trace_run 的文件（每文件只提一次）
         browse_state: dict = {}           # 情境自启：浏览计数 / 是否用过 search_code / 是否已提示
@@ -534,6 +579,11 @@ class AgentLoop:
         for _ in range(self.max_steps):
             if cancel is not None and cancel.is_set():
                 break  # 收到取消：停在回合边界，已追加的消息照常返回/落库
+            if deadline is not None and time.monotonic() >= deadline:
+                # 超时判定放在**步与步之间**（同 cancel）：不打断在飞的工具/模型流，
+                # 只是不再开新的一步。跑满 15 步的子 Agent 因此最多超出"最后一步"的时长。
+                self.hit_deadline = True
+                break
             steps += 1
             # 步数接近上限时预警一次（长任务"在推进还是打转"可感知）
             if not warned and self.max_steps >= 5 and steps >= int(self.max_steps * 0.8):
@@ -559,6 +609,7 @@ class AgentLoop:
                 elif ev.type == "error":
                     emit("error", ev.text)
                     errored = True
+                    self.stream_error = ev.text
                     break
                 elif ev.type == "done":
                     stop_reason = ev.meta.get("stop_reason")
@@ -759,13 +810,18 @@ class AgentLoop:
             messages.append(Message("user", results + extra_blocks + inject_blocks))
         else:
             self.hit_max_steps = True
-            # 撞步数上限：强制收尾一轮——禁用工具，让模型基于已收集信息立即给出总结/结论。
+        # 两种上限（步数 / 墙钟）走**同一条收尾路径**——差别只在告诉模型是哪一种。
+        if self.hit_max_steps or self.hit_deadline:
+            # 撞上限：强制收尾一轮——禁用工具，让模型基于已收集信息立即给出总结/结论。
             # 否则 messages 最后一条是 tool_result、无任何文本产出，委派子任务回灌空摘要（FR-9.3）、
             # 长任务也只能裸退。把收尾指令并入最后那条 user 消息（撞上限时它一定是 tool_result），
             # 避免两条连续 user 破坏交替。
             if cancel is None or not cancel.is_set():
+                why = ("已达到本次子任务的**时间上限**（墙钟）——别人还在等你的结果"
+                       if self.hit_deadline
+                       else "已达到防跑飞步数上限（工具调用次数过多，疑似在原地打转）")
                 hint = {"type": "text", "text": (
-                    "[系统] 已达到防跑飞步数上限（工具调用次数过多，疑似在原地打转）。现在不能再调用任何工具。"
+                    f"[系统] {why}。现在不能再调用任何工具。"
                     "请立即基于上面已经收集到的信息，给出尽可能有用的总结/结论：包含已获得的关键数据/发现、"
                     "尚未完成的部分，以及若要继续该换的思路。不要再请求工具。"
                 )}
@@ -796,8 +852,12 @@ class AgentLoop:
                     final_text = ""
                 if final_text.strip():
                     messages.append(Message("assistant", final_text))
-            emit("error", f"工具调用已达防跑飞上限（{self.max_steps} 步，疑似原地打转），已基于已收集信息收尾。"
-                          f"如确属超长任务，可在设置调高「防跑飞上限」或改用委派拆分。")
+            if self.hit_deadline:
+                emit("error", f"已达时间上限（{int(self.time_budget_s)}s），已基于已收集到的信息收尾。"
+                              f"如确属超长子任务，可在设置调高「子任务时间上限」（0 = 不限）。")
+            else:
+                emit("error", f"工具调用已达防跑飞上限（{self.max_steps} 步，疑似原地打转），已基于已收集信息收尾。"
+                              f"如确属超长任务，可在设置调高「防跑飞上限」或改用委派拆分。")
 
         # 回合末上报用量（FR-11.8 / ADR 0025）：全 0 则不发，避免噪音。
         # 带上 model/provider/measured——落台账时要按**真实 model_id** 计价（档名可以随便起），

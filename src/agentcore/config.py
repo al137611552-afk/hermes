@@ -81,6 +81,12 @@ class AgentConfig(BaseModel):
     auto_conventions: bool = True  # 工作区有项目内容但缺 conventions_file 时，自动生成一版
     subagent_model: str | None = None  # 委派子任务用的模型档案名；None=用当前主模型（FR-9.3）
     subagent_max_steps: int = 15       # 子 Agent 循环步数上限（独立于主循环 max_steps）
+    # 单个子任务的墙钟上限（秒，0=不限）。治**木桶效应**：并行委派时主 Agent 要等最慢的那个
+    # （2026-08-26 真跑：三个子任务 537.6/629.7/646.4s 收尾，白等 109s）。撞上限不是杀线程，
+    # 而是禁掉工具让它把已有成果总结交回，并标注"未完成"。默认 900s 与 MCP 的 call_timeout 同口径。
+    # **默认 0=不限**（2026-08-26 用户拍板）：三轮真跑一次都没触发，它是护栏不是修复，
+    # 本版只收 bug 修复。需要治木桶效应时在面板调开即可。
+    subagent_timeout_s: int = 0
     subagent_max_tokens: int = 0       # 子 Agent 输出上限覆盖（0=跟随子模型档 max_tokens）
     roles: dict[str, RoleSpec] = {}    # 自定义子 Agent 角色（FR-10.5）；与内置角色合并、同名覆盖
     skills: bool = True                # 技能包（FR-13.S，对齐 Agent Skills 公共规范）：扫描技能目录，
@@ -311,6 +317,14 @@ class WebConfig(BaseModel):
     # 几乎从不触发，于是那把 key 什么也没买到。给了更好的源就默认用它；
     # 配额用尽（HTTP 402）时**自动退回免 key 链路并在结果里说明**，本进程内不再重试。
     firecrawl: str = "primary"
+    # 同回合共享检索缓存（webcache）：一个回合内同一个 query / 同一个 URL 只真跑一次，
+    # 主 Agent 与所有子 Agent 共用。治的是并行委派时"三个子 Agent 各自从头搜同一片领域"
+    # （2026-08-26 真跑：子工具调用 41 次 vs 主模型自己搜 19 次）。**按回合清空**，
+    # 不跨回合复用——"再搜一下最新的"却拿到旧结果，比多搜一次危险得多。
+    # **默认关**（2026-08-26 用户拍板）：三轮真跑命中 0 次，它治的"子 Agent 重复搜同一片领域"
+    # 经查询词证伪并不存在；本版只收 bug 修复，搜索路径保持与 v3.76.1 逐字节一致。
+    # 代码与 13 条测试留着——真遇到重复检索时打开即用（webcache 模块注释有完整来龙去脉）。
+    turn_cache: bool = False
 
 
 class ArtifactsConfig(BaseModel):
@@ -580,9 +594,13 @@ def browser_mcp_args(headed: bool) -> list:
     args = ["-y", "@playwright/mcp@latest"]
     if not headed:
         args.append("--headless")
-    # 必须用 chrome（@playwright/mcp 的 --browser 合法值只有 chrome/firefox/webkit/msedge，**没有 chromium**）；
-    # chrome 通道直接用系统已装的 Google Chrome（多数 Windows 本就有→零下载），缺则由 playwright install chrome 装。
-    args += ["--browser", "chrome", "--user-agent", BROWSER_UA]
+    # channel 合法值只有 chrome/firefox/webkit/msedge（**没有 chromium**）。
+    # **不再写死 chrome**：本机没装 Chrome 时它必然起不来，而 Windows 一定有 Edge——
+    # 2026-08-26 真机就栽在这里（点了「切到有头」，浏览器根本没弹出来，且没人说得清为什么）。
+    # 探测不到任何浏览器时仍回落 chrome：保持旧行为，让失败发生在有明确报错的那一层。
+    from .browsers import find_browsers, pick_channel
+    channel = pick_channel(find_browsers()) or "chrome"
+    args += ["--browser", channel, "--user-agent", BROWSER_UA]
     return args
 
 
@@ -720,6 +738,9 @@ LIMITS_SPEC = (
      "hint": "0 = 跟随子模型档", "type": "int", "min": 0, "max": 200000},
     {"key": "agent.subagent_max_steps", "group": "委派 / 子 Agent", "label": "子 Agent 步数上限",
      "hint": "子 Agent 循环步数（独立于主循环）", "type": "int", "min": 1, "max": 500},
+    {"key": "agent.subagent_timeout_s", "group": "委派 / 子 Agent", "label": "子任务时间上限（秒）",
+     "hint": "0 = 不限；到点不杀线程，而是让子 Agent 把已有成果总结交回并标注未完成。治并行委派的木桶效应",
+     "type": "int", "min": 0, "max": 7200},
     {"key": "agent.delegate_max_revisions", "group": "委派 / 子 Agent", "label": "回炉重评轮数",
      "hint": "0 = 关；子产出由 lead 评分不达标打回重做的最多轮数", "type": "int", "min": 0, "max": 10},
     # 评审

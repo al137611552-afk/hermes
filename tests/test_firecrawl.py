@@ -288,7 +288,9 @@ def test_render_items_matches_the_wire_format():
 
 def test_render_items_is_used_by_the_tool():
     import inspect
-    assert "render_items(" in inspect.getsource(WebSearchTool.run)
+    # 看**整个类**而不是 run：搜索主体已挪进 _search（run 只剩解析参数 + 查同回合缓存）。
+    # 盯的是"工具没有自己另写一份渲染"，不是它写在哪个方法里。
+    assert "render_items(" in inspect.getsource(WebSearchTool)
 
 
 

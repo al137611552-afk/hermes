@@ -1006,3 +1006,6 @@ test("tailLines 只留最后几行、跳过空行", () => {
   assert.equal(tailLines("a\n\nb\nc\nd", 2), "c\nd");
   assert.equal(tailLines("", 3), "");
 });
+
+const pure = require("../../web/pure.js");
+

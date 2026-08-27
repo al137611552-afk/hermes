@@ -334,6 +334,66 @@ def test_cancelled_call_reads_as_user_stop_not_as_failure():
     assert not m._inflight          # 登记表要清干净，别泄漏
 
 
+def test_reconnect_hands_inflight_calls_over_to_the_new_manager():
+    """2026-08-26 真机：换手中途点了「切到有头」，之后 browser_* 一路「未连接」到本轮结束。
+
+    重连是 close 老的 + 建新的，但**正在跑的那一轮握着回合开始时快照的 registry**，
+    里面的 McpTool 绑死在老 manager 上。老的接了班就该把调用转过去，而不是让那一轮陪葬
+    ——面板读的是新 manager，那边一切正常，两边说法对不上正是这个 bug 的样子。
+    """
+    from agentcore.config import MCPConfig
+    from agentcore.mcp_client.manager import McpManager
+
+    class _Loop:                      # 只够 close() 用：真 loop 要起线程，这里不需要
+        def call_soon_threadsafe(self, fn, *a):
+            pass
+        def stop(self):
+            pass
+
+    old = McpManager(MCPConfig(enabled=True, servers={"browser": {"command": "x"}}))
+    old._loop = _Loop()
+    old._sessions["browser"] = object()
+
+    new = McpManager(MCPConfig(enabled=True, servers={"browser": {"command": "x"}}))
+    seen = []
+    new._loop = object()
+    new._sessions["browser"] = object()
+    new.call = lambda *a, **k: seen.append((a, k)) or "ok"
+
+    old.close()                       # 重连第一步：老的关掉（_loop=None、_sessions 清空）
+    try:
+        old.call("browser", "browser_navigate", {"url": "u"})
+    except RuntimeError as e:
+        assert "未连接" in str(e)      # 没接班人时行为不变
+    else:
+        raise AssertionError("没有接班人时应照旧报未连接")
+
+    old.succeed_to(new)               # 重连第二步：接上交班线
+    assert old.call("browser", "browser_navigate", {"url": "u"}, owner=3) == "ok"
+    (args, kw) = seen[0]
+    assert args[0] == "browser" and args[1] == "browser_navigate"
+    assert kw["owner"] == 3           # owner 要一路传过去，否则「停止」认不出人
+
+
+def test_succession_chain_never_loops_forever():
+    """交班链正常是一条直线，但成环就是死循环——这个代价不值得赌。"""
+    from agentcore.config import MCPConfig
+    from agentcore.mcp_client.manager import McpManager
+
+    a = McpManager(MCPConfig(enabled=True))
+    b = McpManager(MCPConfig(enabled=True))
+    a.succeed_to(b)
+    b.succeed_to(a)                   # 环：两个都已 close（_loop 均为 None）
+    a.succeed_to(a)                   # 自己不能当自己的接班人
+    assert a._successor is b
+    try:
+        a.call("s", "t", {})
+    except RuntimeError as e:
+        assert "未连接" in str(e)
+    else:
+        raise AssertionError("全链都没在跑时应报未连接")
+
+
 def test_stop_forwards_to_mcp():
     """Conversation.stop() 必须把停止传到 MCP，否则按了停止仍要等 call_timeout。"""
     import inspect

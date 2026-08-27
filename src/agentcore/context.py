@@ -183,6 +183,36 @@ def build_summary_request(
     return _SUMMARY_SYSTEM, [Message("user", "\n\n".join(parts))]
 
 
+INTERRUPTED_NOTE = ("[中断] 应用在这一步执行期间退出，本次工具调用没有结果。"
+                    "上面已经拿到的内容仍然有效，据它继续，必要时把这一步重做一遍。")
+
+
+def repair_interrupted_tail(messages: "list[Message]") -> "tuple[list[Message], int]":
+    """给"断在半路"的历史补上缺失的 tool_result，返回 (修好的历史, 补了几个块)。纯函数。
+
+    边跑边落库（`Conversation._run_turn`）之后，非正常退出可能把历史停在
+    **assistant 发了 tool_use、但 tool_result 还没落库**的位置。这种历史直接喂回模型，
+    Anthropic 会当场报 `tool_use ids were found without tool_result blocks`——
+    于是"崩溃丢内容"就换成了"这个会话再也发不出消息"，更糟。
+
+    所以补一条**说明是中断**的 tool_result，而不是把那条 assistant 删掉：
+    删掉等于连模型"当时打算干什么"一起抹了，而那恰恰是接着干最有用的线索。
+    只看**末尾**——历史中间的配对由 loop 保证，中间出现不配对是另一回事，别在这里顺手改。
+    """
+    if not messages:
+        return messages, 0
+    last = messages[-1]
+    if getattr(last, "role", None) != "assistant" or not isinstance(last.content, list):
+        return messages, 0
+    ids = [b.get("id") for b in last.content
+           if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id")]
+    if not ids:
+        return messages, 0
+    blocks = [{"type": "tool_result", "tool_use_id": i, "content": INTERRUPTED_NOTE}
+              for i in ids]
+    return list(messages) + [Message("user", blocks)], len(blocks)
+
+
 def _read_sources(messages: list[Message]) -> dict[str, str]:
     """建 tool_use_id -> read_file 路径 的映射（FR-11.3b 可重读引用）。
 

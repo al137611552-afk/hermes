@@ -25,6 +25,8 @@ import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
+from ..webcache import (FETCH_HIT_NOTE, SEARCH_HIT_NOTE, fetch_key,
+                        search_key)
 from .base import Tool, ToolError
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 hermes-dev"
@@ -1080,7 +1082,7 @@ class WebSearchTool(Tool):
     def __init__(self, *, engine: str = "auto", timeout: int = 20, max_results: int = 5,
                  widen_pages: int = 1, reranker=None,
                  read_top_n: int = 0, read_chars: int = _READ_CHARS,
-                 artifacts=None, firecrawl: str = "off", cancel=None) -> None:
+                 artifacts=None, firecrawl: str = "off", cancel=None, cache=None) -> None:
         # 注意构造器默认＝**老行为**（不宽召回、不读正文、不重排），产品默认由 registry 从
         # config 注入（widen_pages=3 / read_top_n=3 / reranker）。同 research_judge 的做法：
         # 直接 new 出来的实例（存量单测、脚本）行为零变化，也不会在离线测试里偷偷连网。
@@ -1107,6 +1109,9 @@ class WebSearchTool(Tool):
         # 停止令牌（见 STOPPED_MSG 那段）：由 registry 注入本对话的 `_cancel`。
         # None＝没接（存量单测/脚本行为零变化）。
         self._cancel = cancel
+        # 同回合共享检索缓存（webcache.RetrievalCache）：主 Agent 与所有子 Agent **共用一个实例**，
+        # 否则每个子 Agent 各拿一份，等于没有缓存。None＝关（存量单测/脚本行为零变化）。
+        self._cache = cache
 
     def _search_firecrawl(self, query: str, limit: int) -> list[dict]:
         """Firecrawl `/v2/search`（受控 IO）。没 key 直接抛错，由调用方按"这个源没用上"处理。"""
@@ -1201,7 +1206,15 @@ class WebSearchTool(Tool):
         except (TypeError, ValueError):
             n = self._max_results
         n = max(1, min(n, MAX_RESULTS_CAP))
+        if self._cache is None:
+            return self._search(query, n)
+        # 同回合共享缓存（webcache）：逐字相同的查询只真跑一次。**真跑实测命中率是 0**
+        # （见 webcache 模块注释），它是便宜的保险而不是已证实的优化——不命中就是一次字典查找。
+        # 命中时要**说出来**，否则模型以为"搜两次都这样"，继续拿同样的关键词打转。
+        value, hit = self._cache.get_or_call(search_key(query, n), lambda: self._search(query, n))
+        return f"{SEARCH_HIT_NOTE}\n{value}" if hit else value
 
+    def _search(self, query: str, n: int) -> str:
         engines = _ENGINES if self._engine == "auto" else (self._engine,)
         # 配额用尽后**不再重试**：每次都先撞一次 402 才退回，白等一个往返
         quota = firecrawl_quota_exhausted()
@@ -1406,7 +1419,7 @@ class WebFetchTool(Tool):
 
     def __init__(self, *, timeout: int = 20, max_chars: int = DEFAULT_FETCH_CHARS,
                  browser_reader=None, artifacts=None, firecrawl: str = "off",
-                 cancel=None) -> None:
+                 cancel=None, cache=None) -> None:
         self._timeout = timeout
         self._max_chars = max_chars
         # ADR 0021：抓到了却被 cap 掉的原文落成产物（None=照旧丢弃）。
@@ -1426,6 +1439,8 @@ class WebFetchTool(Tool):
         # 停止令牌（见 STOPPED_MSG 那段）：本工具的阶梯是 HTTP → Firecrawl → 浏览器，
         # **每一档都是一次几十秒的等待**，档与档之间必须能停。None＝没接。
         self._cancel = cancel
+        # 同回合共享检索缓存：与 web_search 共用一个实例（见 WebSearchTool 那条注释）。
+        self._cache = cache
 
     def _clip_and_keep(self, text: str, cap: int, focus: str, url: str) -> str:
         """裁剪正文；被 cap 掉的原文落产物并附句柄（省上下文的同时不丢数据）。"""
@@ -1479,7 +1494,13 @@ class WebFetchTool(Tool):
         cap = max(500, min(cap, 100_000))
         if is_stopped(self._cancel):   # 停止后排队进来的调用：别再出网
             raise ToolError(f"抓取{STOPPED_MSG}")
+        if self._cache is None:
+            return self._fetch(url, focus, cap)
+        value, hit = self._cache.get_or_call(fetch_key(url, focus, cap),
+                                             lambda: self._fetch(url, focus, cap))
+        return f"{FETCH_HIT_NOTE}\n{value}" if hit else value
 
+    def _fetch(self, url: str, focus: str, cap: int) -> str:
         try:
             final_url, body, ctype = _http_get(url, self._timeout)
         except ToolError as e:

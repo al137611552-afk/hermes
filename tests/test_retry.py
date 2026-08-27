@@ -9,11 +9,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from agentcore.providers import StreamEvent  # noqa: E402
+from agentcore.providers import Message, StreamEvent  # noqa: E402
 from agentcore.providers import anthropic_p  # noqa: E402
 from agentcore.providers.anthropic_p import AnthropicProvider  # noqa: E402
 from agentcore.providers.base import (  # noqa: E402
-    backoff_delay, blocks_retry, explain_stream_failure, is_transient_error, retry_stream,
+    account_problem, backoff_delay, blocks_retry, explain_stream_failure, is_transient_error,
+    retry_stream,
 )
 
 
@@ -238,6 +239,63 @@ def test_error_text_tells_the_user_what_to_do():
                                                 after_answer=True)
     # 非瞬时错误不该被加戏
     assert explain_stream_failure(ValueError("invalid api key")) == "ValueError: invalid api key"
+
+
+# ---- 账户级硬错误（2026-08-26 真机：端点 402 被当成 Firecrawl 搜索配额）------------
+
+_402 = ("Error code: 402 - {'error': {'code': 'insufficient_credits', 'message': "
+        "'Billing account is not in good standing for this request.', 'type': 'billing_error'}}")
+
+
+def test_account_problem_classifies():
+    class E402(Exception):
+        status_code = 402
+    class E401(Exception):
+        status_code = 401
+    class E429(Exception):
+        status_code = 429
+    assert account_problem(E402(_402)) == "计费"
+    assert account_problem(E401("invalid x-api-key")) == "鉴权"
+    assert account_problem(_402) == "计费"           # 也吃已成文的错误串
+    # 429 是限流不是账户问题：状态码优先，别因为文案里有 quota 就把付费链路判死
+    assert account_problem(E429("rate limit quota exceeded")) == ""
+    assert is_transient_error(E429("rate limit quota exceeded"))
+    # 账户级永不重试
+    assert not is_transient_error(E402(_402))
+    # 普通异常不该被误吃
+    assert account_problem(ValueError("invalid api key")) == ""
+
+
+def test_account_error_text_names_model_and_rules_out_search_quota():
+    """402 只打 `APIStatusError: Error code: 402 - {...}` 会把人往搜索配额上带偏。
+    文案必须说清：这是模型 API 的钱/权限问题、哪个模型档、以及委派可能用的是另一个档。"""
+    class E402(Exception):
+        status_code = 402
+    msg = explain_stream_failure(E402(_402), endpoint="kimi-k2.6 @ relay.example.com")
+    assert "模型 API" in msg and "计费" in msg
+    assert "kimi-k2.6 @ relay.example.com" in msg      # 不指名就查错账户
+    assert "Firecrawl" in msg                          # 明确排除搜索配额
+    assert "subagent_model" in msg                     # 子 Agent 可能是另一个账户
+    assert "不会自动重试" in msg
+
+
+def test_anthropic_non_transient_yields_explained_error_not_nameerror():
+    """回归：`explain_stream_failure` 一度没在 anthropic_p 里导入，于是**非瞬时错误那条路
+    一走就 NameError**——用户拿到的不是"账户计费问题"，是一句不知所云的 NameError，
+    委派侧还会因此白重试一次。单测都用假 provider，是真跑（3 路并发子 Agent）才把它翻出来的。"""
+    class E402(Exception):
+        status_code = 402
+    p = AnthropicProvider.__new__(AnthropicProvider)      # 不建真 client
+    p.model, p.base_url, p.max_tokens = "m", "https://relay.example.com", 16
+    p.temperature, p.prompt_cache, p.api_key = None, False, "k"
+    def boom(_kwargs):
+        raise E402(_402)
+        yield  # pragma: no cover — 让它是生成器
+    p._stream = boom
+    evs = list(p.stream_chat([Message("user", "hi")]))
+    assert len(evs) == 1 and evs[0].type == "error"
+    assert "模型 API" in evs[0].text and "计费" in evs[0].text
+    assert "relay.example.com" in evs[0].text
 
 
 def _run_all():
