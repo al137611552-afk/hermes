@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -67,8 +68,11 @@ def test_report_shows_recent_sessions_as_record_not_memory():
     assert "#6" in r and "（未设）" in r      # 没落下档名的会话也照实显示
 
 
-def _api(tmp: Path) -> Api:
-    return Api(AppConfig(
+@contextmanager
+def _api(tmp: Path):
+    """**必须收连接再退出**：Api 开着 h.db 的 sqlite 连接时，Windows 删不掉临时目录
+    （WinError 32），整份文件就此判红——v3.77.0 的 release 正是这么被卡住的。"""
+    api = Api(AppConfig(
         active_model="m1",
         models={"m1": ModelConfig(provider="anthropic", model="deepseek-v4-flash",
                                   api_key_env="K_NOT_SET",
@@ -78,11 +82,15 @@ def _api(tmp: Path) -> Api:
         memory=MemoryConfig(enabled=False),
         mcp=MCPConfig(enabled=False),
     ))
+    try:
+        yield api
+    finally:
+        api.close()
 
 
 def test_api_get_diagnostics_end_to_end():
-    with tempfile.TemporaryDirectory() as td:
-        r = _api(Path(td)).get_diagnostics()
+    with tempfile.TemporaryDirectory() as td, _api(Path(td)) as api:
+        r = api.get_diagnostics()
     assert r["ok"] is True
     t = r["text"]
     assert "provider=anthropic" in t and "https://api.deepseek.com/anthropic" in t
@@ -97,7 +105,7 @@ def test_api_diagnostics_covers_per_role_models():
     from agentcore.config import RoleSpec
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
-        api = Api(AppConfig(
+        with closing(Api(AppConfig(
             active_model="m1",
             models={"m1": ModelConfig(provider="anthropic", model="a", api_key_env="K1",
                                       base_url="https://api.deepseek.com/anthropic"),
@@ -107,8 +115,8 @@ def test_api_diagnostics_covers_per_role_models():
                               roles={"researcher": RoleSpec(label="调研", model="relay")}),
             storage=StorageConfig(enabled=True, db_path=str(tmp / "h.db")),
             memory=MemoryConfig(enabled=False), mcp=MCPConfig(enabled=False),
-        ))
-        t = api.get_diagnostics()["text"]
+        ))) as api:
+            t = api.get_diagnostics()["text"]
     assert "子 Agent 角色 researcher：relay" in t     # 角色档要单独点名
     assert "provider=openai" in t and "relay.example.com" in t   # 它的协议/端点也要摊开
     assert "上下文压缩摘要" in t                        # 另一个易漏项也在

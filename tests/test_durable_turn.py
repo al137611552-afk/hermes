@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import closing
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -123,45 +124,49 @@ def test_crash_mid_turn_keeps_what_was_already_done():
             memory=MemoryConfig(enabled=False),
             mcp=MCPConfig(enabled=False),
         ))
-        conv = api.active
+        try:
+            conv = api.active
 
-        class _Search(Tool):        # 只读、免确认，替身用
-            name = "fake_search"
-            description = "查东西"
-            input_schema = {"type": "object", "properties": {"q": {"type": "string"}}}
+            class _Search(Tool):        # 只读、免确认，替身用
+                name = "fake_search"
+                description = "查东西"
+                input_schema = {"type": "object", "properties": {"q": {"type": "string"}}}
 
-            def run(self, params):
-                return "搜到了：uv 比 pip 快 10 倍"
+                def run(self, params):
+                    return "搜到了：uv 比 pip 快 10 倍"
 
-        conv.registry._tools["fake_search"] = _Search(conv.workspace)
+            conv.registry._tools["fake_search"] = _Search(conv.workspace)
 
-        calls = {"n": 0}
+            calls = {"n": 0}
 
-        class _Provider:
-            def stream_chat(self, messages, system=None, tools=None, **kw):
-                calls["n"] += 1
-                if calls["n"] == 1:
-                    yield StreamEvent("tool_use", meta={
-                        "call": ToolCall(id="t1", name="fake_search", input={"q": "uv"})})
-                    yield StreamEvent("done", meta={"stop_reason": "tool_use"})
-                else:                # 第二次调用＝应用在这一步没了
-                    raise RuntimeError("模拟：应用被强杀")
+            class _Provider:
+                def stream_chat(self, messages, system=None, tools=None, **kw):
+                    calls["n"] += 1
+                    if calls["n"] == 1:
+                        yield StreamEvent("tool_use", meta={
+                            "call": ToolCall(id="t1", name="fake_search", input={"q": "uv"})})
+                        yield StreamEvent("done", meta={"stop_reason": "tool_use"})
+                    else:                # 第二次调用＝应用在这一步没了
+                        raise RuntimeError("模拟：应用被强杀")
 
-        _convmod.build_provider = lambda cfg, model=None: _Provider()
+            _convmod.build_provider = lambda cfg, model=None: _Provider()
 
-        r = conv.send_message("查一下 uv 和 pip 哪个快")
-        assert r.get("ok") is False, "这一轮本就该以失败告终"
+            r = conv.send_message("查一下 uv 和 pip 哪个快")
+            assert r.get("ok") is False, "这一轮本就该以失败告终"
 
-        rows = api.res.store.get_messages(conv.session_id)
-        dumped = json.dumps(rows, ensure_ascii=False)
-        assert "查一下 uv 和 pip 哪个快" in dumped, "用户那条消息本来就落库了"
-        assert "fake_search" in dumped, "**模型发起的工具调用没落库**"
-        assert "uv 比 pip 快 10 倍" in dumped, "**已经搜到的内容丢了——就是用户报的那件事**"
+            rows = api.res.store.get_messages(conv.session_id)
+            dumped = json.dumps(rows, ensure_ascii=False)
+            assert "查一下 uv 和 pip 哪个快" in dumped, "用户那条消息本来就落库了"
+            assert "fake_search" in dumped, "**模型发起的工具调用没落库**"
+            assert "uv 比 pip 快 10 倍" in dumped, "**已经搜到的内容丢了——就是用户报的那件事**"
 
-        # 重开这个会话时，断在半路的尾巴要能被修好（否则下一条消息发不出去）
-        history = [Message(m["role"], m["content"]) for m in rows]
-        fixed, n = repair_interrupted_tail(history)
-        assert n == 0, "这次断在 tool_result 之后，配对是完整的，不该乱补"
+            # 重开这个会话时，断在半路的尾巴要能被修好（否则下一条消息发不出去）
+            history = [Message(m["role"], m["content"]) for m in rows]
+            fixed, n = repair_interrupted_tail(history)
+            assert n == 0, "这次断在 tool_result 之后，配对是完整的，不该乱补"
+        finally:
+            # 不关就带着 h.db 的 sqlite 连接退出：Windows 删不掉临时目录（WinError 32）
+            api.close()
 
 
 # ---- 旁链（子 Agent）存档：留得下，但绝不回到主上下文 ----------------------
@@ -176,8 +181,7 @@ def test_sidechain_is_archived_but_never_read_back_into_history():
     但混进主历史就把它的中间过程塞回了主模型上下文——委派的意义当场没了。"""
     import tempfile as _tf
 
-    with _tf.TemporaryDirectory() as d:
-        st = _store(d)
+    with _tf.TemporaryDirectory() as d, closing(_store(d)) as st:
         sid = st.create_session("调研", None)
         st.add_message(sid, "user", "分别调研 A B C")
         st.add_message(sid, "assistant", [{"type": "tool_use", "id": "d1", "name": "delegate"}])
@@ -203,8 +207,7 @@ def test_truncate_counts_main_chain_and_takes_its_sidechains_along():
     直接按行号切会砍错位置。"""
     import tempfile as _tf
 
-    with _tf.TemporaryDirectory() as d:
-        st = _store(d)
+    with _tf.TemporaryDirectory() as d, closing(_store(d)) as st:
         sid = st.create_session("s", None)
         st.add_message(sid, "user", "第1条")
         st.add_message(sid, "assistant", "第2条")
@@ -244,11 +247,11 @@ def test_old_db_without_the_column_still_opens():
         con.commit(); con.close()
 
         from agentcore.store import Store
-        st = Store(path, externalize_images=False)
-        assert [m["content"] for m in st.get_messages(1)] == ["以前说的话"]
-        st.add_message(1, "user", "新的旁链", sidechain=True)
-        assert len(st.get_messages(1)) == 1
-        assert len(st.get_messages(1, include_sidechain=True)) == 2
+        with closing(Store(path, externalize_images=False)) as st:
+            assert [m["content"] for m in st.get_messages(1)] == ["以前说的话"]
+            st.add_message(1, "user", "新的旁链", sidechain=True)
+            assert len(st.get_messages(1)) == 1
+            assert len(st.get_messages(1, include_sidechain=True)) == 2
 
 
 def _run_all():
