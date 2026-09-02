@@ -4,6 +4,31 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.77.1] - 2026-09-02
+
+**本版不含功能改动，只为把 v3.77.0 真正发出去。** v3.77.0 的 release 工作流在 Windows
+全回归那步就红了，`build` job 随之 skipped——**tag 推上去了，包却一个都没出**，
+Releases 页最新仍停在 v3.76.1。于是 v3.77.0 修掉的东西（其中包括那条
+`NameError: name 'explain_stream_failure' is not defined`）**一个用户都没拿到**，
+用户从 v3.72.0 起一直在踩同一个报错。
+
+### 修复
+
+- **三个测试文件在 Windows 上假红，卡住了整条发版链路**（`test_durable_turn.py` /
+  `test_handoff_snapshot.py` / `test_modeldiag.py`）。**产品代码没有问题**，红的全是测试
+  自身的平台假设：
+  - `test_handoff_snapshot.py` 用 `Path("/proc/nonexistent-dir/x")` 制造"mkdir 必失败"。
+    这只在 Linux 成立——Windows 上它变成 `C:\proc\nonexistent-dir\x`，**建得出来**，
+    于是落盘成功、断言"应返回空串"当场翻车。改为把工作区指到**一个文件底下**
+    （父级是文件，mkdir 在两个平台都必失败）。
+  - `test_durable_turn.py` / `test_modeldiag.py` 建完 `Api`/`Store` 就退出临时目录，
+    `h.db` 的 sqlite 连接还开着。POSIX 允许删开着的文件，Windows 不允许：
+    `PermissionError: [WinError 32]`。改为 `closing()` / `try-finally` 收连接
+    （`Api.close()` 本就存在，是测试没调）。
+
+**教训**：Linux 上跑绿不等于能发版——**唯一跑 Windows 回归的地方就是这条流水线**，
+它红了等于"定了版但没发出去"，而这个状态**没有任何告警**，是用户报错才反查出来的。
+
 ## [3.77.0] - 2026-08-27
 
 **本版只收 bug 修复。** 同一天做的「委派并行提示词优化」经真机使用**判定为质量下降，已整块回退**

@@ -4,6 +4,65 @@
 
 ---
 
+## 2026-09-02（三）— 定了版却没发出去：Windows CI 红了三个文件，包一个没出
+
+**状态**：✅ Linux 侧全回归绿（`tests/test_*.py` 每个当独立 runner，0 失败）。
+Windows 侧待这条 tag 的 release 工作流验证——**修的正是 Windows 专属问题，本机验不了**。
+
+### 现象
+
+用户报：使用中经常跳 `⚠ NameError: name 'explain_stream_failure' is not defined`。
+
+### 根因（两层，第二层才是真问题）
+
+**第一层**：`providers/anthropic_p.py:161` 调 `explain_stream_failure(...)`，而同文件的
+`from .base import (...)` 没导入它。走"非瞬时错误"那条路（402/鉴权失败/重试用尽/已出字再断线）
+就必然 NameError。引入于 `fd5bb94`，随 **v3.72.0** 出厂 → **v3.72.0 ~ v3.76.1 全中**。
+**这一层 8-27 就修好了**（`da0b39e`，带回归测试
+`test_retry.py::test_anthropic_non_transient_yields_explained_error_not_nameerror`）。
+
+**第二层（真问题）**：修好的 v3.77.0 **从来没发出去**。推 tag 触发的 release 工作流
+（[run 33034078809](https://github.com/al137611552-afk/hermes/actions/runs/33034078809)）
+在 Windows 全回归那步就红了，`build` job 随之 skipped——**没出包、没建 Release**。
+Releases 页最新一直是 v3.76.1，用户手上的自然还是带 bug 的版本。同一次 push 的 ci
+也红在 windows job。**从 8-27 到 9-02 整整六天，没有任何东西提醒过"这版没发出去"。**
+
+红的三个文件全是**测试自身的平台假设**，产品代码没毛病：
+
+| 文件 | 真因 |
+|---|---|
+| `test_handoff_snapshot.py` | 用 `Path("/proc/nonexistent-dir/x")` 制造"mkdir 必失败"，只在 Linux 成立；Windows 上变成 `C:\proc\...` **建得出来** → 落盘成功 → 断言假红 |
+| `test_durable_turn.py` | `Api` / `Store` 开着 `h.db` 的 sqlite 连接就退出临时目录；POSIX 允许删开着的文件，Windows 不允许 → `PermissionError: [WinError 32]` |
+| `test_modeldiag.py` | 同上，`_api()` 建完不关 |
+
+### 做法
+
+- `test_handoff_snapshot.py`：把"不可写工作区"换成**父级是一个文件**的路径——
+  mkdir 在 POSIX/Windows 上都必失败，不再依赖 `/proc`。
+- `test_durable_turn.py` / `test_modeldiag.py`：`closing()` / `try-finally` 收连接。
+  `Api.close()` 和 `Store.close()` **本来就有**，是测试没调；换句话说这不是产品缺能力。
+
+### 关键决策
+
+- **发 v3.77.1 而不是重推 v3.77.0 的 tag**。已经发布过的 tag 被移动，本地/CI 的历史会对不上；
+  多一个补丁号的代价远小于此。
+- **只改 tests，不动产品代码**。三处红全部指向测试的平台假设，产品侧没有对应缺陷可修——
+  顺手"加固"反而会掩盖真实结论。
+
+### 自检
+
+`for f in tests/test_*.py; do python $f; done` → 0 失败（Linux）。
+Windows 侧只能靠 release 工作流跑，见本版 tag 的 run。
+
+### 遗留问题
+
+- **"定了版但没发出去"目前无告警**。tag 推上去、工作流红掉、Releases 页悄无声息——
+  这次是靠用户报错反查出来的。要么让 release 失败时有通知，要么定版流程里加一步
+  "确认 Release 出包"。**已记在 ROADMAP，本版不做。**
+- Windows 专属回归**只有 CI 一处**在跑，本机（2 核 4G Linux）验不了这类问题。
+
+---
+
 ## 2026-08-27（二）— 中途退出丢搜索成果：落库时机错了
 
 **状态**：✅ 已验证通过（v3.77.0 定版）。全回归绿（Python 全部测试文件 0 失败、

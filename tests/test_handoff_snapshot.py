@@ -45,12 +45,19 @@ def test_handoff_snapshot_never_blocks_handoff():
     """记录失败绝不能反过来挡住换手本身——工作区不可写时要安静地返回空串。"""
     from agentcore.bridge.conversation import Conversation
 
-    class _Broken:
-        workspace = Path("/proc/nonexistent-dir/x")   # mkdir 必失败
-        history = []
-        _snapshot_handoff = Conversation._snapshot_handoff
+    with tempfile.TemporaryDirectory() as d:
+        blocker = Path(d) / "not-a-dir"
+        blocker.write_text("x", encoding="utf-8")
 
-    assert _Broken()._snapshot_handoff({"target": "x"}) == ""
+        class _Broken:
+            # 父级是个**文件**，mkdir 在 POSIX/Windows 上都必失败。
+            # 早先写死 /proc/...，只在 Linux 成立：Windows 上它变成 C:\proc\... 反而建得出来，
+            # 于是这条断言在 Windows CI 上假红，连带把整个 release 卡住（2026-08-27 v3.77.0）。
+            workspace = blocker / "x"
+            history = []
+            _snapshot_handoff = Conversation._snapshot_handoff
+
+        assert _Broken()._snapshot_handoff({"target": "x"}) == ""
 
 
 def _run_all():

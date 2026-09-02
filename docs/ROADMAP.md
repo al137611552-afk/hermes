@@ -1138,6 +1138,13 @@ codex 自己在沙箱里执行命令起的 shell 是跑到一半每条命令闪�
 
 ## 第二档 — 明确遗留（小而确定）
 
+- **"定了版但没发出去"目前无任何告警**（2026-09-02 反查出来的）。v3.77.0 推了 tag、release
+  工作流在 Windows 全回归那步红掉、`build` 随之 skipped，于是**包一个没出、Releases 页毫无动静**，
+  整整六天没人知道，最后是用户报 `NameError` 才查到。tag 推成功 ≠ 版本发出去了。
+  两条路选一：① release 失败时推通知（工作流加一步 failure 通知）；
+  ② 定版流程里补一步硬性确认——推完 tag 必须回查该 tag 的 Release 是否真有资产。
+  **倾向 ①**，因为 ② 靠人记得，而这次失手恰恰是"人以为推了 tag 就完事"。
+
 - **Windows 侧进程/管道语义的覆盖缺口**（2026-08-13 CI 首跑留下）。以下三条是**真 POSIX 专属**、
   没有语义等价的 PowerShell 写法，已显式 `if IS_WIN: return` 跳过（宁可缺，也不凑一个守着别的东西的"绿"）：
   - `test_shell.test_bg_daemon_inheriting_pipe_returns_fast` —— **缺口最大的一条**。它守的是压测揪出的
