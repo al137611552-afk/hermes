@@ -554,6 +554,10 @@ screenshot 绕道修复、Claude 模型档案（接上即缩小模型差距）�
   input 4507 / output 231 / cache_read 11136 / 3 步（缓存命中实打实）。
 - [x] 交付 → Windows 验：用量脚注（token/缓存/步数）；步数预警 toast；CLI --json 带 usage；
   不支持 usage 优雅留空。✅ 通过（2026-06-12，**定版 v3.8.0，P11 全部收官**）。
+- [x] **增量（2026-09-04，v3.78.0）**：用量脚注补**完成时刻**——loop 在 `usage` 事件带 `ts`
+  （epoch 秒），前端/CLI 显示成 `… 2 步 · 14:32:07 完成`，台账 `ts` 也改记回合完成时刻。
+  文案在 `web/pure.js` 的 `usageNoteText()`/`fmtClock()`（可脱离 DOM 单测）。
+  ✅ Windows 验证通过（2026-09-04）。
 
 #### FR-11.7 详细实现清单（已定决策：复用内核的无头单任务入口，事件流到终端；默认自动批准+deny 仍拦截）✅ Linux 实测，待 Windows 验
 **决策（2026-06-12）**：把评测 harness 产品化为正式 CLI——`agentcore/cli.py` + console 脚本

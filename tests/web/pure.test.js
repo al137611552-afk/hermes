@@ -7,7 +7,7 @@ const {
   computeTaskProgress, sessionTitleMatches, matchSlashCommands, parseSlashInput,
   needsKeySetup, validateModelProfile,
   resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
-  accumulateUsage,
+  accumulateUsage, fmtClock, usageNoteText,
   usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
   findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
   formatEval,
@@ -1009,3 +1009,23 @@ test("tailLines 只留最后几行、跳过空行", () => {
 
 const pure = require("../../web/pure.js");
 
+
+test("fmtClock：把 usage.ts（epoch 秒）格成本地 HH:MM:SS，缺 ts 退回当下", () => {
+  const ts = new Date(2026, 8, 4, 9, 5, 7).getTime() / 1000;   // 本地时间 09:05:07
+  assert.equal(fmtClock(ts), "09:05:07");
+  const now = new Date(2026, 8, 4, 23, 59, 0).getTime();
+  assert.equal(fmtClock(undefined, now), "23:59:00");           // 老后端没带 ts
+  assert.equal(fmtClock(0, now), "23:59:00");
+});
+
+test("usageNoteText：tokens / 缓存命中 / 步数 / 完成时刻", () => {
+  const ts = new Date(2026, 8, 4, 14, 32, 7).getTime() / 1000;
+  const txt = usageNoteText({ input: 230, output: 28, cache_read: 50, steps: 2, ts });
+  assert.match(txt, /输入 230 \/ 输出 28 tokens/);
+  assert.match(txt, /缓存命中 50/);
+  assert.match(txt, /2 步 · 14:32:07 完成$/);
+  // 没命中缓存就不占地方
+  const bare = usageNoteText({ input: 10, output: 3, steps: 1, ts });
+  assert.ok(!bare.includes("缓存命中"));
+  assert.match(bare, /1 步 · 14:32:07 完成$/);
+});

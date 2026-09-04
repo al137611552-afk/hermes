@@ -1113,15 +1113,13 @@ function renderContextCompressed(v, data) {
   appendRow(v, note);
 }
 
-// 本轮用量（FR-11.8）：tokens 入/出、缓存命中、步数。克制地显示在回合末。
+// 本轮用量（FR-11.8）：tokens 入/出、缓存命中、步数、完成时刻。克制地显示在回合末。
+// 文案在 pure.js/usageNoteText（纯函数、有单测）。
 function renderUsage(v, data) {
   finalizeTextBubble(v);
   const note = document.createElement("div");
   note.className = "usage-note";
-  const cache = data.cache_read ? `，缓存命中 ${data.cache_read}` : "";
-  note.textContent =
-    `📊 本轮：输入 ${data.input} / 输出 ${data.output} tokens${cache}` +
-    `，${data.steps} 步`;
+  note.textContent = usageNoteText(data);
   appendRow(v, note);
   // 累计进会话用量，并刷新顶部累计芯片（P2）
   v.usage = accumulateUsage(v.usage, data);

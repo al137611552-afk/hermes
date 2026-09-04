@@ -115,6 +115,9 @@ def test_agent_loop_roundtrip(tmp: Path):
     usage = next(d for e, d in events if e == "usage")
     assert usage["input"] == 230 and usage["output"] == 28 and usage["cache_read"] == 50
     assert usage["steps"] == 2 and usage["max_steps"] == 5
+    # 收尾行要能显示"什么时候完的"：回合末带完成时刻（epoch 秒）
+    import time as _t
+    assert abs(usage["ts"] - _t.time()) < 60
 
 
 def test_agent_loop_estimates_usage_when_endpoint_silent(tmp: Path):

@@ -366,6 +366,24 @@
     };
   }
 
+  // 回合末收尾行里的时钟：把后端给的 epoch 秒（usage.ts）格成本地 HH:MM:SS。
+  // 缺 ts（老后端/事件里没带）就退回"现在"——收尾行是在收到事件那一刻画的，差不了多少。
+  function fmtClock(ts, now) {
+    const ms = Number(ts) > 0 ? Number(ts) * 1000 : (now === undefined ? Date.now() : now);
+    const d = new Date(ms);
+    const p2 = (n) => String(n).padStart(2, "0");
+    return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+  }
+
+  // 回合末那行用量提示的完整文案（tokens / 缓存命中 / 步数 / 完成时刻）。
+  // 整行做成纯函数，格式改动能脱离 DOM 单测。
+  function usageNoteText(data, now) {
+    const d = data || {};
+    const cache = d.cache_read ? `，缓存命中 ${d.cache_read}` : "";
+    return `📊 本轮：输入 ${d.input || 0} / 输出 ${d.output || 0} tokens${cache}` +
+      `，${d.steps || 0} 步 · ${fmtClock(d.ts, now)} 完成`;
+  }
+
   // ---- 用量面板（ADR 0025 P3）：纯逻辑，可脱离 DOM 单测 ----------------------
 
   // 一行汇总里的 token 总数（四类相加）。
@@ -1104,7 +1122,7 @@
     usageRowTotal, cacheHitRate, formatCostLines, usageCaveats,
     THEME_PREFS, FONT_SIZES, resolveTheme, normFontSize, isHelpKey, foldToolOutput, appendStreamBuffer,
     createStreamPacer,
-    accumulateUsage,
+    accumulateUsage, fmtClock, usageNoteText,
     summarizeKeyParams, delegationGoal, formatElapsed, tailLines,
     findMentionQuery, matchFileMentions, flattenTreeFiles, clampWidth, formatQuote,
     formatEval, extractArtifacts, extractWaitingProcess, debateHeader,

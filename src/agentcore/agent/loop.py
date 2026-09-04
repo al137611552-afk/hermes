@@ -865,6 +865,9 @@ class AgentLoop:
         if total["input"] or total["output"]:
             emit("usage", {
                 **total, "steps": steps, "max_steps": self.max_steps,
+                # 回合完成时刻（epoch 秒）：长任务跑完常常没人盯着，收尾行带上时间戳
+                # 才知道"什么时候完的"。落台账也用它，而不是写库那一刻（对标 Claude Code）。
+                "ts": time.time(),
                 "measured": measured,
                 "model": getattr(self.provider, "model", None),
                 "provider": provider_kind(self.provider),

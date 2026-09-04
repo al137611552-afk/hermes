@@ -4,6 +4,48 @@
 
 ---
 
+## 2026-09-04（五）— 用量收尾行加"完成时刻"（v3.78.0）
+
+**状态**：✅ 已验证通过（Linux 全回归绿 + **Windows 真机验证通过 2026-09-04**）。
+
+### 需求
+
+回合末那行只有「输入/输出 tokens、缓存命中、步数」。长任务跑完常常没人盯着，
+回头看不出**是什么时候完的**——对标 Claude Code 补一个时间戳。
+
+### 做了什么
+
+- `agent/loop.py`：回合末 `usage` 事件加 `ts`（epoch 秒，发事件那一刻＝回合完成时刻）。
+- `web/pure.js`：新增 `fmtClock(ts, now)`（epoch → 本地 `HH:MM:SS`，缺 ts 退回当下）与
+  `usageNoteText(data)`（整行文案）。`app.js` 的 `renderUsage` 改为调它，DOM 里不再拼串。
+- `cli.py`：无头模式 stderr 的 `📊` 行同样带 `· HH:MM:SS 完成`；`--json` 的 usage 自带 `ts`。
+- `bridge/conversation.py`：落台账时 `store.record(ts=payload.get("ts"))`。
+
+### 关键决策
+
+- **时间戳由后端打，不在前端取"现在"**：前端画那行的时刻可能晚于回合结束（事件排队、
+  窗口不在前台），而这行的意义就是"什么时候完的"。缺 `ts` 时前端才退回 `Date.now()`
+  ——老事件/存量路径不受影响。
+- **台账的 `ts` 也改用它**：以前记的是写库那一刻。两者通常只差毫秒，但语义上台账要的是
+  回合完成时刻；`UsageStore.record` 本就支持 `ts=`，缺省仍取 now，兼容不变。
+- **文案进 `pure.js` 而不是留在 `renderUsage` 里**：收尾行是纯字符串拼接，放 DOM 函数里
+  测不了（CLAUDE.md 的既定纪律）。
+
+### 自检
+
+- `tests/web/pure.test.js` +2（`fmtClock` 含"没带 ts"回退；`usageNoteText` 含/不含缓存命中两形态）；
+  `tests/test_p3.py` 既有 loop 用量断言旁加 `usage["ts"]` 校验。
+- 全回归：Python 每个测试文件独立 runner **全绿（0 失败）**；前端 `node --test tests/web/*.test.js`
+  **153/153**。（`node --test tests/web/` 目录形式在本机 node 上报 `test at tests/web:1:1` 失败，
+  **改动前后一致、是既有环境问题**，CLAUDE.md 记的命令本就是 glob 形式。）
+- 测试包 `hermes-dev-3.77.1dev-用量时间戳-测试包.zip` 交用户 Windows 真机验证 → ✅ 通过。
+
+### 遗留
+
+- 用量面板（按天/按模型汇总）没动，只是台账 `ts` 语义更准了。
+
+---
+
 ## 2026-09-02（三）— 定了版却没发出去：Windows CI 红了三个文件，包一个没出
 
 **状态**：✅ Linux 侧全回归绿（`tests/test_*.py` 每个当独立 runner，0 失败）。
