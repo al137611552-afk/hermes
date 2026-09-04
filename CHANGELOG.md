@@ -4,6 +4,18 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.78.0] - 2026-09-04
+
+### 新增
+
+- **回合末的用量收尾行带完成时刻**：原先只有「输入/输出 tokens、缓存命中、步数」，
+  长任务跑完常常没人盯着，回头看不出是什么时候完的。现在 loop 在回合末把
+  `usage.ts`（epoch 秒）一并发出，桌面端与无头 CLI 都显示成
+  `📊 本轮：输入 230 / 输出 28 tokens，缓存命中 50，2 步 · 14:32:07 完成`（对标 Claude Code）。
+  这个时间戳同时用作用量台账的 `ts`——记的是回合完成时刻，而不是写库那一刻。
+  文案抽成 `web/pure.js` 的 `usageNoteText()`／`fmtClock()`，可脱离 DOM 单测。
+  ✅ Windows 真机验证通过（2026-09-04）。
+
 ## [3.77.1] - 2026-09-02
 
 **本版不含功能改动，只为把 v3.77.0 真正发出去。** v3.77.0 的 release 工作流在 Windows

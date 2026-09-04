@@ -87,8 +87,9 @@ def run(args) -> int:
         elif event == "usage":
             usage.update(data)
             if not quiet and not json_mode:
+                clock = time.strftime("%H:%M:%S", time.localtime(data.get("ts") or time.time()))
                 print(f"  📊 输入 {data.get('input',0)} / 输出 {data.get('output',0)} tokens"
-                      f"，{data.get('steps',0)} 步", file=sys.stderr)
+                      f"，{data.get('steps',0)} 步 · {clock} 完成", file=sys.stderr)
 
     t0 = time.time()
     api = Api(cfg, emit=emit)

@@ -2435,6 +2435,8 @@ class Conversation:
                 measured=bool(payload.get("measured", True)),
                 agent_role=role,
                 harness_version=current_version(),
+                # 回合完成时刻（loop 发事件时打的）；缺了 store 自己取 now
+                ts=payload.get("ts"),
             )
         except Exception:  # noqa: BLE001 — 记账失败绝不阻断对话
             pass
